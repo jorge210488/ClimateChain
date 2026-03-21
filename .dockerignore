@@ -1,0 +1,64 @@
+# Git and editor metadata
+.git
+.gitignore
+.vscode
+.idea
+
+# Docs and local notes are not needed in runtime images
+docs/
+
+# Node / NestJS
+node_modules/
+dist/
+build/
+.next/
+coverage/
+.turbo/
+.cache/
+
+# Solidity / Hardhat / Foundry
+artifacts/
+cache/
+typechain/
+typechain-types/
+broadcast/
+out/
+
+# Python / ML caches and virtualenvs
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.venv/
+venv/
+ENV/
+env/
+
+# Test outputs and logs
+*.log
+logs/
+htmlcov/
+.coverage
+.coverage.*
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.crt
+
+# OS noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temp files
+tmp/
+temp/
