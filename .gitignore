@@ -76,6 +76,3 @@ pnpm-lock.yaml.*
 *.pid
 tmp/
 temp/
-
-# Local documentation (do not commit)
-docs/

@@ -1,0 +1,22 @@
+# Commit message template (English only)
+#
+# Header format:
+# <type>(<scope>): <short imperative summary>
+#
+# Allowed types:
+# feat, fix, refactor, test, docs, chore, ci, build, perf, security, revert
+#
+# Examples:
+# feat(contracts): add minimum premium ratio validation
+# fix(provider): prevent duplicate settlement accounting
+
+<type>(<scope>): <summary>
+
+Why:
+- 
+
+What:
+- 
+
+Test:
+- 

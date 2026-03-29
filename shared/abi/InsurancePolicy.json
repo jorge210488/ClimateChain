@@ -1,0 +1,583 @@
+{
+  "contractName": "InsurancePolicy",
+  "sourceName": "contracts/InsurancePolicy.sol",
+  "generatedAt": "2026-03-29T00:16:15.997Z",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyOwner",
+          "type": "address"
+        },
+        {
+          "internalType": "address payable",
+          "name": "insuredAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "oracleAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "premiumAmountWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "coverageAmountWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallThresholdMm_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint64",
+          "name": "startTimestamp_",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endTimestamp_",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "expected",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "received",
+          "type": "uint256"
+        }
+      ],
+      "name": "CoverageReserveMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EthTransferFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidCoverageAmount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidInsuredAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidOracleAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "startTimestamp",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "name": "InvalidPolicyWindow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidPremiumAmount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint8",
+          "name": "expected",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint8",
+          "name": "actual",
+          "type": "uint8"
+        }
+      ],
+      "name": "InvalidStatus",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        }
+      ],
+      "name": "OracleOnly",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PolicyAlreadySettled",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "currentTimestamp",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "name": "PolicyNotEnded",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "currentTimestamp",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "startTimestamp",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "name": "PolicyOutsideWeatherWindow",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "expected",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "received",
+          "type": "uint256"
+        }
+      ],
+      "name": "PremiumMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "TriggeredPolicyRequiresPayout",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "paidAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "PayoutExecuted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "premiumWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "coverageWei",
+          "type": "uint256"
+        }
+      ],
+      "name": "PolicyActivated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "expiredAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "PolicyExpired",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "rainfallMm",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "conditionMet",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "updatedAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "WeatherDataFulfilled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "policy",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "requestedAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "WeatherDataRequested",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "activate",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "conditionMet",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "coverageWei",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "endTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "executePayout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "expirePolicy",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "rainfallMm",
+          "type": "uint256"
+        }
+      ],
+      "name": "fulfillWeatherData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getCurrentBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "insured",
+      "outputs": [
+        {
+          "internalType": "address payable",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "lastOracleUpdateTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRainfallMm",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "oracle",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "premiumWei",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "rainfallThresholdMm",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "requestWeatherData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "startTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "status",
+      "outputs": [
+        {
+          "internalType": "enum InsurancePolicy.PolicyStatus",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "contracts",
+  "version": "1.0.0",
+  "description": "This module will contain all on-chain logic for policy creation, weather-trigger checks, and payouts.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "hardhat test",
+    "clean": "hardhat clean",
+    "compile": "hardhat compile",
+    "abi:export": "ts-node scripts/export-abi.ts",
+    "artifacts:sync": "npm run compile && npm run abi:export",
+    "lint:sol": "solhint --max-warnings 0 \"contracts/**/*.sol\"",
+    "lint": "npm run lint:sol",
+    "format:check": "prettier --plugin=prettier-plugin-solidity --check \"contracts/**/*.sol\" && prettier --check \"scripts/**/*.ts\" \"test/**/*.ts\" \"hardhat.config.ts\"",
+    "format:write": "prettier --plugin=prettier-plugin-solidity --write \"contracts/**/*.sol\" && prettier --write \"scripts/**/*.ts\" \"test/**/*.ts\" \"hardhat.config.ts\"",
+    "quality:check": "npm run lint && npm run format:check",
+    "deploy:hardhat": "hardhat run scripts/deploy.ts --network hardhat",
+    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@types/node": "^25.5.0",
+    "dotenv": "^17.3.1",
+    "hardhat": "^2.28.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-solidity": "^2.3.1",
+    "solhint": "^6.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}
