@@ -21,11 +21,18 @@
   - policy contract now forwards remaining ETH back to provider on payout/expiry.
   - provider receives settlement transfers and now books reserve and premium balances separately.
   - provider exposes premium balance withdrawal without affecting coverage reserve.
+  - provider now exposes explicit withdrawal for untracked ETH to avoid trapped balance from unexpected transfers.
+  - provider payout/expiry flows now use strict CEI ordering with `nonReentrant` on both entrypoints.
+  - policy expiry flow now rejects `Created` status explicitly.
+  - premium minimum calculation now uses overflow-safe arithmetic and reserve validation order prioritizes descriptive errors.
   - oracle request/fulfill paths now enforce policy weather window boundaries.
   - provider index access now uses explicit custom bounds error.
   - weather oracle update event now states that changes do not retroactively affect existing policies.
 - Expanded contract tests from baseline happy-path coverage to include critical negative paths.
+- Refactored test harness to `loadFixture` snapshots and expanded admin/boundary coverage to reduce regression risk.
 - Hardened quality gates to strict mode with zero-warning Solidity lint policy (`solhint --max-warnings 0`).
+- Enabled NatSpec enforcement for contract/interface public surfaces to improve audit readability.
+- Hardened deployment script to require an external oracle address on non-local networks (no mock auto-deploy on Sepolia).
 
 ## Files changed
 
@@ -58,9 +65,11 @@
 - Pinned TypeScript to `5.6.3` to avoid Hardhat + TS6 compatibility issues during compilation.
 - Chose explicit module-level npm scripts (`compile`, `test`, deploy scripts by network) for reproducible local workflows.
 - Tightened Solidity lint policy to block warnings in local quality checks.
+- Fixed Sepolia chain ID to canonical `11155111` in Hardhat config.
 - Export ABIs into `shared/abi` as the single source consumed by future backend integration.
 - Kept contract identifiers and environment keys fully in English.
 - Tracked settlement recovery with explicit reserve/premium split to avoid accounting drift.
+- Hardened mock oracle destination checks to assert policy interface shape and expected oracle ownership.
 - Enforced policy weather window checks at both request and fulfill entrypoints.
 - Replaced enum magic numbers in tests with explicit status constants for maintainability.
 
@@ -79,11 +88,13 @@
 - `cd contracts && npm run quality:check`
 - `cd contracts && npm run format:write && npm run quality:check`
 - `cd contracts && npm run deploy:hardhat`
+- `cd contracts && npm run compile && npm test && npm run quality:check`
+- `cd contracts && npm run artifacts:sync && npm run deploy:hardhat`
 
 ## Tests executed and results
 
 - `npm run compile`: passed.
-- `npm test`: passed.
+- `npm test`: passed (30 tests).
 - `npm run artifacts:sync`: passed and ABIs exported to `shared/abi`.
 - `npm run quality:check`: passed with strict zero-warning Solidity lint gate.
 - `npm run deploy:hardhat`: passed and generated `contracts/deployments/hardhat.json`.
@@ -92,7 +103,23 @@
   - `executes payout after oracle threshold is met and books premium separately` -> passing
   - `returns coverage to reserve and books premium separately when policy expires` -> passing
   - `withdraws premium balance without affecting coverage reserve` -> passing
+  - `withdraws untracked ETH without changing reserve or premium balances` -> passing
+  - `rejects untracked ETH withdrawal above available amount` -> passing
+  - `updates weather oracle and uses it for newly created policies` -> passing
+  - `rejects payout execution when policy is not triggered` -> passing
+  - `rejects policy expiry through provider when policy is triggered` -> passing
+  - `rejects expiring a policy still in created status` -> passing
+  - `withdraws coverage reserve and updates reserve balance` -> passing
+  - `rejects coverage reserve withdrawal when amount exceeds reserve` -> passing
+  - `rejects premium withdrawal when amount exceeds premium balance` -> passing
+  - `accepts policy creation at exact minimum premium ratio` -> passing
+  - `accepts policy creation at exact max duration` -> passing
+  - `rejects zero-value reserve funding` -> passing
+  - `returns empty policy list for insured account with no policies` -> passing
+  - `tracks global policies count across multiple policy creations` -> passing
   - `rejects policy creation when reserve is insufficient` -> passing
+  - `returns descriptive reserve error for extremely large coverage requests` -> passing
+  - `rejects oracle pushes from a different mock oracle instance` -> passing
   - `rejects duplicate payout attempts` -> passing
   - `rejects unauthorized policy and oracle actions` -> passing
   - `rejects weather updates and requests outside policy window` -> passing
@@ -105,6 +132,7 @@
 - Current oracle flow is a local mock; real Chainlink request/fulfill and automation logic remains for Stage 10.
 - Reserve release on expiry and premium recovery on settlement are now implemented; advanced treasury policy remains for Stage 03.
 - Provider accounting currently assumes synchronous policy close calls; if Stage 10 introduces asynchronous settlement callbacks, reconciliation must move to explicit callback/event-driven accounting.
+- Non-local deployment now requires explicit oracle address configuration; deployment should fail-fast when missing.
 - `npm audit` reports transitive dev dependency vulnerabilities in tooling stack; evaluate remediation strategy before production pipelines.
 - Strict lint ordering is now enforced; future refactors must preserve declaration/function ordering to keep the gate green.
 

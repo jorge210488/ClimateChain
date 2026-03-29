@@ -34,7 +34,12 @@ On-chain logic for policy creation, weather-trigger checks, and payouts.
 Copy `contracts/.env.example` to `contracts/.env` and set required values.
 - `RPC_URL`
 - `PRIVATE_KEY`
+- `EXTERNAL_WEATHER_ORACLE_ADDRESS` (required for non-local deployments, for example Sepolia)
 - Optional explorer verification: `ETHERSCAN_API_KEY`
+
+Deployment behavior by network:
+- `hardhat` and `localhost`: deploys `MockWeatherOracle` automatically.
+- Non-local networks: requires `EXTERNAL_WEATHER_ORACLE_ADDRESS` and does not deploy a mock.
 
 ## Standards
 

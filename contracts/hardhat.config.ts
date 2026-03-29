@@ -5,7 +5,6 @@ import { HardhatUserConfig } from "hardhat/config";
 
 const sepoliaRpcUrl = process.env.RPC_URL;
 const deployerPrivateKey = process.env.PRIVATE_KEY;
-const sepoliaChainId = Number(process.env.CHAIN_ID_SEPOLIA ?? "11155111");
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -30,7 +29,7 @@ const config: HardhatUserConfig = {
       ? {
           sepolia: {
             url: sepoliaRpcUrl,
-            chainId: sepoliaChainId,
+            chainId: 11155111,
             accounts: [deployerPrivateKey],
           },
         }

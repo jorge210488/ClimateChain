@@ -10,9 +10,25 @@ interface DeploymentManifest {
   chainId: string;
   deployer: string;
   contracts: {
-    mockWeatherOracle: string;
+    weatherOracle: string;
+    mockWeatherOracle?: string;
     insuranceProvider: string;
   };
+}
+
+function resolveExternalOracleAddress(networkName: string): string {
+  const configuredAddress = process.env.EXTERNAL_WEATHER_ORACLE_ADDRESS;
+  if (!configuredAddress) {
+    throw new Error(`EXTERNAL_WEATHER_ORACLE_ADDRESS is required for ${networkName} deployments`);
+  }
+
+  if (!ethers.isAddress(configuredAddress) || configuredAddress === ethers.ZeroAddress) {
+    throw new Error(
+      `EXTERNAL_WEATHER_ORACLE_ADDRESS must be a valid non-zero address for ${networkName}`,
+    );
+  }
+
+  return configuredAddress;
 }
 
 async function writeDeploymentManifest(manifest: DeploymentManifest): Promise<string> {
@@ -28,15 +44,25 @@ async function writeDeploymentManifest(manifest: DeploymentManifest): Promise<st
 async function main(): Promise<void> {
   const [deployer] = await ethers.getSigners();
   const networkDetails = await ethers.provider.getNetwork();
+  const isLocalNetwork = network.name === "hardhat" || network.name === "localhost";
 
   console.log("Deploying contracts with account:", deployer.address);
 
-  const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
-  const oracle = await oracleFactory.deploy(deployer.address);
-  await oracle.waitForDeployment();
+  let oracleAddress: string;
+  let mockWeatherOracleAddress: string | undefined;
 
-  const oracleAddress = await oracle.getAddress();
-  console.log("MockWeatherOracle deployed at:", oracleAddress);
+  if (isLocalNetwork) {
+    const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
+    const oracle = await oracleFactory.deploy(deployer.address);
+    await oracle.waitForDeployment();
+
+    mockWeatherOracleAddress = await oracle.getAddress();
+    oracleAddress = mockWeatherOracleAddress;
+    console.log("MockWeatherOracle deployed at:", oracleAddress);
+  } else {
+    oracleAddress = resolveExternalOracleAddress(network.name);
+    console.log("Using external weather oracle at:", oracleAddress);
+  }
 
   const providerFactory = await ethers.getContractFactory("InsuranceProvider");
   const insuranceProvider = await providerFactory.deploy(deployer.address, oracleAddress);
@@ -52,7 +78,8 @@ async function main(): Promise<void> {
     chainId: networkDetails.chainId.toString(),
     deployer: deployer.address,
     contracts: {
-      mockWeatherOracle: oracleAddress,
+      weatherOracle: oracleAddress,
+      ...(mockWeatherOracleAddress ? { mockWeatherOracle: mockWeatherOracleAddress } : {}),
       insuranceProvider: providerAddress,
     },
   };

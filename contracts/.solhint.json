@@ -6,7 +6,7 @@
     "func-visibility": ["error", { "ignoreConstructors": true }],
     "ordering": "error",
     "max-line-length": "off",
-    "use-natspec": "off",
+    "use-natspec": "error",
     "gas-indexed-events": "off",
     "gas-strict-inequalities": "error"
   }

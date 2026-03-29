@@ -1,7 +1,7 @@
 {
   "contractName": "InsuranceProvider",
   "sourceName": "contracts/InsuranceProvider.sol",
-  "generatedAt": "2026-03-29T00:16:15.997Z",
+  "generatedAt": "2026-03-29T01:25:57.239Z",
   "abi": [
     {
       "inputs": [
@@ -18,6 +18,22 @@
       ],
       "stateMutability": "nonpayable",
       "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint32",
+          "name": "providedDays",
+          "type": "uint32"
+        },
+        {
+          "internalType": "uint32",
+          "name": "maxDays",
+          "type": "uint32"
+        }
+      ],
+      "name": "DurationDaysExceedsMaximum",
+      "type": "error"
     },
     {
       "inputs": [],
@@ -54,6 +70,22 @@
         }
       ],
       "name": "InsufficientPremiumBalance",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "available",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "requiredAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "InsufficientUntrackedBalance",
       "type": "error"
     },
     {
@@ -131,6 +163,22 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "minimumWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "providedWei",
+          "type": "uint256"
+        }
+      ],
+      "name": "PremiumBelowMinimum",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "PremiumMustBePositive",
       "type": "error"
@@ -138,27 +186,6 @@
     {
       "inputs": [],
       "name": "ReentrancyGuardReentrantCall",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "policyAddress",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "expectedMinimumWei",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "recoveredWei",
-          "type": "uint256"
-        }
-      ],
-      "name": "SettlementRecoveryBelowExpected",
       "type": "error"
     },
     {
@@ -378,6 +405,31 @@
         {
           "indexed": true,
           "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "remainingUntrackedWei",
+          "type": "uint256"
+        }
+      ],
+      "name": "UntrackedBalanceWithdrawn",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "previousOracle",
           "type": "address"
         },
@@ -396,6 +448,45 @@
       ],
       "name": "WeatherOracleUpdated",
       "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "BASIS_POINTS_DENOMINATOR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_DURATION_DAYS",
+      "outputs": [
+        {
+          "internalType": "uint32",
+          "name": "",
+          "type": "uint32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MIN_PREMIUM_BPS",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
       "inputs": [],
@@ -518,6 +609,19 @@
           "internalType": "address",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getUntrackedBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -659,6 +763,24 @@
         }
       ],
       "name": "withdrawPremiumBalance",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address payable",
+          "name": "recipient",
+          "type": "address"
+        }
+      ],
+      "name": "withdrawUntrackedBalance",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
