@@ -178,6 +178,26 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "PremiumBelowMinimum");
   });
 
+  it("rejects policy creation when rainfall threshold is zero", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.connect(insured).createPolicy(ethers.parseEther("1.0"), 0, 10, {
+        value: ethers.parseEther("0.10"),
+      }),
+    ).to.be.revertedWithCustomError(provider, "InvalidRainfallThreshold");
+  });
+
+  it("rejects policy creation when duration is zero", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.connect(insured).createPolicy(ethers.parseEther("1.0"), 20, 0, {
+        value: ethers.parseEther("0.10"),
+      }),
+    ).to.be.revertedWithCustomError(provider, "InvalidDurationDays");
+  });
+
   it("accepts policy creation at exact minimum premium ratio", async function () {
     const { insured, provider } = await loadFixture(deployFixture);
 
@@ -328,6 +348,14 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "InsufficientCoverageReserve");
   });
 
+  it("rejects coverage reserve withdrawal to zero recipient", async function () {
+    const { provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.withdrawCoverageReserve(1n, ethers.ZeroAddress),
+    ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
+  });
+
   it("rejects premium withdrawal when amount exceeds premium balance", async function () {
     const { owner, provider } = await loadFixture(deployFixture);
 
@@ -335,6 +363,14 @@ describe("InsuranceProvider", function () {
       provider,
       "InsufficientPremiumBalance",
     );
+  });
+
+  it("rejects premium withdrawal to zero recipient", async function () {
+    const { provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.withdrawPremiumBalance(1n, ethers.ZeroAddress),
+    ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
   });
 
   it("withdraws premium balance without affecting coverage reserve", async function () {
@@ -397,6 +433,19 @@ describe("InsuranceProvider", function () {
     await expect(
       provider.withdrawUntrackedBalance(1n, owner.address),
     ).to.be.revertedWithCustomError(provider, "InsufficientUntrackedBalance");
+  });
+
+  it("rejects untracked ETH withdrawal to zero recipient", async function () {
+    const { owner, provider } = await loadFixture(deployFixture);
+
+    await owner.sendTransaction({
+      to: await provider.getAddress(),
+      value: 1n,
+    });
+
+    await expect(
+      provider.withdrawUntrackedBalance(1n, ethers.ZeroAddress),
+    ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
   });
 
   it("rejects policy creation when reserve is insufficient", async function () {

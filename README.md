@@ -38,15 +38,15 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 ## Quick Start (Foundation)
 
 1. Copy and configure environment files per module:
-	- `contracts/.env.example`
-	- `backend/.env.example`
-	- `ml-service/.env.example`
-	- `infra/.env.example`
-	- `shared/.env.example`
+   - `contracts/.env.example`
+   - `backend/.env.example`
+   - `ml-service/.env.example`
+   - `infra/.env.example`
+   - `shared/.env.example`
 2. Install module dependencies once each module baseline is initialized:
-	- `contracts/` with `npm install`
-	- `backend/` with `npm install`
-	- `ml-service/` with `pip install -r requirements.txt`
+   - `contracts/` with `npm install`
+   - `backend/` with `npm install`
+   - `ml-service/` with `pip install -r requirements.txt`
 3. Follow the execution playbook in `docs/Implementation-Step-By-Step.md`.
 
 ## Credentials Guidance
@@ -58,6 +58,6 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 ## Stage 02 Scalability Extensions
 
 - Optional backlog for expanding Stage 02 toward larger-scale architecture:
-	- `docs/architecture/Stage-02-Scalability-Backlog.md`
+  - `docs/architecture/Stage-02-Scalability-Backlog.md`
 
 Detailed execution plan: `docs/Implementation-Step-By-Step.md`.

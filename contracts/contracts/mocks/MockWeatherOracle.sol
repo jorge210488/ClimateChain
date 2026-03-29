@@ -59,6 +59,8 @@ contract MockWeatherOracle is Ownable {
     emit PolicyRegistryUpdated(previousRegistry, newPolicyRegistry);
   }
 
+  /// @notice Validates candidate policy shape, oracle binding, and optional registry provenance.
+  /// @param policyAddress Candidate policy contract address.
   function _assertValidPolicyAddress(address policyAddress) private view {
     if (policyAddress == address(0) || policyAddress.code.length == 0) {
       revert InvalidPolicyAddress(policyAddress);
@@ -98,6 +100,9 @@ contract MockWeatherOracle is Ownable {
     }
   }
 
+  /// @notice Checks whether policy is registered in configured provider registry.
+  /// @param policyAddress Candidate policy contract address.
+  /// @return True when provider registry reports policy as created.
   function _isKnownPolicy(address policyAddress) private view returns (bool) {
     (bool success, bytes memory response) = policyRegistry.staticcall(
       abi.encodeCall(IInsuranceProviderRegistry.isPolicyCreated, (policyAddress))
@@ -108,6 +113,10 @@ contract MockWeatherOracle is Ownable {
     return abi.decode(response, (bool));
   }
 
+  /// @notice Reads one selector response from target policy and enforces 32-byte ABI return shape.
+  /// @param policyAddress Target policy address.
+  /// @param selector Function selector to read with staticcall.
+  /// @return response Raw returned data from selector call.
   function _readSelectorResponse(
     address policyAddress,
     bytes4 selector

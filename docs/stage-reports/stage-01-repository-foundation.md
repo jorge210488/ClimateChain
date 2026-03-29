@@ -12,6 +12,7 @@
 - Added minimal bootstrap placeholders for backend and ML service entrypoints.
 
 ## Files changed
+
 - `README.md`
 - `.gitignore`
 - `.dockerignore`
@@ -30,6 +31,7 @@
 - `shared/README.md`
 
 ## Decisions made
+
 - Keep the repository split by domain responsibilities to minimize coupling.
 - Use explicit module-level README files to document ownership and standards.
 - Start with placeholders for runtime entrypoints to reduce ambiguity before full framework initialization.
@@ -37,15 +39,18 @@
 - Keep `docs/` tracked in git to preserve architecture records and mandatory stage reports.
 
 ## Commands executed
+
 - Directory scaffolding and file creation were performed with workspace tooling.
 - Tree verification executed via shell command:
   - `find . -maxdepth 4 -type f | sort`
 
 ## Tests executed and results
+
 - No runtime or unit tests executed in this stage.
 - Structural validation completed by listing created files and directories.
 
 ## Risks or pending items
+
 - `hardhat.config.ts` is a placeholder and requires full plugin/network configuration in Stage 02.
 - Backend and ML entrypoints are placeholders and require framework bootstrap in later stages.
 - Package manifests (`package.json`, `requirements.txt`) are not created yet.
@@ -57,5 +62,6 @@
 - Purpose: Stage 01 is structural and documentation-focused; credentials are deferred to integration and deployment stages.
 
 ## Next stage handoff notes
+
 - Stage 02 should initialize the contracts workspace with Hardhat dependencies, contract skeletons, and baseline tests.
 - After Stage 02, ABI artifacts strategy for `shared/abi` should be defined.
