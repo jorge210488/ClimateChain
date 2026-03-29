@@ -201,6 +201,16 @@ Initialize contract development environment with repeatable compilation/testing.
 - Hardhat workspace committed.
 - Initial contracts and mock contracts scaffolded.
 
+### Stage 02 Reusable Foundation (Mandatory for Stage 03+)
+
+- Preserve and extend interface-first boundaries in `contracts/interfaces/` before introducing new provider/policy/oracle behavior.
+- Keep ABI export (`npm run artifacts:sync`) and deployment manifest generation (`contracts/deployments/<network>.json`) as canonical integration outputs.
+- Treat quality and baseline commands as required engineering guardrails:
+  - `npm run quality:check`
+  - `npm run baseline:check`
+- Run local burst stress harness (`npm run stress:policies:local`) when lifecycle, reserve accounting, or policy creation paths change.
+- Avoid bypassing existing Stage 02 checks in later stages; extend them when new complexity is introduced.
+
 ## Stage 03 - On-Chain Domain Logic
 
 ### Objective
@@ -210,6 +220,9 @@ Implement policy lifecycle, payout logic, and oracle callback flow safely.
 ### Inputs
 
 - Contract skeleton from Stage 02
+- Stage 02 interface boundaries and adapter contracts (`contracts/interfaces/`)
+- Stage 02 ABI/index export and deployment manifest outputs
+- Stage 02 quality/baseline/stress command set
 
 ### Tasks
 
@@ -218,12 +231,17 @@ Implement policy lifecycle, payout logic, and oracle callback flow safely.
 - Implement policy creation, active tracking, expiry, payout eligibility.
 - Implement oracle request and fulfill handlers.
 - Add reentrancy and access control protections.
+- Extend behavior through interface contracts first, then wire provider/policy/oracle implementations.
+- Keep `shared/abi` compatibility and deployment-manifest compatibility for backend consumers.
+- Validate each Stage 03 increment with `npm run quality:check` and `npm run baseline:check`.
 
 ### Acceptance Criteria
 
 - Single payout guarantee is enforced.
 - Policy transitions are deterministic and testable.
 - Oracle callback updates state correctly.
+- Existing Stage 02 quality and baseline gates remain green after each feature addition.
+- New complexity does not break interface compatibility required by downstream modules.
 
 ### Risks
 
@@ -243,18 +261,24 @@ Establish high-confidence contract correctness with unit and property-focused te
 ### Inputs
 
 - On-chain logic from Stage 03
+- Stage 02 baseline scripts (`analyze:static`, `gas:report`, `size:check`, `baseline:check`)
+- Stage 02 stress harness script for burst creation paths
 
 ### Tasks
 
 - Add unit tests for creation, expiry, payout, and oracle updates.
 - Add negative tests for unauthorized calls and invalid states.
 - Add invariant-style assertions where possible.
-- Add gas snapshot/check if required by budget.
+- Keep gas and bytecode baseline checks active on every release candidate.
+- Run burst stress harness after major lifecycle or accounting changes.
+- Promote quality and baseline checks into CI as required gates.
 
 ### Acceptance Criteria
 
 - Core happy paths and critical failure paths are covered.
 - No unresolved failing tests.
+- Baseline checks pass (size growth within tolerance and gas report produced).
+- Stress harness executes successfully under agreed local workload profile.
 
 ### Risks
 

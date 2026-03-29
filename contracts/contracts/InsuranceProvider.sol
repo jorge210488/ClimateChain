@@ -7,6 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {InsurancePolicy} from "./InsurancePolicy.sol";
 import {IInsurancePolicy} from "./interfaces/IInsurancePolicy.sol";
+import {IWeatherOracleAdapter} from "./interfaces/IWeatherOracleAdapter.sol";
 
 /// @title InsuranceProvider
 /// @notice Manages policy creation, weather requests, and treasury accounting for coverage and premiums.
@@ -25,8 +26,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @notice Maximum allowed policy duration in days.
   uint32 public constant MAX_DURATION_DAYS = 365;
 
-  /// @notice Oracle address assigned to newly created policies.
-  address public weatherOracle;
+  /// @notice Oracle adapter assigned to newly created policies.
+  IWeatherOracleAdapter public weatherOracle;
   /// @notice Coverage reserve available for new policies and reserve withdrawals.
   uint256 public coverageReserveWei;
   /// @notice Premium balance available for premium withdrawals.
@@ -134,8 +135,9 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @param initialOwner Address with administrative permissions.
   /// @param oracleAddress Initial weather oracle used for newly created policies.
   constructor(address initialOwner, address oracleAddress) Ownable(initialOwner) {
-    if (oracleAddress == address(0)) revert InvalidOracleAddress();
-    weatherOracle = oracleAddress;
+    if (oracleAddress == address(0) || oracleAddress.code.length == 0)
+      revert InvalidOracleAddress();
+    weatherOracle = IWeatherOracleAdapter(oracleAddress);
   }
 
   /// @notice Accepts ETH transfers from policy settlements and fallback transfers.
@@ -144,10 +146,10 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @notice Updates oracle address for future policy deployments.
   /// @param newOracle Address of new weather oracle.
   function setWeatherOracle(address newOracle) external onlyOwner {
-    if (newOracle == address(0)) revert InvalidOracleAddress();
+    if (newOracle == address(0) || newOracle.code.length == 0) revert InvalidOracleAddress();
 
-    address previousOracle = weatherOracle;
-    weatherOracle = newOracle;
+    address previousOracle = address(weatherOracle);
+    weatherOracle = IWeatherOracleAdapter(newOracle);
 
     // Existing deployed policies keep their constructor oracle address.
     emit WeatherOracleUpdated(previousOracle, newOracle, false);
@@ -239,7 +241,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     InsurancePolicy policy = new InsurancePolicy{value: coverageAmountWei}(
       address(this),
       payable(msg.sender),
-      weatherOracle,
+      address(weatherOracle),
       msg.value,
       coverageAmountWei,
       rainfallThresholdMm,

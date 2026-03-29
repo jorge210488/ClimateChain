@@ -18,10 +18,27 @@ On-chain logic for policy creation, weather-trigger checks, and payouts.
 - Sync compiled artifacts to shared ABI: `npm run artifacts:sync`
 - Run tests: `npm test`
 - Run quality gates (lint + format check): `npm run quality:check`
+- Run static analysis gate (optional Slither + fallback scanner): `npm run analyze:static`
+- Run gas report: `npm run gas:report`
+- Run contract size check: `npm run size:check`
+- Run combined baseline checks (size + gas): `npm run baseline:check`
 - Format contracts/scripts/tests: `npm run format:write`
 - Deploy to ephemeral hardhat network: `npm run deploy:hardhat`
 - Deploy to localhost: `npm run deploy:localhost`
 - Deploy to Sepolia: `npm run deploy:sepolia`
+- Run local burst-creation stress harness on ephemeral hardhat: `npm run stress:policies:local`
+- Run local burst-creation stress harness on localhost node: `npm run stress:policies:localhost`
+
+Stress harness environment knobs (optional):
+- `STRESS_POLICIES_COUNT` (default: `20`)
+- `STRESS_BURST_SIZE` (default: `5`)
+- `STRESS_INSURED_ACCOUNTS` (default: `5`, must be >= burst size)
+- `STRESS_COVERAGE_ETH` (default: `0.2`)
+- `STRESS_PREMIUM_BPS` (default: `125`)
+- `STRESS_RAINFALL_THRESHOLD_MM` (default: `30`)
+- `STRESS_DURATION_DAYS` (default: `14`)
+- `STRESS_PROVIDER_ADDRESS` (reuse an existing local provider deployment)
+- `STRESS_FORCE_DEPLOY` (`true|false`, default: `false`)
 
 ## Stage 02 Scalability Outputs
 

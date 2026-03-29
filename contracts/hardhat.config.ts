@@ -5,6 +5,7 @@ import { HardhatUserConfig } from "hardhat/config";
 
 const sepoliaRpcUrl = process.env.RPC_URL;
 const deployerPrivateKey = process.env.PRIVATE_KEY;
+const enableGasReporter = process.env.REPORT_GAS === "true";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -37,6 +38,12 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY ?? "",
+  },
+  gasReporter: {
+    enabled: enableGasReporter,
+    currency: "USD",
+    noColors: true,
+    showTimeSpent: true,
   },
   paths: {
     sources: "./contracts",

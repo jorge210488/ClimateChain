@@ -4,11 +4,12 @@ pragma solidity >=0.8.24 <0.9.0;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IInsurancePolicy} from "../interfaces/IInsurancePolicy.sol";
 import {IInsuranceProviderRegistry} from "../interfaces/IInsuranceProviderRegistry.sol";
+import {IWeatherOracleAdapter} from "../interfaces/IWeatherOracleAdapter.sol";
 
 /// @title MockWeatherOracle
 /// @notice Local oracle mock used to push weather updates in test and local development flows.
 /// @author ClimateChain
-contract MockWeatherOracle is Ownable {
+contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   /// @notice Last rainfall value stored per policy by this mock.
   mapping(address => uint256) public lastRainfallMmByPolicy;
   /// @notice Last update timestamp stored per policy by this mock.
