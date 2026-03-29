@@ -1,7 +1,7 @@
 {
   "contractName": "MockWeatherOracle",
   "sourceName": "contracts/mocks/MockWeatherOracle.sol",
-  "generatedAt": "2026-03-29T01:25:57.239Z",
+  "generatedAt": "2026-03-29T14:12:12.072Z",
   "abi": [
     {
       "inputs": [
@@ -23,6 +23,17 @@
         }
       ],
       "name": "InvalidPolicyAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "registryAddress",
+          "type": "address"
+        }
+      ],
+      "name": "InvalidPolicyRegistry",
       "type": "error"
     },
     {
@@ -64,6 +75,25 @@
         }
       ],
       "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousRegistry",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newRegistry",
+          "type": "address"
+        }
+      ],
+      "name": "PolicyRegistryUpdated",
       "type": "event"
     },
     {
@@ -143,6 +173,19 @@
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "policyRegistry",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -163,6 +206,19 @@
     {
       "inputs": [],
       "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newPolicyRegistry",
+          "type": "address"
+        }
+      ],
+      "name": "setPolicyRegistry",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

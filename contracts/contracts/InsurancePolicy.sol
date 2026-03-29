@@ -72,6 +72,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   error PremiumMismatch(uint256 expected, uint256 received);
   error OracleOnly(address caller);
   error InvalidStatus(uint8 expected, uint8 actual);
+  error PolicyNotActivated();
   error PolicyAlreadySettled();
   error PolicyNotEnded(uint64 currentTimestamp, uint64 endTimestamp);
   error PolicyOutsideWeatherWindow(
@@ -174,8 +175,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
 
   /// @notice Expires policy after end timestamp and forwards all remaining funds to provider.
   function expirePolicy() external onlyOwner {
-    if (status == PolicyStatus.Created)
-      revert InvalidStatus(uint8(PolicyStatus.Active), uint8(status));
+    if (status == PolicyStatus.Created) revert PolicyNotActivated();
     if (status == PolicyStatus.PaidOut || status == PolicyStatus.Expired)
       revert PolicyAlreadySettled();
     if (status == PolicyStatus.Triggered) revert TriggeredPolicyRequiresPayout();
@@ -199,6 +199,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     return uint8(status);
   }
 
+  /// @notice Forwards any remaining policy ETH balance to provider owner.
   function _forwardBalanceToOwner() private {
     uint256 amountWei = address(this).balance;
     if (amountWei == 0) return;
@@ -207,10 +208,13 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     if (!success) revert EthTransferFailed();
   }
 
+  /// @notice Ensures policy is currently in the expected status.
+  /// @param expectedStatus Required current status.
   function _requireStatus(PolicyStatus expectedStatus) private view {
     if (status != expectedStatus) revert InvalidStatus(uint8(expectedStatus), uint8(status));
   }
 
+  /// @notice Ensures weather operations happen strictly before end timestamp.
   function _requireWeatherWindowOpen() private view {
     uint64 currentTimestamp = uint64(block.timestamp);
 

@@ -3,6 +3,7 @@ pragma solidity >=0.8.24 <0.9.0;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IInsurancePolicy} from "../interfaces/IInsurancePolicy.sol";
+import {IInsuranceProviderRegistry} from "../interfaces/IInsuranceProviderRegistry.sol";
 
 /// @title MockWeatherOracle
 /// @notice Local oracle mock used to push weather updates in test and local development flows.
@@ -12,14 +13,21 @@ contract MockWeatherOracle is Ownable {
   mapping(address => uint256) public lastRainfallMmByPolicy;
   /// @notice Last update timestamp stored per policy by this mock.
   mapping(address => uint64) public lastUpdatedAtByPolicy;
+  /// @notice Optional provider registry used to assert that policies were created by trusted provider.
+  address public policyRegistry;
 
   /// @notice Emitted when mock pushes weather data to policy.
   /// @param policyAddress Target policy address.
   /// @param rainfallMm Rainfall value pushed in millimeters.
   /// @param pushedAt Timestamp when weather data was pushed.
   event WeatherDataPushed(address indexed policyAddress, uint256 rainfallMm, uint64 pushedAt);
+  /// @notice Emitted when trusted policy registry is updated.
+  /// @param previousRegistry Previous registry address.
+  /// @param newRegistry New registry address.
+  event PolicyRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
 
   error InvalidPolicyAddress(address policyAddress);
+  error InvalidPolicyRegistry(address registryAddress);
 
   /// @notice Creates mock oracle with explicit owner.
   /// @param initialOwner Address receiving oracle admin permissions.
@@ -36,6 +44,19 @@ contract MockWeatherOracle is Ownable {
     lastUpdatedAtByPolicy[policyAddress] = uint64(block.timestamp);
 
     emit WeatherDataPushed(policyAddress, rainfallMm, uint64(block.timestamp));
+  }
+
+  /// @notice Sets optional provider registry to validate policy provenance.
+  /// @param newPolicyRegistry Provider contract exposing isPolicyCreated(address).
+  function setPolicyRegistry(address newPolicyRegistry) external onlyOwner {
+    if (newPolicyRegistry != address(0) && newPolicyRegistry.code.length == 0) {
+      revert InvalidPolicyRegistry(newPolicyRegistry);
+    }
+
+    address previousRegistry = policyRegistry;
+    policyRegistry = newPolicyRegistry;
+
+    emit PolicyRegistryUpdated(previousRegistry, newPolicyRegistry);
   }
 
   function _assertValidPolicyAddress(address policyAddress) private view {
@@ -68,9 +89,23 @@ contract MockWeatherOracle is Ownable {
     uint64 startTimestamp = abi.decode(startResponse, (uint64));
     uint64 endTimestamp = abi.decode(endResponse, (uint64));
 
+    if (policyRegistry != address(0) && !_isKnownPolicy(policyAddress)) {
+      revert InvalidPolicyAddress(policyAddress);
+    }
+
     if (policyStatus > 4 || policyOracle != address(this) || !(startTimestamp < endTimestamp)) {
       revert InvalidPolicyAddress(policyAddress);
     }
+  }
+
+  function _isKnownPolicy(address policyAddress) private view returns (bool) {
+    (bool success, bytes memory response) = policyRegistry.staticcall(
+      abi.encodeCall(IInsuranceProviderRegistry.isPolicyCreated, (policyAddress))
+    );
+
+    if (!success || response.length != 32) return false;
+
+    return abi.decode(response, (bool));
   }
 
   function _readSelectorResponse(

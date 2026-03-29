@@ -127,6 +127,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   error InvalidRecipientAddress();
   error InsufficientPremiumBalance(uint256 available, uint256 requiredAmount);
   error InsufficientUntrackedBalance(uint256 available, uint256 requiredAmount);
+  error TrackedBalanceDeficit(uint256 trackedWei, uint256 currentBalanceWei);
   error EthTransferFailed();
 
   /// @notice Creates provider with owner and initial oracle configuration.
@@ -168,6 +169,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     address payable recipient
   ) external onlyOwner nonReentrant {
     if (recipient == address(0)) revert InvalidRecipientAddress();
+    _assertNoTrackedBalanceDeficit();
     if (amountWei > coverageReserveWei)
       revert InsufficientCoverageReserve(coverageReserveWei, amountWei);
 
@@ -186,6 +188,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     address payable recipient
   ) external onlyOwner nonReentrant {
     if (recipient == address(0)) revert InvalidRecipientAddress();
+    _assertNoTrackedBalanceDeficit();
     if (amountWei > premiumBalanceWei)
       revert InsufficientPremiumBalance(premiumBalanceWei, amountWei);
 
@@ -207,11 +210,12 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
 
     uint256 untrackedWei = _untrackedBalance();
     if (amountWei > untrackedWei) revert InsufficientUntrackedBalance(untrackedWei, amountWei);
+    uint256 remainingUntrackedWei = untrackedWei - amountWei;
 
     (bool success, ) = recipient.call{value: amountWei}("");
     if (!success) revert EthTransferFailed();
 
-    emit UntrackedBalanceWithdrawn(recipient, amountWei, _untrackedBalance());
+    emit UntrackedBalanceWithdrawn(recipient, amountWei, remainingUntrackedWei);
   }
 
   /// @notice Creates and activates a new policy for caller using provided premium and reserve-backed coverage.
@@ -225,6 +229,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     uint32 durationDays
   ) external payable nonReentrant returns (address policyAddress) {
     _validatePolicyCreationInputs(coverageAmountWei, rainfallThresholdMm, durationDays, msg.value);
+    _assertNoTrackedBalanceDeficitExcludingIncomingValue(msg.value);
 
     uint64 startTimestamp = uint64(block.timestamp);
     uint64 endTimestamp = uint64(block.timestamp + uint256(durationDays) * 1 days);
@@ -277,6 +282,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @param policyAddress Target policy address.
   function executePolicyPayout(address policyAddress) external onlyOwner nonReentrant {
     _assertKnownPolicy(policyAddress);
+    _assertNoTrackedBalanceDeficit();
 
     PolicyFinancials storage policyFinancials = policyFinancialsByPolicy[policyAddress];
     if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
@@ -297,6 +303,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @param policyAddress Target policy address.
   function expirePolicy(address policyAddress) external onlyOwner nonReentrant {
     _assertKnownPolicy(policyAddress);
+    _assertNoTrackedBalanceDeficit();
 
     PolicyFinancials storage policyFinancials = policyFinancialsByPolicy[policyAddress];
     if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
@@ -342,6 +349,23 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     return _untrackedBalance();
   }
 
+  /// @notice Returns tracked balance represented in reserve and premium ledgers.
+  /// @return Tracked balance in wei.
+  function getTrackedBalance() external view returns (uint256) {
+    return _trackedBalance();
+  }
+
+  /// @notice Returns tracked-balance deficit when tracked amount exceeds real contract balance.
+  /// @return Balance deficit in wei.
+  function getBalanceDeficit() external view returns (uint256) {
+    return _balanceDeficit();
+  }
+
+  /// @notice Validates policy creation inputs before reserve mutation or deployment.
+  /// @param coverageAmountWei Requested coverage amount in wei.
+  /// @param rainfallThresholdMm Requested rainfall trigger threshold.
+  /// @param durationDays Requested policy duration in days.
+  /// @param premiumWei Premium payment sent by insured.
   function _validatePolicyCreationInputs(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
@@ -363,12 +387,16 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     if (premiumWei < minimumPremiumWei) revert PremiumBelowMinimum(minimumPremiumWei, premiumWei);
   }
 
+  /// @notice Reverts when policy address is unknown to provider storage.
+  /// @param policyAddress Candidate policy address.
   function _assertKnownPolicy(address policyAddress) private view {
     if (!isPolicyCreated[policyAddress]) revert UnknownPolicyAddress(policyAddress);
   }
 
+  /// @notice Computes on-chain ETH balance not represented in reserve and premium ledgers.
+  /// @return Untracked balance in wei.
   function _untrackedBalance() private view returns (uint256) {
-    uint256 trackedWei = coverageReserveWei + premiumBalanceWei;
+    uint256 trackedWei = _trackedBalance();
     uint256 currentBalanceWei = address(this).balance;
 
     if (currentBalanceWei > trackedWei) return currentBalanceWei - trackedWei;
@@ -376,6 +404,51 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     return 0;
   }
 
+  /// @notice Computes tracked balance represented by reserve and premium ledgers.
+  /// @return Tracked balance in wei.
+  function _trackedBalance() private view returns (uint256) {
+    return coverageReserveWei + premiumBalanceWei;
+  }
+
+  /// @notice Computes tracked-balance deficit when tracked amount exceeds current ETH balance.
+  /// @return Balance deficit in wei.
+  function _balanceDeficit() private view returns (uint256) {
+    uint256 trackedWei = _trackedBalance();
+    uint256 currentBalanceWei = address(this).balance;
+
+    if (trackedWei > currentBalanceWei) return trackedWei - currentBalanceWei;
+
+    return 0;
+  }
+
+  /// @notice Reverts when tracked balances exceed actual on-chain contract balance.
+  function _assertNoTrackedBalanceDeficit() private view {
+    _assertNoTrackedBalanceDeficitWithCurrentBalance(address(this).balance);
+  }
+
+  /// @notice Reverts when tracked balances exceed current balance excluding incoming call value.
+  /// @param incomingValueWei Incoming payable value to exclude from current-balance check.
+  function _assertNoTrackedBalanceDeficitExcludingIncomingValue(
+    uint256 incomingValueWei
+  ) private view {
+    _assertNoTrackedBalanceDeficitWithCurrentBalance(address(this).balance - incomingValueWei);
+  }
+
+  /// @notice Reverts when tracked balances exceed provided current balance snapshot.
+  /// @param currentBalanceWei Current balance snapshot used for deficit comparison.
+  function _assertNoTrackedBalanceDeficitWithCurrentBalance(
+    uint256 currentBalanceWei
+  ) private view {
+    uint256 trackedWei = _trackedBalance();
+
+    if (trackedWei > currentBalanceWei) {
+      revert TrackedBalanceDeficit(trackedWei, currentBalanceWei);
+    }
+  }
+
+  /// @notice Computes minimum premium amount from configured basis-point ratio.
+  /// @param coverageAmountWei Coverage amount used as premium base.
+  /// @return Minimum premium amount in wei rounded up.
   function _computeMinimumPremiumWei(uint256 coverageAmountWei) private pure returns (uint256) {
     return
       Math.mulDiv(coverageAmountWei, MIN_PREMIUM_BPS, BASIS_POINTS_DENOMINATOR, Math.Rounding.Ceil);
