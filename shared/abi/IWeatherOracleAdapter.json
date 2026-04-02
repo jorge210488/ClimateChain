@@ -1,0 +1,25 @@
+{
+  "contractName": "IWeatherOracleAdapter",
+  "sourceName": "contracts/interfaces/IWeatherOracleAdapter.sol",
+  "generatedAt": "2026-04-02T02:58:39.065Z",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallMm",
+          "type": "uint256"
+        }
+      ],
+      "name": "pushWeatherData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ]
+}

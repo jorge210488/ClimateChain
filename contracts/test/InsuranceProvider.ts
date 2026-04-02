@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 const POLICY_STATUS = {
   Created: 0n,
@@ -59,6 +60,36 @@ describe("InsuranceProvider", function () {
     return { policy };
   }
 
+  async function deployActiveFutureWindowPolicyFixture() {
+    const [owner, insured] = await ethers.getSigners();
+
+    const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
+    const oracle = await oracleFactory.deploy(owner.address);
+    await oracle.waitForDeployment();
+
+    const policyFactory = await ethers.getContractFactory("InsurancePolicy");
+    const premium = ethers.parseEther("0.10");
+    const coverage = ethers.parseEther("1.0");
+    const startTimestamp = (await time.latest()) + 3600;
+    const endTimestamp = startTimestamp + 3600;
+
+    const policy = await policyFactory.deploy(
+      owner.address,
+      insured.address,
+      await oracle.getAddress(),
+      premium,
+      coverage,
+      25,
+      startTimestamp,
+      endTimestamp,
+      { value: coverage },
+    );
+    await policy.waitForDeployment();
+    await policy.activate({ value: premium });
+
+    return { oracle, policy };
+  }
+
   async function createPolicyForInsured(
     provider: Awaited<ReturnType<typeof deployFixture>>["provider"],
     insured: Awaited<ReturnType<typeof deployFixture>>["insured"],
@@ -100,6 +131,58 @@ describe("InsuranceProvider", function () {
     expect(await provider.premiumBalanceWei()).to.equal(0n);
   });
 
+  it("returns provider-side financial snapshot for known policy", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const premium = ethers.parseEther("0.10");
+    const coverage = ethers.parseEther("1.0");
+    const threshold = 30;
+
+    const { policyAddress } = await createPolicyForInsured(
+      provider,
+      insured,
+      coverage,
+      premium,
+      threshold,
+      10,
+    );
+
+    const [coverageBeforeSettlement, premiumBeforeSettlement, settledBeforeSettlement] =
+      await provider.getPolicyFinancials(policyAddress);
+
+    expect(coverageBeforeSettlement).to.equal(coverage);
+    expect(premiumBeforeSettlement).to.equal(premium);
+    expect(settledBeforeSettlement).to.equal(false);
+
+    await oracle.pushWeatherData(policyAddress, threshold + 1);
+    await provider.connect(owner).executePolicyPayout(policyAddress);
+
+    const [coverageAfterSettlement, premiumAfterSettlement, settledAfterSettlement] =
+      await provider.getPolicyFinancials(policyAddress);
+
+    expect(coverageAfterSettlement).to.equal(coverage);
+    expect(premiumAfterSettlement).to.equal(premium);
+    expect(settledAfterSettlement).to.equal(true);
+  });
+
+  it("rejects provider-side financial snapshot for unknown policy address", async function () {
+    const { provider } = await loadFixture(deployFixture);
+
+    await expect(provider.getPolicyFinancials(ethers.ZeroAddress)).to.be.revertedWithCustomError(
+      provider,
+      "UnknownPolicyAddress",
+    );
+  });
+
+  it("emits canonical status transition event when policy activates", async function () {
+    const { policy } = await loadFixture(deployUnactivatedPolicyFixture);
+    const premium = await policy.premiumWei();
+
+    await expect(policy.activate({ value: premium }))
+      .to.emit(policy, "PolicyStatusTransitioned")
+      .withArgs(POLICY_STATUS.Created, POLICY_STATUS.Active, anyValue);
+  });
+
   it("executes payout after oracle threshold is met and books premium separately", async function () {
     const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
 
@@ -116,7 +199,10 @@ describe("InsuranceProvider", function () {
       20,
     );
 
-    await oracle.pushWeatherData(policyAddress, threshold + 1);
+    const triggerTx = await oracle.pushWeatherData(policyAddress, threshold + 1);
+    await expect(triggerTx)
+      .to.emit(policy, "PolicyStatusTransitioned")
+      .withArgs(POLICY_STATUS.Active, POLICY_STATUS.Triggered, anyValue);
 
     expect(await policy.conditionMet()).to.equal(true);
     expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
@@ -126,7 +212,10 @@ describe("InsuranceProvider", function () {
     const payoutTx = await provider.connect(owner).executePolicyPayout(policyAddress);
     await expect(payoutTx)
       .to.emit(provider, "PolicyPayoutExecuted")
-      .withArgs(policyAddress, premium);
+      .withArgs(policyAddress, coverage, premium);
+    await expect(payoutTx)
+      .to.emit(policy, "PolicyStatusTransitioned")
+      .withArgs(POLICY_STATUS.Triggered, POLICY_STATUS.PaidOut, anyValue);
     await payoutTx.wait();
 
     const insuredBalanceAfter = await ethers.provider.getBalance(insured.address);
@@ -150,7 +239,10 @@ describe("InsuranceProvider", function () {
       10,
     );
 
-    await oracle.pushWeatherData(policyAddress, threshold);
+    const triggerTx = await oracle.pushWeatherData(policyAddress, threshold);
+    await expect(triggerTx)
+      .to.emit(policy, "PolicyStatusTransitioned")
+      .withArgs(POLICY_STATUS.Active, POLICY_STATUS.Triggered, anyValue);
 
     expect(await policy.latestRainfallMm()).to.equal(BigInt(threshold));
     expect(await policy.conditionMet()).to.equal(true);
@@ -171,11 +263,84 @@ describe("InsuranceProvider", function () {
       10,
     );
 
-    await oracle.pushWeatherData(policyAddress, rainfallBelowThreshold);
+    const noTriggerTx = await oracle.pushWeatherData(policyAddress, rainfallBelowThreshold);
+    await expect(noTriggerTx).to.not.emit(policy, "PolicyStatusTransitioned");
 
     expect(await policy.latestRainfallMm()).to.equal(BigInt(rainfallBelowThreshold));
     expect(await policy.conditionMet()).to.equal(false);
     expect(await policy.status()).to.equal(POLICY_STATUS.Active);
+  });
+
+  it("reports payout and expiry eligibility deterministically across lifecycle states", async function () {
+    const { insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 22;
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      1,
+    );
+
+    expect(await policy.isWeatherWindowOpen()).to.equal(true);
+    expect(await policy.isPayoutEligible()).to.equal(false);
+    expect(await policy.isExpiryEligible()).to.equal(false);
+
+    await oracle.pushWeatherData(policyAddress, threshold + 1);
+
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
+    expect(await policy.isPayoutEligible()).to.equal(true);
+    expect(await policy.isExpiryEligible()).to.equal(false);
+
+    await provider.executePolicyPayout(policyAddress);
+
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
+    expect(await policy.isPayoutEligible()).to.equal(false);
+    expect(await policy.isExpiryEligible()).to.equal(false);
+  });
+
+  it("marks expiry eligibility only after end timestamp", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      20,
+      1,
+    );
+
+    expect(await policy.isExpiryEligible()).to.equal(false);
+
+    const endTimestamp = await policy.endTimestamp();
+    await time.increaseTo(Number(endTimestamp));
+
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
+    expect(await policy.isExpiryEligible()).to.equal(true);
+
+    await provider.expirePolicy(policyAddress);
+
+    expect(await policy.isExpiryEligible()).to.equal(false);
+  });
+
+  it("rejects weather requests and oracle fulfillment before policy start timestamp", async function () {
+    const { oracle, policy } = await loadFixture(deployActiveFutureWindowPolicyFixture);
+
+    const policyAddress = await policy.getAddress();
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
+
+    await expect(policy.requestWeatherData()).to.be.revertedWithCustomError(
+      policy,
+      "PolicyOutsideWeatherWindow",
+    );
+
+    await expect(oracle.pushWeatherData(policyAddress, 50)).to.be.revertedWithCustomError(
+      policy,
+      "PolicyOutsideWeatherWindow",
+    );
   });
 
   it("returns coverage to reserve and books premium separately when policy expires", async function () {
@@ -198,14 +363,74 @@ describe("InsuranceProvider", function () {
     const endTimestamp = await policy.endTimestamp();
     await time.increaseTo(Number(endTimestamp));
 
-    await expect(provider.expirePolicy(policyAddress))
+    const expireTx = await provider.expirePolicy(policyAddress);
+
+    await expect(expireTx)
       .to.emit(provider, "PolicyExpired")
       .withArgs(policyAddress, coverage, premium);
+    await expect(expireTx)
+      .to.emit(policy, "PolicyStatusTransitioned")
+      .withArgs(POLICY_STATUS.Active, POLICY_STATUS.Expired, anyValue);
 
     expect(await policy.status()).to.equal(POLICY_STATUS.Expired);
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
     expect(await provider.coverageReserveWei()).to.equal(ethers.parseEther("5.0"));
     expect(await provider.premiumBalanceWei()).to.equal(ethers.parseEther("0.10"));
     expect(await policy.getCurrentBalance()).to.equal(0n);
+  });
+
+  it("rejects direct policy deployment when rainfall threshold is zero", async function () {
+    const [owner, insured] = await ethers.getSigners();
+
+    const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
+    const oracle = await oracleFactory.deploy(owner.address);
+    await oracle.waitForDeployment();
+
+    const policyFactory = await ethers.getContractFactory("InsurancePolicy");
+    const startTimestamp = (await time.latest()) + 1;
+    const endTimestamp = startTimestamp + 60;
+    const coverage = ethers.parseEther("1.0");
+
+    await time.increaseTo(startTimestamp);
+
+    await expect(
+      policyFactory.deploy(
+        owner.address,
+        insured.address,
+        await oracle.getAddress(),
+        ethers.parseEther("0.10"),
+        coverage,
+        0,
+        startTimestamp,
+        endTimestamp,
+        { value: coverage },
+      ),
+    ).to.be.revertedWithCustomError(policyFactory, "InvalidRainfallThreshold");
+  });
+
+  it("rejects direct policy deployment when oracle address is an EOA", async function () {
+    const [owner, insured] = await ethers.getSigners();
+
+    const policyFactory = await ethers.getContractFactory("InsurancePolicy");
+    const startTimestamp = (await time.latest()) + 1;
+    const endTimestamp = startTimestamp + 60;
+    const coverage = ethers.parseEther("1.0");
+
+    await time.increaseTo(startTimestamp);
+
+    await expect(
+      policyFactory.deploy(
+        owner.address,
+        insured.address,
+        insured.address,
+        ethers.parseEther("0.10"),
+        coverage,
+        25,
+        startTimestamp,
+        endTimestamp,
+        { value: coverage },
+      ),
+    ).to.be.revertedWithCustomError(policyFactory, "InvalidOracleAddress");
   });
 
   it("rejects policy creation when premium is below minimum ratio", async function () {
@@ -331,6 +556,14 @@ describe("InsuranceProvider", function () {
     expect(await provider.coverageReserveWei()).to.equal(ethers.parseEther("4.0"));
   });
 
+  it("rejects coverage reserve withdrawal from non-owner accounts", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.connect(insured).withdrawCoverageReserve(1n, insured.address),
+    ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
+  });
+
   it("reports tracked balance and zero deficit in healthy states", async function () {
     const { owner, insured, provider } = await loadFixture(deployFixture);
 
@@ -413,6 +646,15 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
   });
 
+  it("rejects coverage reserve withdrawal when amount is zero", async function () {
+    const { owner, provider } = await loadFixture(deployFixture);
+
+    await expect(provider.withdrawCoverageReserve(0n, owner.address)).to.be.revertedWithCustomError(
+      provider,
+      "InvalidWithdrawalAmount",
+    );
+  });
+
   it("rejects premium withdrawal when amount exceeds premium balance", async function () {
     const { owner, provider } = await loadFixture(deployFixture);
 
@@ -428,6 +670,23 @@ describe("InsuranceProvider", function () {
     await expect(
       provider.withdrawPremiumBalance(1n, ethers.ZeroAddress),
     ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
+  });
+
+  it("rejects premium withdrawal when amount is zero", async function () {
+    const { owner, provider } = await loadFixture(deployFixture);
+
+    await expect(provider.withdrawPremiumBalance(0n, owner.address)).to.be.revertedWithCustomError(
+      provider,
+      "InvalidWithdrawalAmount",
+    );
+  });
+
+  it("rejects premium withdrawal from non-owner accounts", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.connect(insured).withdrawPremiumBalance(1n, insured.address),
+    ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
   });
 
   it("withdraws premium balance without affecting coverage reserve", async function () {
@@ -505,6 +764,22 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "InvalidRecipientAddress");
   });
 
+  it("rejects untracked ETH withdrawal when amount is zero", async function () {
+    const { owner, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.withdrawUntrackedBalance(0n, owner.address),
+    ).to.be.revertedWithCustomError(provider, "InvalidWithdrawalAmount");
+  });
+
+  it("rejects untracked ETH withdrawal from non-owner accounts", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    await expect(
+      provider.connect(insured).withdrawUntrackedBalance(1n, insured.address),
+    ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
+  });
+
   it("rejects policy creation when reserve is insufficient", async function () {
     const { insured, provider } = await loadFixture(deployFixture);
 
@@ -542,7 +817,7 @@ describe("InsuranceProvider", function () {
 
     await expect(provider.setWeatherOracle(await newOracle.getAddress()))
       .to.emit(provider, "WeatherOracleUpdated")
-      .withArgs(await oracle.getAddress(), await newOracle.getAddress(), false);
+      .withArgs(await oracle.getAddress(), await newOracle.getAddress(), true);
 
     const secondPolicy = await createPolicyForInsured(
       provider,
@@ -584,6 +859,14 @@ describe("InsuranceProvider", function () {
     );
   });
 
+  it("rejects weather oracle update when address does not change", async function () {
+    const { oracle, provider } = await loadFixture(deployFixture);
+
+    await expect(provider.setWeatherOracle(await oracle.getAddress()))
+      .to.be.revertedWithCustomError(provider, "SameOracleAddress")
+      .withArgs(await oracle.getAddress());
+  });
+
   it("rejects weather oracle updates from non-owner accounts", async function () {
     const { insured, provider } = await loadFixture(deployFixture);
 
@@ -609,6 +892,23 @@ describe("InsuranceProvider", function () {
       .withArgs(POLICY_STATUS.Triggered, POLICY_STATUS.Active);
   });
 
+  it("rejects payout execution from non-owner accounts", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const { policyAddress } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      40,
+      10,
+    );
+
+    await expect(
+      provider.connect(insured).executePolicyPayout(policyAddress),
+    ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
+  });
+
   it("rejects policy expiry through provider when policy is triggered", async function () {
     const { insured, oracle, provider } = await loadFixture(deployFixture);
 
@@ -628,6 +928,23 @@ describe("InsuranceProvider", function () {
       policy,
       "TriggeredPolicyRequiresPayout",
     );
+  });
+
+  it("rejects policy expiry from non-owner accounts", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const { policyAddress } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      25,
+      1,
+    );
+
+    await expect(
+      provider.connect(insured).expirePolicy(policyAddress),
+    ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
   });
 
   it("rejects a second oracle push after policy is already triggered", async function () {
@@ -766,6 +1083,214 @@ describe("InsuranceProvider", function () {
     await expect(
       oracle.connect(insured).pushWeatherData(policyAddress, 45),
     ).to.be.revertedWithCustomError(oracle, "OwnableUnauthorizedAccount");
+  });
+
+  it("requests weather data through provider and emits provider plus policy events", async function () {
+    const { owner, insured, provider } = await loadFixture(deployFixture);
+
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      25,
+      10,
+    );
+
+    const requestTx = await provider.connect(owner).requestPolicyWeatherData(policyAddress);
+
+    await expect(requestTx).to.emit(provider, "PolicyWeatherDataRequested").withArgs(policyAddress);
+    await expect(requestTx)
+      .to.emit(policy, "WeatherDataRequested")
+      .withArgs(policyAddress, anyValue);
+  });
+
+  it("accepts request at endTimestamp minus two, fulfill at minus one, and rejects at endTimestamp", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 100;
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      1,
+    );
+
+    const endTimestamp = await policy.endTimestamp();
+    await time.setNextBlockTimestamp(Number(endTimestamp) - 2);
+
+    const requestTx = await provider.connect(owner).requestPolicyWeatherData(policyAddress);
+    await expect(requestTx)
+      .to.emit(policy, "WeatherDataRequested")
+      .withArgs(policyAddress, anyValue);
+
+    await time.setNextBlockTimestamp(Number(endTimestamp) - 1);
+    await expect(oracle.pushWeatherData(policyAddress, threshold - 1)).to.not.be.reverted;
+
+    expect(await policy.latestRainfallMm()).to.equal(BigInt(threshold - 1));
+    expect(await policy.conditionMet()).to.equal(false);
+    expect(await policy.isWeatherWindowOpen()).to.equal(true);
+    expect(await policy.isExpiryEligible()).to.equal(false);
+    expect(await policy.status()).to.equal(POLICY_STATUS.Active);
+
+    await time.increaseTo(Number(endTimestamp));
+
+    expect(await policy.isWeatherWindowOpen()).to.equal(false);
+    expect(await policy.isExpiryEligible()).to.equal(true);
+
+    await expect(
+      oracle.pushWeatherData(policyAddress, threshold - 1),
+    ).to.be.revertedWithCustomError(policy, "PolicyOutsideWeatherWindow");
+  });
+
+  it("allows same-block policy creation and oracle fulfillment", async function () {
+    const { owner, oracle, provider } = await loadFixture(deployFixture);
+
+    const coverage = ethers.parseEther("1.0");
+    const premium = ethers.parseEther("0.10");
+    const threshold = 18;
+    const durationDays = 10;
+
+    const predictedPolicyAddress = await provider
+      .connect(owner)
+      .createPolicy.staticCall(coverage, threshold, durationDays, {
+        value: premium,
+      });
+
+    await ethers.provider.send("evm_setAutomine", [false]);
+
+    try {
+      const createTx = await provider
+        .connect(owner)
+        .createPolicy(coverage, threshold, durationDays, { value: premium });
+      const fulfillTx = await oracle.pushWeatherData(predictedPolicyAddress, threshold + 1);
+
+      await ethers.provider.send("evm_mine", []);
+
+      const createReceipt = await createTx.wait();
+      const fulfillReceipt = await fulfillTx.wait();
+
+      expect(createReceipt?.blockNumber).to.equal(fulfillReceipt?.blockNumber);
+
+      const policy = await ethers.getContractAt("InsurancePolicy", predictedPolicyAddress);
+      const settlementBlock = await ethers.provider.getBlock(createReceipt!.blockNumber);
+
+      expect(await policy.startTimestamp()).to.equal(BigInt(settlementBlock!.timestamp));
+      expect(await policy.lastOracleUpdateTimestamp()).to.equal(BigInt(settlementBlock!.timestamp));
+      expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+    } finally {
+      await ethers.provider.send("evm_setAutomine", [true]);
+    }
+  });
+
+  it("keeps policy triggered when direct payout to non-payable insured fails", async function () {
+    const [owner] = await ethers.getSigners();
+
+    const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
+    const oracle = await oracleFactory.deploy(owner.address);
+    await oracle.waitForDeployment();
+
+    const holderFactory = await ethers.getContractFactory("NonPayableInsured");
+    const holder = await holderFactory.deploy();
+    await holder.waitForDeployment();
+
+    const policyFactory = await ethers.getContractFactory("InsurancePolicy");
+    const coverage = ethers.parseEther("1.0");
+    const premium = ethers.parseEther("0.10");
+    const threshold = 30;
+    const startTimestamp = (await time.latest()) + 1;
+    const endTimestamp = startTimestamp + 600;
+
+    await time.increaseTo(startTimestamp);
+
+    const policy = await policyFactory.deploy(
+      owner.address,
+      await holder.getAddress(),
+      await oracle.getAddress(),
+      premium,
+      coverage,
+      threshold,
+      startTimestamp,
+      endTimestamp,
+      { value: coverage },
+    );
+    await policy.waitForDeployment();
+
+    await policy.activate({ value: premium });
+
+    await oracle.pushWeatherData(await policy.getAddress(), threshold + 1);
+
+    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+
+    await expect(policy.executePayout()).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+
+    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+    expect(await policy.getCurrentBalance()).to.equal(coverage + premium);
+  });
+
+  it("reverts provider payout path and preserves provider accounting when insured cannot receive ETH", async function () {
+    const { owner, oracle, provider } = await loadFixture(deployFixture);
+
+    const holderFactory = await ethers.getContractFactory("NonPayableInsured");
+    const holder = await holderFactory.deploy();
+    await holder.waitForDeployment();
+
+    const coverage = ethers.parseEther("1.0");
+    const premium = ethers.parseEther("0.10");
+    const threshold = 30;
+
+    await holder.createPolicy(await provider.getAddress(), coverage, threshold, 10, {
+      value: premium,
+    });
+
+    const policies = await provider.getPoliciesByInsured(await holder.getAddress());
+    expect(policies).to.have.length(1);
+
+    const policyAddress = policies[0];
+    const policy = await ethers.getContractAt("InsurancePolicy", policyAddress);
+
+    await oracle.pushWeatherData(policyAddress, threshold + 1);
+    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+
+    const premiumBeforePayout = await provider.premiumBalanceWei();
+
+    await expect(
+      provider.connect(owner).executePolicyPayout(policyAddress),
+    ).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+
+    expect(await provider.premiumBalanceWei()).to.equal(premiumBeforePayout);
+    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+
+    // First revert rolls back provider-side tentative settlement marking, so retry fails identically.
+    await expect(
+      provider.connect(owner).executePolicyPayout(policyAddress),
+    ).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+  });
+
+  it("exposes insured and weather telemetry through IInsurancePolicy interface", async function () {
+    const { insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 31;
+    const { policyAddress } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      10,
+    );
+
+    await oracle.pushWeatherData(policyAddress, threshold + 3);
+
+    const policyView = await ethers.getContractAt("IInsurancePolicy", policyAddress);
+
+    expect(await policyView.insured()).to.equal(insured.address);
+    expect(await policyView.rainfallThresholdMm()).to.equal(BigInt(threshold));
+    expect(await policyView.latestRainfallMm()).to.equal(BigInt(threshold + 3));
+    expect(await policyView.lastOracleUpdateTimestamp()).to.be.gt(0n);
+    expect(await policyView.getCurrentBalance()).to.equal(ethers.parseEther("1.10"));
   });
 
   it("rejects oracle pushes to non-policy addresses", async function () {
@@ -946,6 +1471,21 @@ describe("InsuranceProvider", function () {
     );
 
     expect(await provider.getAllPoliciesCount()).to.equal(2n);
+  });
+
+  it("returns policy address for valid global index", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const { policyAddress } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      30,
+      14,
+    );
+
+    expect(await provider.getPolicyAt(0)).to.equal(policyAddress);
   });
 
   it("rejects weather request on unknown policy", async function () {

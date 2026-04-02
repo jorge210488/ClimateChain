@@ -13,7 +13,14 @@ interface AbiIndexEntry {
   file: string;
 }
 
-const CONTRACTS_TO_EXPORT = new Set(["InsuranceProvider", "InsurancePolicy", "MockWeatherOracle"]);
+const CONTRACTS_TO_EXPORT = new Set([
+  "InsuranceProvider",
+  "InsurancePolicy",
+  "IInsuranceProviderRegistry",
+  "IInsurancePolicy",
+  "IWeatherOracleAdapter",
+  "MockWeatherOracle",
+]);
 const artifactsRoot = path.resolve(__dirname, "..", "artifacts", "contracts");
 const abiOutputDir = path.resolve(__dirname, "..", "..", "shared", "abi");
 

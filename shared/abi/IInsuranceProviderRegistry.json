@@ -1,0 +1,26 @@
+{
+  "contractName": "IInsuranceProviderRegistry",
+  "sourceName": "contracts/interfaces/IInsuranceProviderRegistry.sol",
+  "generatedAt": "2026-04-02T02:58:39.065Z",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        }
+      ],
+      "name": "isPolicyCreated",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

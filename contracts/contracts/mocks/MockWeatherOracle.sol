@@ -10,6 +10,9 @@ import {IWeatherOracleAdapter} from "../interfaces/IWeatherOracleAdapter.sol";
 /// @notice Local oracle mock used to push weather updates in test and local development flows.
 /// @author ClimateChain
 contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
+  // 4 maps to InsurancePolicy.PolicyStatus.Expired (max valid status value).
+  uint8 private constant MAX_POLICY_STATUS = 4;
+
   /// @notice Last rainfall value stored per policy by this mock.
   mapping(address => uint256) public lastRainfallMmByPolicy;
   /// @notice Last update timestamp stored per policy by this mock.
@@ -39,6 +42,9 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   /// @param rainfallMm Rainfall value in millimeters.
   function pushWeatherData(address policyAddress, uint256 rainfallMm) external onlyOwner {
     _assertValidPolicyAddress(policyAddress);
+
+    // Execute policy transition first; if policy rejects update, local snapshot must remain unchanged.
+    // This is safe in mock context: onlyOwner call, no ETH transfer, and no trusted callback path into oracle.
     IInsurancePolicy(policyAddress).fulfillWeatherData(rainfallMm);
 
     lastRainfallMmByPolicy[policyAddress] = rainfallMm;
@@ -75,7 +81,9 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       policyAddress,
       IInsurancePolicy.oracle.selector
     );
+    // Shape validation only; values are intentionally discarded.
     _readSelectorResponse(policyAddress, IInsurancePolicy.premiumWei.selector);
+    // Shape validation only; values are intentionally discarded.
     _readSelectorResponse(policyAddress, IInsurancePolicy.coverageWei.selector);
     bytes memory startResponse = _readSelectorResponse(
       policyAddress,
@@ -85,6 +93,7 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       policyAddress,
       IInsurancePolicy.endTimestamp.selector
     );
+    // Shape validation only; values are intentionally discarded.
     _readSelectorResponse(policyAddress, IInsurancePolicy.conditionMet.selector);
 
     uint8 policyStatus = abi.decode(statusResponse, (uint8));
@@ -96,7 +105,13 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       revert InvalidPolicyAddress(policyAddress);
     }
 
-    if (policyStatus > 4 || policyOracle != address(this) || !(startTimestamp < endTimestamp)) {
+    // This validates status enum range only; active-state enforcement is delegated to policy guards.
+    if (
+      policyStatus > MAX_POLICY_STATUS ||
+      policyOracle != address(this) ||
+      // solhint-disable-next-line gas-strict-inequalities
+      startTimestamp >= endTimestamp
+    ) {
       revert InvalidPolicyAddress(policyAddress);
     }
   }

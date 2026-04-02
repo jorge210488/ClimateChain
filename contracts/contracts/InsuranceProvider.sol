@@ -7,12 +7,13 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {InsurancePolicy} from "./InsurancePolicy.sol";
 import {IInsurancePolicy} from "./interfaces/IInsurancePolicy.sol";
+import {IInsuranceProviderRegistry} from "./interfaces/IInsuranceProviderRegistry.sol";
 import {IWeatherOracleAdapter} from "./interfaces/IWeatherOracleAdapter.sol";
 
 /// @title InsuranceProvider
 /// @notice Manages policy creation, weather requests, and treasury accounting for coverage and premiums.
 /// @author ClimateChain
-contract InsuranceProvider is Ownable, ReentrancyGuard {
+contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegistry {
   struct PolicyFinancials {
     uint256 coverageWei;
     uint256 premiumWei;
@@ -74,11 +75,11 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @notice Emitted when provider oracle address is updated for future policies.
   /// @param previousOracle Oracle used before update.
   /// @param newOracle Oracle used after update.
-  /// @param appliesToExistingPolicies Whether update applies to already deployed policies.
+  /// @param appliesToNewPoliciesOnly Always true because update only affects policies created after this change.
   event WeatherOracleUpdated(
     address indexed previousOracle,
     address indexed newOracle,
-    bool appliesToExistingPolicies
+    bool appliesToNewPoliciesOnly
   );
   /// @notice Emitted when a new policy is created and activated.
   /// @param insured Insured account that created policy.
@@ -102,8 +103,13 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   event PolicyWeatherDataRequested(address indexed policyAddress);
   /// @notice Emitted when payout execution books recovered premium.
   /// @param policyAddress Target policy address.
+  /// @param coveragePaidWei Coverage amount paid to insured during settlement.
   /// @param premiumRecoveredWei Premium amount booked after payout execution.
-  event PolicyPayoutExecuted(address indexed policyAddress, uint256 premiumRecoveredWei);
+  event PolicyPayoutExecuted(
+    address indexed policyAddress,
+    uint256 coveragePaidWei,
+    uint256 premiumRecoveredWei
+  );
   /// @notice Emitted when policy expiry books recovered coverage and premium.
   /// @param policyAddress Target policy address.
   /// @param coverageRecoveredWei Coverage amount returned to reserve.
@@ -115,6 +121,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   );
 
   error InvalidOracleAddress();
+  error SameOracleAddress(address oracleAddress);
   error InvalidCoverageAmount();
   error InvalidDurationDays();
   error DurationDaysExceedsMaximum(uint32 providedDays, uint32 maxDays);
@@ -125,6 +132,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   error UnknownPolicyAddress(address policyAddress);
   error PolicyIndexOutOfBounds(uint256 index, uint256 totalPolicies);
   error PolicyAlreadySettledInProvider(address policyAddress);
+  error InvalidWithdrawalAmount();
   error InvalidRecipientAddress();
   error InsufficientPremiumBalance(uint256 available, uint256 requiredAmount);
   error InsufficientUntrackedBalance(uint256 available, uint256 requiredAmount);
@@ -147,12 +155,13 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @param newOracle Address of new weather oracle.
   function setWeatherOracle(address newOracle) external onlyOwner {
     if (newOracle == address(0) || newOracle.code.length == 0) revert InvalidOracleAddress();
+    if (newOracle == address(weatherOracle)) revert SameOracleAddress(newOracle);
 
     address previousOracle = address(weatherOracle);
     weatherOracle = IWeatherOracleAdapter(newOracle);
 
     // Existing deployed policies keep their constructor oracle address.
-    emit WeatherOracleUpdated(previousOracle, newOracle, false);
+    emit WeatherOracleUpdated(previousOracle, newOracle, true);
   }
 
   /// @notice Adds owner funds to coverage reserve.
@@ -170,6 +179,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     uint256 amountWei,
     address payable recipient
   ) external onlyOwner nonReentrant {
+    if (amountWei == 0) revert InvalidWithdrawalAmount();
     if (recipient == address(0)) revert InvalidRecipientAddress();
     _assertNoTrackedBalanceDeficit();
     if (amountWei > coverageReserveWei)
@@ -189,6 +199,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     uint256 amountWei,
     address payable recipient
   ) external onlyOwner nonReentrant {
+    if (amountWei == 0) revert InvalidWithdrawalAmount();
     if (recipient == address(0)) revert InvalidRecipientAddress();
     _assertNoTrackedBalanceDeficit();
     if (amountWei > premiumBalanceWei)
@@ -208,12 +219,14 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
     uint256 amountWei,
     address payable recipient
   ) external onlyOwner nonReentrant {
+    if (amountWei == 0) revert InvalidWithdrawalAmount();
     if (recipient == address(0)) revert InvalidRecipientAddress();
 
     uint256 untrackedWei = _untrackedBalance();
     if (amountWei > untrackedWei) revert InsufficientUntrackedBalance(untrackedWei, amountWei);
     uint256 remainingUntrackedWei = untrackedWei - amountWei;
 
+    // No ledger entry exists for untracked ETH; nonReentrant is the protection for this transfer.
     (bool success, ) = recipient.call{value: amountWei}("");
     if (!success) revert EthTransferFailed();
 
@@ -249,9 +262,9 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
       endTimestamp
     );
 
-    policy.activate{value: msg.value}();
-
     policyAddress = address(policy);
+    IInsurancePolicy(policyAddress).activate{value: msg.value}();
+
     allPolicies.push(policyAddress);
     policiesByInsured[msg.sender].push(policyAddress);
     isPolicyCreated[policyAddress] = true;
@@ -288,6 +301,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
 
     PolicyFinancials storage policyFinancials = policyFinancialsByPolicy[policyAddress];
     if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
+    uint256 coveragePaidWei = policyFinancials.coverageWei;
     uint256 premiumRecoveredWei = policyFinancials.premiumWei;
 
     // Apply all state effects before external interaction to preserve CEI ordering.
@@ -298,7 +312,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
 
     // Settlement accounting is deterministic for current synchronous close flow.
     // If close flow becomes asynchronous, move to explicit callback reconciliation.
-    emit PolicyPayoutExecuted(policyAddress, premiumRecoveredWei);
+    emit PolicyPayoutExecuted(policyAddress, coveragePaidWei, premiumRecoveredWei);
   }
 
   /// @notice Expires an eligible policy and books recovered coverage and premium balances.
@@ -340,9 +354,24 @@ contract InsuranceProvider is Ownable, ReentrancyGuard {
   /// @return Policy address at requested index.
   function getPolicyAt(uint256 index) external view returns (address) {
     uint256 totalPolicies = allPolicies.length;
-    if (!(index < totalPolicies)) revert PolicyIndexOutOfBounds(index, totalPolicies);
+    // solhint-disable-next-line gas-strict-inequalities
+    if (index >= totalPolicies) revert PolicyIndexOutOfBounds(index, totalPolicies);
 
     return allPolicies[index];
+  }
+
+  /// @notice Returns provider-side financial snapshot for a known policy.
+  /// @param policyAddress Target policy address.
+  /// @return Recorded coverage amount in wei.
+  /// @return Recorded premium amount in wei.
+  /// @return True when provider has settled policy through payout or expiry.
+  function getPolicyFinancials(
+    address policyAddress
+  ) external view returns (uint256, uint256, bool) {
+    _assertKnownPolicy(policyAddress);
+    PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
+
+    return (policyFinancials.coverageWei, policyFinancials.premiumWei, policyFinancials.settled);
   }
 
   /// @notice Returns current untracked ETH balance not represented in reserve/premium ledgers.

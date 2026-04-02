@@ -69,8 +69,8 @@ function parseCoverageWei(rawCoverageEth: string | undefined): bigint {
     );
   }
 
-  if (coverageWei <= 0n) {
-    throw new Error("STRESS_COVERAGE_ETH must be greater than zero.");
+  if (coverageWei === 0n) {
+    throw new Error("STRESS_COVERAGE_ETH must be greater than zero (value cannot be 0).");
   }
 
   return coverageWei;
@@ -159,9 +159,8 @@ async function deployLocalStack(
 
   const providerAddress = await provider.getAddress();
 
-  // policyRegistry is intentionally not set here: with registry == address(0),
-  // the oracle skips provenance checks and accepts any structurally valid policy,
-  // which is sufficient for local stress runs.
+  const setRegistryTx = await oracle.setPolicyRegistry(providerAddress);
+  await setRegistryTx.wait();
 
   return { providerAddress, oracleAddress };
 }

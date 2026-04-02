@@ -40,33 +40,11 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   /// @notice Current policy status.
   PolicyStatus public status;
 
-  /// @notice Emitted when policy is activated.
-  /// @param insured Insured account address.
-  /// @param premiumWei Activated premium amount.
-  /// @param coverageWei Reserved coverage amount.
-  event PolicyActivated(address indexed insured, uint256 premiumWei, uint256 coverageWei);
-  /// @notice Emitted when provider requests a weather update.
-  /// @param policy Policy contract address.
-  /// @param requestedAt Timestamp when request was emitted.
-  event WeatherDataRequested(address indexed policy, uint64 requestedAt);
-  /// @notice Emitted when oracle fulfills weather data.
-  /// @param rainfallMm Rainfall value provided by oracle.
-  /// @param conditionMet Whether trigger condition is met after update.
-  /// @param updatedAt Timestamp when weather data was applied.
-  event WeatherDataFulfilled(uint256 rainfallMm, bool conditionMet, uint64 updatedAt);
-  /// @notice Emitted when payout is executed to insured.
-  /// @param insured Insured account receiving payout.
-  /// @param amountWei Coverage amount paid out.
-  /// @param paidAt Timestamp when payout was executed.
-  event PayoutExecuted(address indexed insured, uint256 amountWei, uint64 paidAt);
-  /// @notice Emitted when policy expires without payout.
-  /// @param expiredAt Timestamp when policy status became expired.
-  event PolicyExpired(uint64 expiredAt);
-
   error InvalidInsuredAddress();
   error InvalidPolicyWindow(uint64 startTimestamp, uint64 endTimestamp);
   error InvalidCoverageAmount();
   error InvalidPremiumAmount();
+  error InvalidRainfallThreshold();
   error InvalidOracleAddress();
   error CoverageReserveMismatch(uint256 expected, uint256 received);
   error PremiumMismatch(uint256 expected, uint256 received);
@@ -108,10 +86,13 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     uint64 endTimestamp_
   ) payable Ownable(policyOwner) {
     if (insuredAddress == address(0)) revert InvalidInsuredAddress();
-    if (oracleAddress == address(0)) revert InvalidOracleAddress();
+    if (oracleAddress == address(0) || oracleAddress.code.length == 0)
+      revert InvalidOracleAddress();
     if (coverageAmountWei == 0) revert InvalidCoverageAmount();
     if (premiumAmountWei == 0) revert InvalidPremiumAmount();
-    if (!(startTimestamp_ < endTimestamp_))
+    if (rainfallThresholdMm_ == 0) revert InvalidRainfallThreshold();
+    // solhint-disable-next-line gas-strict-inequalities
+    if (startTimestamp_ >= endTimestamp_)
       revert InvalidPolicyWindow(startTimestamp_, endTimestamp_);
     if (msg.value != coverageAmountWei)
       revert CoverageReserveMismatch(coverageAmountWei, msg.value);
@@ -131,7 +112,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     _requireStatus(PolicyStatus.Created);
     if (msg.value != premiumWei) revert PremiumMismatch(premiumWei, msg.value);
 
-    status = PolicyStatus.Active;
+    _transitionTo(PolicyStatus.Active);
     emit PolicyActivated(insured, premiumWei, coverageWei);
   }
 
@@ -150,10 +131,11 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
 
     latestRainfallMm = rainfallMm;
     lastOracleUpdateTimestamp = uint64(block.timestamp);
-    conditionMet = !(rainfallMm < rainfallThresholdMm);
+    // solhint-disable-next-line gas-strict-inequalities
+    conditionMet = rainfallMm >= rainfallThresholdMm;
 
     if (conditionMet) {
-      status = PolicyStatus.Triggered;
+      _transitionTo(PolicyStatus.Triggered);
     }
 
     emit WeatherDataFulfilled(rainfallMm, conditionMet, lastOracleUpdateTimestamp);
@@ -163,28 +145,28 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   function executePayout() external onlyOwner nonReentrant {
     _requireStatus(PolicyStatus.Triggered);
 
-    status = PolicyStatus.PaidOut;
+    _transitionTo(PolicyStatus.PaidOut);
+    emit PayoutExecuted(insured, coverageWei, uint64(block.timestamp));
 
     (bool success, ) = insured.call{value: coverageWei}("");
     if (!success) revert EthTransferFailed();
 
     _forwardBalanceToOwner();
-
-    emit PayoutExecuted(insured, coverageWei, uint64(block.timestamp));
   }
 
   /// @notice Expires policy after end timestamp and forwards all remaining funds to provider.
-  function expirePolicy() external onlyOwner {
+  function expirePolicy() external onlyOwner nonReentrant {
+    uint64 currentTimestamp = uint64(block.timestamp);
+
     if (status == PolicyStatus.Created) revert PolicyNotActivated();
     if (status == PolicyStatus.PaidOut || status == PolicyStatus.Expired)
       revert PolicyAlreadySettled();
     if (status == PolicyStatus.Triggered) revert TriggeredPolicyRequiresPayout();
-    if (block.timestamp < endTimestamp)
-      revert PolicyNotEnded(uint64(block.timestamp), endTimestamp);
+    if (currentTimestamp < endTimestamp) revert PolicyNotEnded(currentTimestamp, endTimestamp);
 
-    status = PolicyStatus.Expired;
+    _transitionTo(PolicyStatus.Expired);
+    emit PolicyExpired(insured, currentTimestamp);
     _forwardBalanceToOwner();
-    emit PolicyExpired(uint64(block.timestamp));
   }
 
   /// @notice Returns current ETH balance held by this policy contract.
@@ -197,6 +179,33 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   /// @return Current status encoded as uint8.
   function getStatus() external view returns (uint8) {
     return uint8(status);
+  }
+
+  /// @notice Returns true when policy can be settled via payout execution.
+  /// @return True when status is Triggered.
+  function isPayoutEligible() external view returns (bool) {
+    return status == PolicyStatus.Triggered;
+  }
+
+  /// @notice Returns true when policy can be settled via expiry path.
+  /// @return True when policy is active and end timestamp has been reached.
+  function isExpiryEligible() external view returns (bool) {
+    // solhint-disable-next-line gas-strict-inequalities
+    return status == PolicyStatus.Active && block.timestamp >= endTimestamp;
+  }
+
+  /// @notice Returns true when weather requests and fulfills are allowed.
+  /// @return True when current timestamp is inside inclusive-start and exclusive-end window.
+  function isWeatherWindowOpen() external view returns (bool) {
+    return status == PolicyStatus.Active && _isWeatherWindowOpenAt(uint64(block.timestamp));
+  }
+
+  /// @notice Applies status transition and emits a canonical transition event.
+  /// @param newStatus New status to set.
+  function _transitionTo(PolicyStatus newStatus) private {
+    uint8 previousStatus = uint8(status);
+    status = newStatus;
+    emit PolicyStatusTransitioned(previousStatus, uint8(newStatus), uint64(block.timestamp));
   }
 
   /// @notice Forwards any remaining policy ETH balance to provider owner.
@@ -214,14 +223,20 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     if (status != expectedStatus) revert InvalidStatus(uint8(expectedStatus), uint8(status));
   }
 
-  /// @notice Ensures weather operations happen strictly before end timestamp.
+  /// @notice Ensures weather operations happen within [startTimestamp, endTimestamp).
   function _requireWeatherWindowOpen() private view {
     uint64 currentTimestamp = uint64(block.timestamp);
 
-    // Policies are created with startTimestamp == block.timestamp in provider flow.
-    // The active weather window guard is therefore an upper-bound check.
-    if (!(currentTimestamp < endTimestamp)) {
+    if (!_isWeatherWindowOpenAt(currentTimestamp)) {
       revert PolicyOutsideWeatherWindow(currentTimestamp, startTimestamp, endTimestamp);
     }
+  }
+
+  /// @notice Returns true when timestamp is within policy weather window bounds.
+  /// @param currentTimestamp Timestamp candidate in unix seconds.
+  /// @return True when inside [startTimestamp, endTimestamp).
+  function _isWeatherWindowOpenAt(uint64 currentTimestamp) private view returns (bool) {
+    // solhint-disable-next-line gas-strict-inequalities
+    return currentTimestamp >= startTimestamp && currentTimestamp < endTimestamp;
   }
 }

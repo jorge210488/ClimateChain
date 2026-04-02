@@ -71,6 +71,13 @@ async function main(): Promise<void> {
   const providerAddress = await insuranceProvider.getAddress();
   console.log("InsuranceProvider deployed at:", providerAddress);
 
+  if (isLocalNetwork && mockWeatherOracleAddress) {
+    const localOracle = await ethers.getContractAt("MockWeatherOracle", mockWeatherOracleAddress);
+    const setRegistryTx = await localOracle.setPolicyRegistry(providerAddress);
+    await setRegistryTx.wait();
+    console.log("MockWeatherOracle policy registry set to:", providerAddress);
+  }
+
   const manifest: DeploymentManifest = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
