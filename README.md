@@ -33,7 +33,8 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 ## Current Stage
 
 - Stage 02 (Smart Contract Workspace) completed.
-- Stage 03 (On-Chain Domain Logic) next.
+- Stage 03 (On-Chain Domain Logic) completed.
+- Stage 04 (Contract Hardening & Invariant Matrix) next.
 
 ## Quick Start (Foundation)
 

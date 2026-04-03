@@ -16,6 +16,10 @@ interface DeploymentManifest {
   };
 }
 
+function isStrictProvenanceEnabled(): boolean {
+  return process.env.STRICT_POLICY_PROVENANCE === "true";
+}
+
 function resolveExternalOracleAddress(networkName: string): string {
   const configuredAddress = process.env.EXTERNAL_WEATHER_ORACLE_ADDRESS;
   if (!configuredAddress) {
@@ -76,6 +80,12 @@ async function main(): Promise<void> {
     const setRegistryTx = await localOracle.setPolicyRegistry(providerAddress);
     await setRegistryTx.wait();
     console.log("MockWeatherOracle policy registry set to:", providerAddress);
+
+    if (isStrictProvenanceEnabled()) {
+      const enableStrictModeTx = await localOracle.setStrictPolicyRegistryMode(true);
+      await enableStrictModeTx.wait();
+      console.log("MockWeatherOracle strict policy registry mode enabled.");
+    }
   }
 
   const manifest: DeploymentManifest = {

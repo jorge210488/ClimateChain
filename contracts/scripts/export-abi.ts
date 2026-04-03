@@ -105,6 +105,19 @@ async function exportAbis(): Promise<void> {
     });
   }
 
+  const exportedContractNames = new Set(entries.map((entry) => entry.contractName));
+  const missingContracts = [...CONTRACTS_TO_EXPORT]
+    .filter((contractName) => !exportedContractNames.has(contractName))
+    .sort((left, right) => left.localeCompare(right));
+
+  if (missingContracts.length > 0) {
+    throw new Error(
+      `Missing required ABI artifacts for: ${missingContracts.join(
+        ", ",
+      )}. Run 'npm run clean && npm run compile' and verify CONTRACTS_TO_EXPORT.`,
+    );
+  }
+
   entries.sort((left, right) => left.contractName.localeCompare(right.contractName));
 
   const indexPath = path.join(abiOutputDir, "index.json");

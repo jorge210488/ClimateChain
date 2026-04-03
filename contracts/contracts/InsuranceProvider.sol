@@ -14,9 +14,18 @@ import {IWeatherOracleAdapter} from "./interfaces/IWeatherOracleAdapter.sol";
 /// @notice Manages policy creation, weather requests, and treasury accounting for coverage and premiums.
 /// @author ClimateChain
 contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegistry {
+  enum SettlementType {
+    None,
+    Payout,
+    Expiry
+  }
+
+  // solhint-disable-next-line gas-struct-packing
   struct PolicyFinancials {
     uint256 coverageWei;
     uint256 premiumWei;
+    uint64 settledAt;
+    SettlementType settlementType;
     bool settled;
   }
 
@@ -26,6 +35,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   uint256 public constant MIN_PREMIUM_BPS = 100;
   /// @notice Maximum allowed policy duration in days.
   uint32 public constant MAX_DURATION_DAYS = 365;
+  /// @notice Minimum delay applied between policy creation and weather-window start.
+  uint64 public constant MIN_POLICY_START_LEAD_TIME_SECONDS = 60;
 
   /// @notice Oracle adapter assigned to newly created policies.
   IWeatherOracleAdapter public weatherOracle;
@@ -118,6 +129,19 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     address indexed policyAddress,
     uint256 coverageRecoveredWei,
     uint256 premiumRecoveredWei
+  );
+  /// @notice Emitted when provider marks policy settlement metadata.
+  /// @param policyAddress Target policy address.
+  /// @param settlementType Settlement type encoded as uint8 (1 = payout, 2 = expiry).
+  /// @param settledAt Timestamp when provider marked settlement.
+  /// @param coverageWei Coverage amount stored for policy.
+  /// @param premiumWei Premium amount stored for policy.
+  event PolicySettled(
+    address indexed policyAddress,
+    uint8 settlementType,
+    uint64 settledAt,
+    uint256 coverageWei,
+    uint256 premiumWei
   );
 
   error InvalidOracleAddress();
@@ -246,8 +270,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     _validatePolicyCreationInputs(coverageAmountWei, rainfallThresholdMm, durationDays, msg.value);
     _assertNoTrackedBalanceDeficitExcludingIncomingValue(msg.value);
 
-    uint64 startTimestamp = uint64(block.timestamp);
-    uint64 endTimestamp = uint64(block.timestamp + uint256(durationDays) * 1 days);
+    uint64 startTimestamp = uint64(block.timestamp + MIN_POLICY_START_LEAD_TIME_SECONDS);
+    uint64 endTimestamp = uint64(uint256(startTimestamp) + uint256(durationDays) * 1 days);
 
     coverageReserveWei -= coverageAmountWei;
 
@@ -271,7 +295,9 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     policyFinancialsByPolicy[policyAddress] = PolicyFinancials({
       coverageWei: coverageAmountWei,
       premiumWei: msg.value,
-      settled: false
+      settled: false,
+      settlementType: SettlementType.None,
+      settledAt: 0
     });
 
     emit PolicyCreated(
@@ -303,9 +329,12 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
     uint256 coveragePaidWei = policyFinancials.coverageWei;
     uint256 premiumRecoveredWei = policyFinancials.premiumWei;
+    uint64 settledAt = uint64(block.timestamp);
 
     // Apply all state effects before external interaction to preserve CEI ordering.
     policyFinancials.settled = true;
+    policyFinancials.settlementType = SettlementType.Payout;
+    policyFinancials.settledAt = settledAt;
     premiumBalanceWei += premiumRecoveredWei;
 
     IInsurancePolicy(policyAddress).executePayout();
@@ -313,6 +342,13 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     // Settlement accounting is deterministic for current synchronous close flow.
     // If close flow becomes asynchronous, move to explicit callback reconciliation.
     emit PolicyPayoutExecuted(policyAddress, coveragePaidWei, premiumRecoveredWei);
+    emit PolicySettled(
+      policyAddress,
+      uint8(SettlementType.Payout),
+      settledAt,
+      coveragePaidWei,
+      premiumRecoveredWei
+    );
   }
 
   /// @notice Expires an eligible policy and books recovered coverage and premium balances.
@@ -325,15 +361,25 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
     uint256 coverageRecoveredWei = policyFinancials.coverageWei;
     uint256 premiumRecoveredWei = policyFinancials.premiumWei;
+    uint64 settledAt = uint64(block.timestamp);
 
     // Apply all state effects before external interaction to preserve CEI ordering.
     policyFinancials.settled = true;
+    policyFinancials.settlementType = SettlementType.Expiry;
+    policyFinancials.settledAt = settledAt;
     coverageReserveWei += coverageRecoveredWei;
     premiumBalanceWei += premiumRecoveredWei;
 
     IInsurancePolicy(policyAddress).expirePolicy();
 
     emit PolicyExpired(policyAddress, coverageRecoveredWei, premiumRecoveredWei);
+    emit PolicySettled(
+      policyAddress,
+      uint8(SettlementType.Expiry),
+      settledAt,
+      coverageRecoveredWei,
+      premiumRecoveredWei
+    );
   }
 
   /// @notice Returns all policy addresses created by one insured account.
@@ -343,10 +389,36 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     return policiesByInsured[insured];
   }
 
+  /// @notice Returns one page of policy addresses linked to insured account.
+  /// @param insured Insured account address.
+  /// @param offset Zero-based start index inside insured policy array.
+  /// @param limit Maximum number of policy addresses to return.
+  /// @return policiesPage Page of policy addresses.
+  /// @return totalPoliciesForInsured Total number of policies linked to insured account.
+  function getPoliciesByInsuredPage(
+    address insured,
+    uint256 offset,
+    uint256 limit
+  ) external view returns (address[] memory policiesPage, uint256 totalPoliciesForInsured) {
+    return _paginatePolicies(policiesByInsured[insured], offset, limit);
+  }
+
   /// @notice Returns total number of policies created in provider.
   /// @return Total policy count.
   function getAllPoliciesCount() external view returns (uint256) {
     return allPolicies.length;
+  }
+
+  /// @notice Returns one page of policy addresses from global policy list.
+  /// @param offset Zero-based start index inside global policy array.
+  /// @param limit Maximum number of policy addresses to return.
+  /// @return policiesPage Page of policy addresses.
+  /// @return totalPolicies Total number of policies in global list.
+  function getAllPoliciesPage(
+    uint256 offset,
+    uint256 limit
+  ) external view returns (address[] memory policiesPage, uint256 totalPolicies) {
+    return _paginatePolicies(allPolicies, offset, limit);
   }
 
   /// @notice Returns policy address at index in global policy list.
@@ -372,6 +444,17 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
 
     return (policyFinancials.coverageWei, policyFinancials.premiumWei, policyFinancials.settled);
+  }
+
+  /// @notice Returns provider-side settlement metadata for a known policy.
+  /// @param policyAddress Target policy address.
+  /// @return settlementType Settlement type encoded as uint8 (0 none, 1 payout, 2 expiry).
+  /// @return settledAt Timestamp when provider marked settlement, or zero if unsettled.
+  function getPolicySettlementInfo(address policyAddress) external view returns (uint8, uint64) {
+    _assertKnownPolicy(policyAddress);
+    PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
+
+    return (uint8(policyFinancials.settlementType), policyFinancials.settledAt);
   }
 
   /// @notice Returns current untracked ETH balance not represented in reserve/premium ledgers.
@@ -422,6 +505,33 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   /// @param policyAddress Candidate policy address.
   function _assertKnownPolicy(address policyAddress) private view {
     if (!isPolicyCreated[policyAddress]) revert UnknownPolicyAddress(policyAddress);
+  }
+
+  /// @notice Returns one page of policy addresses from storage array.
+  /// @param source Storage array containing policy addresses.
+  /// @param offset Zero-based start index.
+  /// @param limit Maximum number of addresses to copy.
+  /// @return page Requested page of addresses.
+  /// @return total Total number of addresses in source array.
+  function _paginatePolicies(
+    address[] storage source,
+    uint256 offset,
+    uint256 limit
+  ) private view returns (address[] memory page, uint256 total) {
+    total = source.length;
+    if (offset == total || offset > total || limit == 0) return (new address[](0), total);
+
+    uint256 endExclusive = offset + limit;
+    if (endExclusive > total || endExclusive < offset) {
+      endExclusive = total;
+    }
+
+    uint256 pageLength = endExclusive - offset;
+    page = new address[](pageLength);
+
+    for (uint256 i = 0; i < pageLength; ++i) {
+      page[i] = source[offset + i];
+    }
   }
 
   /// @notice Computes on-chain ETH balance not represented in reserve and premium ledgers.

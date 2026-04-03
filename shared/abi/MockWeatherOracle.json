@@ -1,7 +1,7 @@
 {
   "contractName": "MockWeatherOracle",
   "sourceName": "contracts/mocks/MockWeatherOracle.sol",
-  "generatedAt": "2026-04-02T02:58:39.065Z",
+  "generatedAt": "2026-04-03T01:38:48.925Z",
   "abi": [
     {
       "inputs": [
@@ -59,6 +59,11 @@
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "StrictPolicyRegistryModeRequiresRegistry",
+      "type": "error"
+    },
+    {
       "anonymous": false,
       "inputs": [
         {
@@ -94,6 +99,19 @@
         }
       ],
       "name": "PolicyRegistryUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "StrictPolicyRegistryModeUpdated",
       "type": "event"
     },
     {
@@ -221,6 +239,32 @@
       "name": "setPolicyRegistry",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setStrictPolicyRegistryMode",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "strictPolicyRegistryMode",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {

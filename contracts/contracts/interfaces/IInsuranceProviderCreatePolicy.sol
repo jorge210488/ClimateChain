@@ -9,10 +9,10 @@ interface IInsuranceProviderCreatePolicy {
   /// @param coverageAmountWei Coverage amount requested.
   /// @param rainfallThresholdMm Rainfall trigger threshold.
   /// @param durationDays Policy duration in days.
-  /// @return policyAddress Newly created policy address.
+  /// @return Newly created policy address.
   function createPolicy(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
     uint32 durationDays
-  ) external payable returns (address policyAddress);
+  ) external payable returns (address);
 }

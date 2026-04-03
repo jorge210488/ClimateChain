@@ -2,7 +2,7 @@
 
 On-chain logic for policy creation, weather-trigger checks, and payouts.
 
-## Current Scope (Stage 02)
+## Current Scope (Stage 03)
 
 - `contracts/InsuranceProvider.sol`
 - `contracts/InsurancePolicy.sol`
@@ -28,6 +28,8 @@ On-chain logic for policy creation, weather-trigger checks, and payouts.
 - Deploy to Sepolia: `npm run deploy:sepolia`
 - Run local burst-creation stress harness on ephemeral hardhat: `npm run stress:policies:local`
 - Run local burst-creation stress harness on localhost node: `npm run stress:policies:localhost`
+- Run deterministic local stress smoke (Stage 03 gate): `npm run stress:policies:local:smoke`
+- Run consolidated Stage 03 gate (quality + baseline + stress smoke + ABI sync): `npm run stage3:check`
 
 Stress harness environment knobs (optional):
 - `STRESS_POLICIES_COUNT` (default: `20`)
@@ -39,12 +41,17 @@ Stress harness environment knobs (optional):
 - `STRESS_DURATION_DAYS` (default: `14`)
 - `STRESS_PROVIDER_ADDRESS` (reuse an existing local provider deployment)
 - `STRESS_FORCE_DEPLOY` (`true|false`, default: `false`)
+- Reused deployment behavior: stress harness now auto-aligns mock `policyRegistry` with provider when possible.
 
-## Stage 02 Scalability Outputs
+## Stage 03 Domain Logic Outputs
 
 - Interface-first boundaries under `contracts/interfaces/`.
 - Shared ABI exports written to `../shared/abi/`.
 - Deterministic deployment manifests written to `deployments/<network>.json`.
+- Provider policy creation now applies a minimum lead-time before weather-window opening.
+- Provider exposes paginated policy getters for insured and global lists.
+- Provider exposes settlement metadata via `getPolicySettlementInfo(policyAddress)`.
+- Mock oracle supports optional strict policy-registry mode to prevent accidental provenance disablement.
 
 ## Environment
 
@@ -52,6 +59,7 @@ Copy `contracts/.env.example` to `contracts/.env` and set required values.
 - `RPC_URL`
 - `PRIVATE_KEY`
 - `EXTERNAL_WEATHER_ORACLE_ADDRESS` (required for non-local deployments, for example Sepolia)
+- `STRICT_POLICY_PROVENANCE` (`true|false`, optional for local deploy; when true, local mock blocks unsetting `policyRegistry`)
 - Optional explorer verification: `ETHERSCAN_API_KEY`
 
 Deployment behavior by network:

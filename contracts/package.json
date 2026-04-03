@@ -15,7 +15,7 @@
     "analyze:static": "ts-node scripts/static-analysis.ts",
     "gas:report": "cross-env REPORT_GAS=true hardhat test",
     "size:check": "npm run compile && ts-node scripts/report-contract-size.ts",
-    "size:baseline:update": "npm run compile && UPDATE_SIZE_BASELINE=true ts-node scripts/report-contract-size.ts",
+    "size:baseline:update": "npm run compile && cross-env UPDATE_SIZE_BASELINE=true ts-node scripts/report-contract-size.ts",
     "lint:sol": "solhint --max-warnings 0 \"contracts/**/*.sol\"",
     "lint": "npm run lint:sol",
     "format:check": "prettier --plugin=prettier-plugin-solidity --check \"contracts/**/*.sol\" && prettier --check \"scripts/**/*.ts\" \"test/**/*.ts\" \"hardhat.config.ts\"",
@@ -26,7 +26,9 @@
     "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "stress:policies:local": "hardhat run scripts/stress-create-policies.ts --network hardhat",
-    "stress:policies:localhost": "hardhat run scripts/stress-create-policies.ts --network localhost"
+    "stress:policies:localhost": "hardhat run scripts/stress-create-policies.ts --network localhost",
+    "stress:policies:local:smoke": "cross-env STRESS_POLICIES_COUNT=6 STRESS_BURST_SIZE=3 STRESS_INSURED_ACCOUNTS=3 hardhat run scripts/stress-create-policies.ts --network hardhat",
+    "stage3:check": "npm run quality:check && npm run baseline:check && npm run stress:policies:local:smoke && npm run artifacts:sync"
   },
   "keywords": [],
   "author": "",

@@ -19,6 +19,8 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   mapping(address => uint64) public lastUpdatedAtByPolicy;
   /// @notice Optional provider registry used to assert that policies were created by trusted provider.
   address public policyRegistry;
+  /// @notice When enabled, policy registry cannot be unset to zero address.
+  bool public strictPolicyRegistryMode;
 
   /// @notice Emitted when mock pushes weather data to policy.
   /// @param policyAddress Target policy address.
@@ -29,9 +31,13 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   /// @param previousRegistry Previous registry address.
   /// @param newRegistry New registry address.
   event PolicyRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+  /// @notice Emitted when strict provenance mode is toggled.
+  /// @param enabled True when strict policy-registry mode is enabled.
+  event StrictPolicyRegistryModeUpdated(bool enabled);
 
   error InvalidPolicyAddress(address policyAddress);
   error InvalidPolicyRegistry(address registryAddress);
+  error StrictPolicyRegistryModeRequiresRegistry();
 
   /// @notice Creates mock oracle with explicit owner.
   /// @param initialOwner Address receiving oracle admin permissions.
@@ -56,6 +62,10 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   /// @notice Sets optional provider registry to validate policy provenance.
   /// @param newPolicyRegistry Provider contract exposing isPolicyCreated(address).
   function setPolicyRegistry(address newPolicyRegistry) external onlyOwner {
+    if (strictPolicyRegistryMode && newPolicyRegistry == address(0)) {
+      revert StrictPolicyRegistryModeRequiresRegistry();
+    }
+
     if (newPolicyRegistry != address(0) && newPolicyRegistry.code.length == 0) {
       revert InvalidPolicyRegistry(newPolicyRegistry);
     }
@@ -64,6 +74,17 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
     policyRegistry = newPolicyRegistry;
 
     emit PolicyRegistryUpdated(previousRegistry, newPolicyRegistry);
+  }
+
+  /// @notice Toggles strict provenance mode that requires a non-zero policy registry.
+  /// @param enabled True to enable strict mode, false to disable strict mode.
+  function setStrictPolicyRegistryMode(bool enabled) external onlyOwner {
+    if (enabled && policyRegistry == address(0)) {
+      revert StrictPolicyRegistryModeRequiresRegistry();
+    }
+
+    strictPolicyRegistryMode = enabled;
+    emit StrictPolicyRegistryModeUpdated(enabled);
   }
 
   /// @notice Validates candidate policy shape, oracle binding, and optional registry provenance.

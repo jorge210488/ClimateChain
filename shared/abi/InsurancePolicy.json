@@ -1,7 +1,7 @@
 {
   "contractName": "InsurancePolicy",
   "sourceName": "contracts/InsurancePolicy.sol",
-  "generatedAt": "2026-04-02T02:58:39.065Z",
+  "generatedAt": "2026-04-03T01:38:48.925Z",
   "abi": [
     {
       "inputs": [

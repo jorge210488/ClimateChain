@@ -1,7 +1,7 @@
 {
   "contractName": "InsuranceProvider",
   "sourceName": "contracts/InsuranceProvider.sol",
-  "generatedAt": "2026-04-02T02:58:39.065Z",
+  "generatedAt": "2026-04-03T01:38:48.925Z",
   "abi": [
     {
       "inputs": [
@@ -407,6 +407,43 @@
           "internalType": "address",
           "name": "policyAddress",
           "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "settlementType",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "settledAt",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "coverageWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "premiumWei",
+          "type": "uint256"
+        }
+      ],
+      "name": "PolicySettled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
         }
       ],
       "name": "PolicyWeatherDataRequested",
@@ -515,6 +552,19 @@
     },
     {
       "inputs": [],
+      "name": "MIN_POLICY_START_LEAD_TIME_SECONDS",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MIN_PREMIUM_BPS",
       "outputs": [
         {
@@ -615,6 +665,35 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAllPoliciesPage",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "policiesPage",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalPolicies",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "getBalanceDeficit",
       "outputs": [
@@ -641,6 +720,40 @@
           "internalType": "address[]",
           "name": "",
           "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getPoliciesByInsuredPage",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "policiesPage",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalPoliciesForInsured",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -689,6 +802,30 @@
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getPolicySettlementInfo",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
         }
       ],
       "stateMutability": "view",

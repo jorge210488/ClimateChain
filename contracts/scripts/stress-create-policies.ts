@@ -267,6 +267,50 @@ async function ensureCoverageReserve(
   console.log(`Coverage reserve funded with ${ethers.formatEther(missingReserveWei)} ETH.`);
 }
 
+async function ensureMockPolicyRegistryParity(
+  providerContract: Awaited<ReturnType<typeof ethers.getContractAt>>,
+  ownerSigner: Awaited<ReturnType<typeof ethers.getSigners>>[number],
+): Promise<void> {
+  const providerAddress = await providerContract.getAddress();
+  const oracleAddress = await providerContract.weatherOracle();
+
+  if (!(await hasBytecode(oracleAddress))) {
+    throw new Error(
+      `Provider weather oracle ${oracleAddress} has no bytecode on network '${network.name}'.`,
+    );
+  }
+
+  const oracleAsMock = await ethers.getContractAt("MockWeatherOracle", oracleAddress);
+
+  let currentRegistry: string;
+  try {
+    currentRegistry = await oracleAsMock.policyRegistry();
+  } catch {
+    console.log(
+      `Oracle ${oracleAddress} does not expose MockWeatherOracle policyRegistry(); skipping registry parity sync.`,
+    );
+    return;
+  }
+
+  if (currentRegistry.toLowerCase() === providerAddress.toLowerCase()) {
+    return;
+  }
+
+  try {
+    const setRegistryTx = await oracleAsMock
+      .connect(ownerSigner)
+      .setPolicyRegistry(providerAddress);
+    await setRegistryTx.wait();
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : "unknown error";
+    throw new Error(
+      `Unable to align mock policy registry to provider ${providerAddress}. Ensure oracle ownership is available to the stress signer or use STRESS_FORCE_DEPLOY=true. Root cause: ${reason}`,
+    );
+  }
+
+  console.log(`MockWeatherOracle policy registry synchronized to provider ${providerAddress}.`);
+}
+
 async function main(): Promise<void> {
   if (network.name !== "hardhat" && network.name !== "localhost") {
     throw new Error(
@@ -296,6 +340,8 @@ async function main(): Promise<void> {
   if (!ownerSigner) {
     throw new Error(`Could not find local signer for provider owner ${onChainOwnerAddress}.`);
   }
+
+  await ensureMockPolicyRegistryParity(providerContract, ownerSigner);
 
   const minPremiumBps = Number(await providerContract.MIN_PREMIUM_BPS());
   const maxDurationDays = Number(await providerContract.MAX_DURATION_DAYS());
