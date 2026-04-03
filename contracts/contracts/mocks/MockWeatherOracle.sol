@@ -94,28 +94,28 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       revert InvalidPolicyAddress(policyAddress);
     }
 
-    bytes memory statusResponse = _readSelectorResponse(
+    bytes memory statusResponse = _readCallResponse(
       policyAddress,
-      IInsurancePolicy.getStatus.selector
+      abi.encodeCall(IInsurancePolicy.getStatus, ())
     );
-    bytes memory oracleResponse = _readSelectorResponse(
+    bytes memory oracleResponse = _readCallResponse(
       policyAddress,
-      IInsurancePolicy.oracle.selector
-    );
-    // Shape validation only; values are intentionally discarded.
-    _readSelectorResponse(policyAddress, IInsurancePolicy.premiumWei.selector);
-    // Shape validation only; values are intentionally discarded.
-    _readSelectorResponse(policyAddress, IInsurancePolicy.coverageWei.selector);
-    bytes memory startResponse = _readSelectorResponse(
-      policyAddress,
-      IInsurancePolicy.startTimestamp.selector
-    );
-    bytes memory endResponse = _readSelectorResponse(
-      policyAddress,
-      IInsurancePolicy.endTimestamp.selector
+      abi.encodeCall(IInsurancePolicy.oracle, ())
     );
     // Shape validation only; values are intentionally discarded.
-    _readSelectorResponse(policyAddress, IInsurancePolicy.conditionMet.selector);
+    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.premiumWei, ()));
+    // Shape validation only; values are intentionally discarded.
+    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.coverageWei, ()));
+    bytes memory startResponse = _readCallResponse(
+      policyAddress,
+      abi.encodeCall(IInsurancePolicy.startTimestamp, ())
+    );
+    bytes memory endResponse = _readCallResponse(
+      policyAddress,
+      abi.encodeCall(IInsurancePolicy.endTimestamp, ())
+    );
+    // Shape validation only; values are intentionally discarded.
+    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.conditionMet, ()));
 
     uint8 policyStatus = abi.decode(statusResponse, (uint8));
     address policyOracle = abi.decode(oracleResponse, (address));
@@ -150,17 +150,15 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
     return abi.decode(response, (bool));
   }
 
-  /// @notice Reads one selector response from target policy and enforces 32-byte ABI return shape.
+  /// @notice Reads one encoded call response from target policy and enforces 32-byte ABI return shape.
   /// @param policyAddress Target policy address.
-  /// @param selector Function selector to read with staticcall.
+  /// @param encodedCallData Encoded call data built with typed abi.encodeCall.
   /// @return response Raw returned data from selector call.
-  function _readSelectorResponse(
+  function _readCallResponse(
     address policyAddress,
-    bytes4 selector
+    bytes memory encodedCallData
   ) private view returns (bytes memory response) {
-    (bool success, bytes memory returnedData) = policyAddress.staticcall(
-      abi.encodeWithSelector(selector)
-    );
+    (bool success, bytes memory returnedData) = policyAddress.staticcall(encodedCallData);
 
     if (!success || returnedData.length != 32) {
       revert InvalidPolicyAddress(policyAddress);

@@ -245,6 +245,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   ) external onlyOwner nonReentrant {
     if (amountWei == 0) revert InvalidWithdrawalAmount();
     if (recipient == address(0)) revert InvalidRecipientAddress();
+    _assertNoTrackedBalanceDeficit();
 
     uint256 untrackedWei = _untrackedBalance();
     if (amountWei > untrackedWei) revert InsufficientUntrackedBalance(untrackedWei, amountWei);
@@ -275,6 +276,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
 
     coverageReserveWei -= coverageAmountWei;
 
+    // CREATE deployment is unavoidable before indexing; full pre-call indexing requires CREATE2 precomputation.
     InsurancePolicy policy = new InsurancePolicy{value: coverageAmountWei}(
       address(this),
       payable(msg.sender),
@@ -285,10 +287,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
       startTimestamp,
       endTimestamp
     );
-
     address policyAddress = address(policy);
-    IInsurancePolicy(policyAddress).activate{value: msg.value}();
-
     allPolicies.push(policyAddress);
     policiesByInsured[msg.sender].push(policyAddress);
     isPolicyCreated[policyAddress] = true;
@@ -299,6 +298,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
       settlementType: SettlementType.None,
       settledAt: 0
     });
+    // Policy activation remains an external call, but provider indexing is already registered.
+    IInsurancePolicy(policyAddress).activate{value: msg.value}();
 
     emit PolicyCreated(
       msg.sender,
@@ -436,12 +437,12 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
 
   /// @notice Returns provider-side financial snapshot for a known policy.
   /// @param policyAddress Target policy address.
-  /// @return Recorded coverage amount in wei.
-  /// @return Recorded premium amount in wei.
-  /// @return True when provider has settled policy through payout or expiry.
+  /// @return coverageWei Recorded coverage amount in wei.
+  /// @return premiumWei Recorded premium amount in wei.
+  /// @return settled True when provider has settled policy through payout or expiry.
   function getPolicyFinancials(
     address policyAddress
-  ) external view returns (uint256, uint256, bool) {
+  ) external view returns (uint256 coverageWei, uint256 premiumWei, bool settled) {
     _assertKnownPolicy(policyAddress);
     PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
 
@@ -450,9 +451,11 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
 
   /// @notice Returns provider-side settlement metadata for a known policy.
   /// @param policyAddress Target policy address.
-  /// @return Settlement type encoded as uint8 (0 = none, 1 = payout, 2 = expiry).
-  /// @return Timestamp when provider marked settlement, or zero if unsettled.
-  function getPolicySettlementInfo(address policyAddress) external view returns (uint8, uint64) {
+  /// @return settlementType Settlement type encoded as uint8 (0 = none, 1 = payout, 2 = expiry).
+  /// @return settledAt Timestamp when provider marked settlement, or zero if unsettled.
+  function getPolicySettlementInfo(
+    address policyAddress
+  ) external view returns (uint8 settlementType, uint64 settledAt) {
     _assertKnownPolicy(policyAddress);
     PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
 

@@ -1,0 +1,60 @@
+name: Contracts Quality Gates
+
+on:
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "shared/abi/**"
+      - ".github/workflows/contracts-quality-gates.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "contracts/**"
+      - "shared/abi/**"
+      - ".github/workflows/contracts-quality-gates.yml"
+
+jobs:
+  contracts-stage4-gates:
+    name: contracts-stage4-gates
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.10.0"
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Slither
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install slither-analyzer
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Quality gate
+        run: npm run quality:check
+
+      - name: Baseline gate
+        run: npm run baseline:check
+
+      - name: Stress smoke gate
+        run: npm run stress:policies:local:smoke

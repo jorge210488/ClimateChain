@@ -1,7 +1,7 @@
 {
   "contractName": "InsuranceProvider",
   "sourceName": "contracts/InsuranceProvider.sol",
-  "generatedAt": "2026-04-03T01:38:48.925Z",
+  "generatedAt": "2026-04-03T14:53:25.848Z",
   "abi": [
     {
       "inputs": [
@@ -611,7 +611,7 @@
       "outputs": [
         {
           "internalType": "address",
-          "name": "policyAddress",
+          "name": "",
           "type": "address"
         }
       ],

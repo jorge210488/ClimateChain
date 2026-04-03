@@ -811,6 +811,17 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "InsufficientUntrackedBalance");
   });
 
+  it("reports tracked-balance deficit when untracked withdrawal is attempted in deficit state", async function () {
+    const { owner, provider } = await loadFixture(deployFixture);
+
+    const providerAddress = await provider.getAddress();
+    await ethers.provider.send("hardhat_setBalance", [providerAddress, "0x0"]);
+
+    await expect(provider.withdrawUntrackedBalance(1n, owner.address))
+      .to.be.revertedWithCustomError(provider, "TrackedBalanceDeficit")
+      .withArgs(ethers.parseEther("5.0"), 0n);
+  });
+
   it("rejects untracked ETH withdrawal to zero recipient", async function () {
     const { owner, provider } = await loadFixture(deployFixture);
 
@@ -1143,6 +1154,29 @@ describe("InsuranceProvider", function () {
     await expect(
       oracle.connect(insured).pushWeatherData(policyAddress, 45),
     ).to.be.revertedWithCustomError(oracle, "OwnableUnauthorizedAccount");
+  });
+
+  it("rejects direct policy weather requests from non-owner accounts", async function () {
+    const { insured, outsider, provider } = await loadFixture(deployFixture);
+
+    const { policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      25,
+      10,
+    );
+
+    await expect(policy.connect(insured).requestWeatherData()).to.be.revertedWithCustomError(
+      policy,
+      "OwnableUnauthorizedAccount",
+    );
+
+    await expect(policy.connect(outsider).requestWeatherData()).to.be.revertedWithCustomError(
+      policy,
+      "OwnableUnauthorizedAccount",
+    );
   });
 
   it("requests weather data through provider and emits provider plus policy events", async function () {
@@ -1634,6 +1668,14 @@ describe("InsuranceProvider", function () {
     const [emptyPage, sameTotal] = await provider.getPoliciesByInsuredPage(insured.address, 5, 2);
     expect(sameTotal).to.equal(3n);
     expect(emptyPage).to.deep.equal([]);
+
+    const [zeroLimitPage, zeroLimitTotal] = await provider.getPoliciesByInsuredPage(
+      insured.address,
+      0,
+      0,
+    );
+    expect(zeroLimitTotal).to.equal(3n);
+    expect(zeroLimitPage).to.deep.equal([]);
   });
 
   it("returns paginated global policy addresses and respects zero limit", async function () {

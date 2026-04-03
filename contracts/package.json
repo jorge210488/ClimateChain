@@ -28,7 +28,8 @@
     "stress:policies:local": "hardhat run scripts/stress-create-policies.ts --network hardhat",
     "stress:policies:localhost": "hardhat run scripts/stress-create-policies.ts --network localhost",
     "stress:policies:local:smoke": "cross-env STRESS_POLICIES_COUNT=6 STRESS_BURST_SIZE=3 STRESS_INSURED_ACCOUNTS=3 hardhat run scripts/stress-create-policies.ts --network hardhat",
-    "stage3:check": "npm run quality:check && npm run baseline:check && npm run stress:policies:local:smoke && npm run artifacts:sync"
+    "stage3:check": "npm run quality:check && npm run baseline:check && npm run stress:policies:local:smoke && npm run artifacts:sync",
+    "stage4:check": "npm run compile && npm test && npm run quality:check && npm run baseline:check && npm run stress:policies:local:smoke && npm run artifacts:sync"
   },
   "keywords": [],
   "author": "",
