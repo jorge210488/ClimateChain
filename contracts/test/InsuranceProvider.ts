@@ -1474,6 +1474,14 @@ describe("InsuranceProvider", function () {
     );
   });
 
+  it("rejects strict mode toggle from non-owner accounts", async function () {
+    const { insured, oracle } = await loadFixture(deployFixture);
+
+    await expect(
+      oracle.connect(insured).setStrictPolicyRegistryMode(true),
+    ).to.be.revertedWithCustomError(oracle, "OwnableUnauthorizedAccount");
+  });
+
   it("blocks policy registry reset to zero while strict provenance mode is enabled", async function () {
     const { oracle, provider } = await loadFixture(deployFixture);
 

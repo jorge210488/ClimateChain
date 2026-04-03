@@ -32,6 +32,7 @@ On-chain logic for policy creation, weather-trigger checks, and payouts.
 - Run consolidated Stage 03 gate (quality + baseline + stress smoke + ABI sync): `npm run stage3:check`
 
 Stress harness environment knobs (optional):
+
 - `STRESS_POLICIES_COUNT` (default: `20`)
 - `STRESS_BURST_SIZE` (default: `5`)
 - `STRESS_INSURED_ACCOUNTS` (default: `5`, must be >= burst size)
@@ -56,6 +57,7 @@ Stress harness environment knobs (optional):
 ## Environment
 
 Copy `contracts/.env.example` to `contracts/.env` and set required values.
+
 - `RPC_URL`
 - `PRIVATE_KEY`
 - `EXTERNAL_WEATHER_ORACLE_ADDRESS` (required for non-local deployments, for example Sepolia)
@@ -63,6 +65,7 @@ Copy `contracts/.env.example` to `contracts/.env` and set required values.
 - Optional explorer verification: `ETHERSCAN_API_KEY`
 
 Deployment behavior by network:
+
 - `hardhat` and `localhost`: deploys `MockWeatherOracle` automatically.
 - Non-local networks: requires `EXTERNAL_WEATHER_ORACLE_ADDRESS` and does not deploy a mock.
 

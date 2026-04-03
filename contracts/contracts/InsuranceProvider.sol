@@ -450,8 +450,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
 
   /// @notice Returns provider-side settlement metadata for a known policy.
   /// @param policyAddress Target policy address.
-  /// @return settlementType Settlement type encoded as uint8 (0 none, 1 payout, 2 expiry).
-  /// @return settledAt Timestamp when provider marked settlement, or zero if unsettled.
+  /// @return Settlement type encoded as uint8 (0 = none, 1 = payout, 2 = expiry).
+  /// @return Timestamp when provider marked settlement, or zero if unsettled.
   function getPolicySettlementInfo(address policyAddress) external view returns (uint8, uint64) {
     _assertKnownPolicy(policyAddress);
     PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
