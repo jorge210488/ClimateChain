@@ -1491,6 +1491,27 @@ describe("InsuranceProvider", function () {
     expect(await oracle.strictPolicyRegistryMode()).to.equal(true);
   });
 
+  it("allows resetting policy registry after disabling strict mode", async function () {
+    const { oracle, provider } = await loadFixture(deployFixture);
+
+    const providerAddress = await provider.getAddress();
+
+    await expect(oracle.setStrictPolicyRegistryMode(true))
+      .to.emit(oracle, "StrictPolicyRegistryModeUpdated")
+      .withArgs(true);
+    expect(await oracle.strictPolicyRegistryMode()).to.equal(true);
+
+    await expect(oracle.setStrictPolicyRegistryMode(false))
+      .to.emit(oracle, "StrictPolicyRegistryModeUpdated")
+      .withArgs(false);
+    expect(await oracle.strictPolicyRegistryMode()).to.equal(false);
+
+    await expect(oracle.setPolicyRegistry(ethers.ZeroAddress))
+      .to.emit(oracle, "PolicyRegistryUpdated")
+      .withArgs(providerAddress, ethers.ZeroAddress);
+    expect(await oracle.policyRegistry()).to.equal(ethers.ZeroAddress);
+  });
+
   it("rejects weather updates and requests outside policy window", async function () {
     const { insured, oracle, provider } = await loadFixture(deployFixture);
 

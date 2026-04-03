@@ -261,12 +261,12 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   /// @param coverageAmountWei Coverage amount in wei.
   /// @param rainfallThresholdMm Trigger threshold in millimeters.
   /// @param durationDays Policy duration in days.
-  /// @return policyAddress Address of newly deployed policy contract.
+  /// @return Address of newly deployed policy contract.
   function createPolicy(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
     uint32 durationDays
-  ) external payable nonReentrant returns (address policyAddress) {
+  ) external payable nonReentrant returns (address) {
     _validatePolicyCreationInputs(coverageAmountWei, rainfallThresholdMm, durationDays, msg.value);
     _assertNoTrackedBalanceDeficitExcludingIncomingValue(msg.value);
 
@@ -286,7 +286,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
       endTimestamp
     );
 
-    policyAddress = address(policy);
+    address policyAddress = address(policy);
     IInsurancePolicy(policyAddress).activate{value: msg.value}();
 
     allPolicies.push(policyAddress);
@@ -309,6 +309,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
       startTimestamp,
       endTimestamp
     );
+
+    return policyAddress;
   }
 
   /// @notice Requests weather data update for a known policy.
@@ -519,7 +521,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     uint256 limit
   ) private view returns (address[] memory page, uint256 total) {
     total = source.length;
-    if (offset == total || offset > total || limit == 0) return (new address[](0), total);
+    // solhint-disable-next-line gas-strict-inequalities
+    if (offset >= total || limit == 0) return (new address[](0), total);
 
     uint256 endExclusive = offset + limit;
     if (endExclusive > total || endExclusive < offset) {
