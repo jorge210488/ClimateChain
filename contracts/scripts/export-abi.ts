@@ -17,6 +17,7 @@ const CONTRACTS_TO_EXPORT = new Set([
   "InsuranceProvider",
   "InsurancePolicy",
   "IInsuranceProviderRegistry",
+  "IInsuranceProviderCreatePolicy",
   "IInsurancePolicy",
   "IWeatherOracleAdapter",
   "MockWeatherOracle",

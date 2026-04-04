@@ -28,6 +28,13 @@ interface CreatedPolicy {
   settlement: SettlementPath;
 }
 
+interface CoverageAccountingSnapshot {
+  unsettledCoverageWei: bigint;
+  payoutCoverageWei: bigint;
+  expiredCoverageWei: bigint;
+  totalCoverageWei: bigint;
+}
+
 describe("InsuranceProvider invariants", function () {
   async function deployFixture() {
     const [owner, insuredA, insuredB] = await ethers.getSigners();
@@ -104,6 +111,63 @@ describe("InsuranceProvider invariants", function () {
     expect(onChainBalanceWei).to.equal(trackedWei + untrackedWei);
   }
 
+  async function snapshotCoverageAccounting(
+    provider: Awaited<ReturnType<typeof deployFixture>>["provider"],
+  ): Promise<CoverageAccountingSnapshot> {
+    const totalPolicies = await provider.getAllPoliciesCount();
+    let unsettledCoverageWei = 0n;
+    let payoutCoverageWei = 0n;
+    let expiredCoverageWei = 0n;
+    let totalCoverageWei = 0n;
+
+    for (let index = 0n; index < totalPolicies; index += 1n) {
+      const policyAddress = await provider.getPolicyAt(index);
+      const [coverageWei, , settled] = await provider.getPolicyFinancials(policyAddress);
+      const [settlementType, settledAt] = await provider.getPolicySettlementInfo(policyAddress);
+
+      totalCoverageWei += coverageWei;
+
+      if (settlementType == 0n) {
+        expect(settled).to.equal(false);
+        expect(settledAt).to.equal(0n);
+        unsettledCoverageWei += coverageWei;
+      } else if (settlementType == 1n) {
+        expect(settled).to.equal(true);
+        expect(settledAt).to.be.gt(0n);
+        payoutCoverageWei += coverageWei;
+      } else {
+        expect(settlementType).to.equal(2n);
+        expect(settled).to.equal(true);
+        expect(settledAt).to.be.gt(0n);
+        expiredCoverageWei += coverageWei;
+      }
+    }
+
+    return {
+      unsettledCoverageWei,
+      payoutCoverageWei,
+      expiredCoverageWei,
+      totalCoverageWei,
+    };
+  }
+
+  async function assertReserveCoverageCrossAccountingInvariant(
+    provider: Awaited<ReturnType<typeof deployFixture>>["provider"],
+    initialReserveWei: bigint,
+  ) {
+    const reserveWei = await provider.coverageReserveWei();
+    const coverageSnapshot = await snapshotCoverageAccounting(provider);
+
+    expect(initialReserveWei - reserveWei).to.equal(
+      coverageSnapshot.unsettledCoverageWei + coverageSnapshot.payoutCoverageWei,
+    );
+    expect(coverageSnapshot.totalCoverageWei).to.equal(
+      coverageSnapshot.unsettledCoverageWei +
+        coverageSnapshot.payoutCoverageWei +
+        coverageSnapshot.expiredCoverageWei,
+    );
+  }
+
   it("preserves reserve and registration invariants across creation matrix", async function () {
     const { insuredA, insuredB, provider } = await loadFixture(deployFixture);
 
@@ -153,6 +217,7 @@ describe("InsuranceProvider invariants", function () {
       expect(await provider.premiumBalanceWei()).to.equal(0n);
 
       await assertAccountingInvariant(provider);
+      await assertReserveCoverageCrossAccountingInvariant(provider, initialReserveWei);
     }
   });
 
@@ -191,7 +256,8 @@ describe("InsuranceProvider invariants", function () {
     ];
 
     const createdPolicies: CreatedPolicy[] = [];
-    let expectedReserveWei = await provider.coverageReserveWei();
+    const initialReserveWei = await provider.coverageReserveWei();
+    let expectedReserveWei = initialReserveWei;
     let expectedPremiumBalanceWei = 0n;
 
     for (let i = 0; i < settlementSpecs.length; i += 1) {
@@ -203,6 +269,7 @@ describe("InsuranceProvider invariants", function () {
 
     expect(await provider.coverageReserveWei()).to.equal(expectedReserveWei);
     await assertAccountingInvariant(provider);
+    await assertReserveCoverageCrossAccountingInvariant(provider, initialReserveWei);
 
     for (const created of createdPolicies) {
       if (created.settlement === "payout") {
@@ -246,6 +313,7 @@ describe("InsuranceProvider invariants", function () {
       expect(await provider.coverageReserveWei()).to.equal(expectedReserveWei);
       expect(await provider.premiumBalanceWei()).to.equal(expectedPremiumBalanceWei);
       await assertAccountingInvariant(provider);
+      await assertReserveCoverageCrossAccountingInvariant(provider, initialReserveWei);
     }
   });
 });

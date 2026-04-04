@@ -267,6 +267,24 @@ async function ensureCoverageReserve(
   console.log(`Coverage reserve funded with ${ethers.formatEther(missingReserveWei)} ETH.`);
 }
 
+async function getUnsettledCoverageCommitmentWei(
+  providerContract: Awaited<ReturnType<typeof ethers.getContractAt>>,
+): Promise<bigint> {
+  const totalPolicies = await providerContract.getAllPoliciesCount();
+  let unsettledCoverageCommitmentWei = 0n;
+
+  for (let index = 0n; index < totalPolicies; index += 1n) {
+    const policyAddress = await providerContract.getPolicyAt(index);
+    const [coverageWei, , settled] = await providerContract.getPolicyFinancials(policyAddress);
+
+    if (!settled) {
+      unsettledCoverageCommitmentWei += coverageWei;
+    }
+  }
+
+  return unsettledCoverageCommitmentWei;
+}
+
 async function ensureMockPolicyRegistryParity(
   providerContract: Awaited<ReturnType<typeof ethers.getContractAt>>,
   ownerSigner: Awaited<ReturnType<typeof ethers.getSigners>>[number],
@@ -370,7 +388,16 @@ async function main(): Promise<void> {
   }
 
   const totalRequiredCoverageWei = options.coverageWei * BigInt(options.totalPolicies);
-  await ensureCoverageReserve(providerContract, ownerSigner, totalRequiredCoverageWei);
+  const unsettledCoverageCommitmentWei = await getUnsettledCoverageCommitmentWei(providerContract);
+  const reserveTargetWei = totalRequiredCoverageWei + unsettledCoverageCommitmentWei;
+
+  if (unsettledCoverageCommitmentWei > 0n) {
+    console.log(
+      `Detected ${ethers.formatEther(unsettledCoverageCommitmentWei)} ETH already committed by unsettled policies; reserve target includes this commitment before starting new bursts.`,
+    );
+  }
+
+  await ensureCoverageReserve(providerContract, ownerSigner, reserveTargetWei);
 
   const policiesBefore = await providerContract.getAllPoliciesCount();
   const providerAddressLowerCase = (await providerContract.getAddress()).toLowerCase();

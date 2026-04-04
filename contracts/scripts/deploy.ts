@@ -75,6 +75,13 @@ async function main(): Promise<void> {
   const providerAddress = await insuranceProvider.getAddress();
   console.log("InsuranceProvider deployed at:", providerAddress);
 
+  const coverageReserveWei = await insuranceProvider.coverageReserveWei();
+  if (coverageReserveWei == 0n) {
+    console.log(
+      "[WARN] Coverage reserve is empty. Fund with fundCoverageReserve() before creating policies.",
+    );
+  }
+
   if (isLocalNetwork && mockWeatherOracleAddress) {
     const localOracle = await ethers.getContractAt("MockWeatherOracle", mockWeatherOracleAddress);
     const setRegistryTx = await localOracle.setPolicyRegistry(providerAddress);

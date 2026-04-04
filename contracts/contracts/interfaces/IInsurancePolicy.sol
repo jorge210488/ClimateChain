@@ -84,9 +84,8 @@ interface IInsurancePolicy {
   function oracle() external view returns (address);
 
   /// @notice Returns insured account that receives payout on trigger.
-  /// @return Insured account address.
-  // solhint-disable-next-line use-natspec
-  function insured() external view returns (address payable);
+  /// @return insuredAddress Insured account address.
+  function insured() external view returns (address payable insuredAddress);
 
   /// @notice Indicates whether trigger condition has been met.
   /// @return True when rainfall threshold condition has been met.

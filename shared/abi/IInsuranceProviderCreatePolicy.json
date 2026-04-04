@@ -1,0 +1,36 @@
+{
+  "contractName": "IInsuranceProviderCreatePolicy",
+  "sourceName": "contracts/interfaces/IInsuranceProviderCreatePolicy.sol",
+  "generatedAt": "2026-04-04T20:00:29.469Z",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "coverageAmountWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallThresholdMm",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "durationDays",
+          "type": "uint32"
+        }
+      ],
+      "name": "createPolicy",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "function"
+    }
+  ]
+}

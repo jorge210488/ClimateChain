@@ -102,10 +102,6 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       policyAddress,
       abi.encodeCall(IInsurancePolicy.oracle, ())
     );
-    // Shape validation only; values are intentionally discarded.
-    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.premiumWei, ()));
-    // Shape validation only; values are intentionally discarded.
-    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.coverageWei, ()));
     bytes memory startResponse = _readCallResponse(
       policyAddress,
       abi.encodeCall(IInsurancePolicy.startTimestamp, ())
@@ -114,8 +110,7 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
       policyAddress,
       abi.encodeCall(IInsurancePolicy.endTimestamp, ())
     );
-    // Shape validation only; values are intentionally discarded.
-    _readCallResponse(policyAddress, abi.encodeCall(IInsurancePolicy.conditionMet, ()));
+    // Minimal shape checks plus oracle ownership are sufficient for mock provenance validation.
 
     uint8 policyStatus = abi.decode(statusResponse, (uint8));
     address policyOracle = abi.decode(oracleResponse, (address));

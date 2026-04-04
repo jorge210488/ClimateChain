@@ -7,16 +7,26 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {InsurancePolicy} from "./InsurancePolicy.sol";
 import {IInsurancePolicy} from "./interfaces/IInsurancePolicy.sol";
+import {IInsuranceProviderCreatePolicy} from "./interfaces/IInsuranceProviderCreatePolicy.sol";
 import {IInsuranceProviderRegistry} from "./interfaces/IInsuranceProviderRegistry.sol";
 import {IWeatherOracleAdapter} from "./interfaces/IWeatherOracleAdapter.sol";
 
 /// @title InsuranceProvider
 /// @notice Manages policy creation, weather requests, and treasury accounting for coverage and premiums.
 /// @author ClimateChain
-contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegistry {
+contract InsuranceProvider is
+  Ownable,
+  ReentrancyGuard,
+  IInsuranceProviderRegistry,
+  IInsuranceProviderCreatePolicy
+{
+  /// @notice Provider-side settlement stage for one policy.
   enum SettlementType {
+    /// @notice Policy has not been settled in provider storage.
     None,
+    /// @notice Policy settled through payout execution.
     Payout,
+    /// @notice Policy settled through expiry flow.
     Expiry
   }
 
@@ -26,7 +36,6 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     uint256 premiumWei;
     uint64 settledAt;
     SettlementType settlementType;
-    bool settled;
   }
 
   /// @notice Denominator for basis-points calculations.
@@ -86,12 +95,8 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   /// @notice Emitted when provider oracle address is updated for future policies.
   /// @param previousOracle Oracle used before update.
   /// @param newOracle Oracle used after update.
-  /// @param appliesToNewPoliciesOnly Always true because update only affects policies created after this change.
-  event WeatherOracleUpdated(
-    address indexed previousOracle,
-    address indexed newOracle,
-    bool appliesToNewPoliciesOnly
-  );
+  /// @dev Event applies only to policies created after this update.
+  event WeatherOracleUpdated(address indexed previousOracle, address indexed newOracle);
   /// @notice Emitted when a new policy is created and activated.
   /// @param insured Insured account that created policy.
   /// @param policyAddress Deployed policy contract address.
@@ -185,7 +190,7 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     weatherOracle = IWeatherOracleAdapter(newOracle);
 
     // Existing deployed policies keep their constructor oracle address.
-    emit WeatherOracleUpdated(previousOracle, newOracle, true);
+    emit WeatherOracleUpdated(previousOracle, newOracle);
   }
 
   /// @notice Adds owner funds to coverage reserve.
@@ -294,7 +299,6 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     policyFinancialsByPolicy[policyAddress] = PolicyFinancials({
       coverageWei: coverageAmountWei,
       premiumWei: msg.value,
-      settled: false,
       settlementType: SettlementType.None,
       settledAt: 0
     });
@@ -329,13 +333,13 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     _assertNoTrackedBalanceDeficit();
 
     PolicyFinancials storage policyFinancials = policyFinancialsByPolicy[policyAddress];
-    if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
+    if (policyFinancials.settlementType != SettlementType.None)
+      revert PolicyAlreadySettledInProvider(policyAddress);
     uint256 coveragePaidWei = policyFinancials.coverageWei;
     uint256 premiumRecoveredWei = policyFinancials.premiumWei;
     uint64 settledAt = uint64(block.timestamp);
 
     // Apply all state effects before external interaction to preserve CEI ordering.
-    policyFinancials.settled = true;
     policyFinancials.settlementType = SettlementType.Payout;
     policyFinancials.settledAt = settledAt;
     premiumBalanceWei += premiumRecoveredWei;
@@ -361,13 +365,13 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
     _assertNoTrackedBalanceDeficit();
 
     PolicyFinancials storage policyFinancials = policyFinancialsByPolicy[policyAddress];
-    if (policyFinancials.settled) revert PolicyAlreadySettledInProvider(policyAddress);
+    if (policyFinancials.settlementType != SettlementType.None)
+      revert PolicyAlreadySettledInProvider(policyAddress);
     uint256 coverageRecoveredWei = policyFinancials.coverageWei;
     uint256 premiumRecoveredWei = policyFinancials.premiumWei;
     uint64 settledAt = uint64(block.timestamp);
 
     // Apply all state effects before external interaction to preserve CEI ordering.
-    policyFinancials.settled = true;
     policyFinancials.settlementType = SettlementType.Expiry;
     policyFinancials.settledAt = settledAt;
     coverageReserveWei += coverageRecoveredWei;
@@ -439,14 +443,18 @@ contract InsuranceProvider is Ownable, ReentrancyGuard, IInsuranceProviderRegist
   /// @param policyAddress Target policy address.
   /// @return coverageWei Recorded coverage amount in wei.
   /// @return premiumWei Recorded premium amount in wei.
-  /// @return settled True when provider has settled policy through payout or expiry.
+  /// @return isSettled True when provider has settled policy through payout or expiry.
   function getPolicyFinancials(
     address policyAddress
-  ) external view returns (uint256 coverageWei, uint256 premiumWei, bool settled) {
+  ) external view returns (uint256 coverageWei, uint256 premiumWei, bool isSettled) {
     _assertKnownPolicy(policyAddress);
     PolicyFinancials memory policyFinancials = policyFinancialsByPolicy[policyAddress];
 
-    return (policyFinancials.coverageWei, policyFinancials.premiumWei, policyFinancials.settled);
+    return (
+      policyFinancials.coverageWei,
+      policyFinancials.premiumWei,
+      policyFinancials.settlementType != SettlementType.None
+    );
   }
 
   /// @notice Returns provider-side settlement metadata for a known policy.

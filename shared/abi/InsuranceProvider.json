@@ -1,7 +1,7 @@
 {
   "contractName": "InsuranceProvider",
   "sourceName": "contracts/InsuranceProvider.sol",
-  "generatedAt": "2026-04-03T14:53:25.848Z",
+  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
     {
       "inputs": [
@@ -513,12 +513,6 @@
           "internalType": "address",
           "name": "newOracle",
           "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "bool",
-          "name": "appliesToNewPoliciesOnly",
-          "type": "bool"
         }
       ],
       "name": "WeatherOracleUpdated",
@@ -790,17 +784,17 @@
       "outputs": [
         {
           "internalType": "uint256",
-          "name": "",
+          "name": "coverageWei",
           "type": "uint256"
         },
         {
           "internalType": "uint256",
-          "name": "",
+          "name": "premiumWei",
           "type": "uint256"
         },
         {
           "internalType": "bool",
-          "name": "",
+          "name": "isSettled",
           "type": "bool"
         }
       ],
@@ -819,12 +813,12 @@
       "outputs": [
         {
           "internalType": "uint8",
-          "name": "",
+          "name": "settlementType",
           "type": "uint8"
         },
         {
           "internalType": "uint64",
-          "name": "",
+          "name": "settledAt",
           "type": "uint64"
         }
       ],

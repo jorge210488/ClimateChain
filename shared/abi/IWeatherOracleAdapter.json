@@ -1,7 +1,7 @@
 {
   "contractName": "IWeatherOracleAdapter",
   "sourceName": "contracts/interfaces/IWeatherOracleAdapter.sol",
-  "generatedAt": "2026-04-03T14:53:25.848Z",
+  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
     {
       "inputs": [

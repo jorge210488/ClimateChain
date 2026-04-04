@@ -310,6 +310,58 @@ function ensureHardhatBuildInfo(projectRoot: string): void {
   }
 }
 
+function runHardhatCommand(projectRoot: string, args: string[]): void {
+  const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
+  const run = spawnSync(npxCommand, ["hardhat", ...args], {
+    cwd: projectRoot,
+    stdio: "inherit",
+  });
+
+  if (run.status !== 0) {
+    const statusLabel = run.status === null ? "null" : String(run.status);
+    const signalLabel = run.signal ?? "none";
+
+    throw new Error(
+      `Hardhat ${args.join(" ")} failed (status: ${statusLabel}, signal: ${signalLabel}).`,
+    );
+  }
+}
+
+function rebuildHardhatArtifacts(projectRoot: string): void {
+  console.log("Detected stale build artifacts for Slither. Rebuilding Hardhat artifacts...");
+  runHardhatCommand(projectRoot, ["clean"]);
+  runHardhatCommand(projectRoot, ["compile"]);
+}
+
+function executeSlitherRun(
+  projectRoot: string,
+  slitherCommand: SlitherCommand,
+  slitherArgs: string[],
+): { status: number | null; signal: NodeJS.Signals | null; output: string } {
+  const slitherRun = spawnSync(slitherCommand.command, slitherArgs, {
+    cwd: projectRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const stdout = slitherRun.stdout ?? "";
+  const stderr = slitherRun.stderr ?? "";
+
+  if (stdout.length > 0) {
+    process.stdout.write(stdout);
+  }
+
+  if (stderr.length > 0) {
+    process.stderr.write(stderr);
+  }
+
+  return {
+    status: slitherRun.status,
+    signal: slitherRun.signal,
+    output: `${stdout}\n${stderr}`,
+  };
+}
+
 function runSlitherIfAvailable(projectRoot: string): boolean {
   const slitherCommand = resolveSlitherCommand(projectRoot);
 
@@ -333,10 +385,15 @@ function runSlitherIfAvailable(projectRoot: string): boolean {
   console.log(
     `Slither detected via ${slitherCommand.label}. Running Stage-04 static analysis profile...`,
   );
-  const slitherRun = spawnSync(slitherCommand.command, slitherArgs, {
-    cwd: projectRoot,
-    stdio: "inherit",
-  });
+  let slitherRun = executeSlitherRun(projectRoot, slitherCommand, slitherArgs);
+
+  if (
+    slitherRun.status !== 0 &&
+    /out of sync with the build artifacts on disk/i.test(slitherRun.output)
+  ) {
+    rebuildHardhatArtifacts(projectRoot);
+    slitherRun = executeSlitherRun(projectRoot, slitherCommand, slitherArgs);
+  }
 
   if (slitherRun.status !== 0) {
     const statusLabel = slitherRun.status === null ? "null" : String(slitherRun.status);

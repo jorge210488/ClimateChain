@@ -179,6 +179,36 @@ describe("InsuranceProvider", function () {
     expect(settledAfterSettlement).to.equal(true);
   });
 
+  it("returns provider-side financial snapshot for known policy after expiry settlement", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const premium = ethers.parseEther("0.10");
+    const coverage = ethers.parseEther("1.0");
+
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      coverage,
+      premium,
+      30,
+      1,
+    );
+
+    const endTimestamp = await policy.endTimestamp();
+    await time.increaseTo(Number(endTimestamp));
+    await provider.expirePolicy(policyAddress);
+
+    const [coverageAfterSettlement, premiumAfterSettlement, settledAfterSettlement] =
+      await provider.getPolicyFinancials(policyAddress);
+    const [settlementType, settledAt] = await provider.getPolicySettlementInfo(policyAddress);
+
+    expect(coverageAfterSettlement).to.equal(coverage);
+    expect(premiumAfterSettlement).to.equal(premium);
+    expect(settledAfterSettlement).to.equal(true);
+    expect(settlementType).to.equal(2n);
+    expect(settledAt).to.be.gt(0n);
+  });
+
   it("rejects provider-side financial snapshot for unknown policy address", async function () {
     const { provider } = await loadFixture(deployFixture);
 
@@ -888,7 +918,7 @@ describe("InsuranceProvider", function () {
 
     await expect(provider.setWeatherOracle(await newOracle.getAddress()))
       .to.emit(provider, "WeatherOracleUpdated")
-      .withArgs(await oracle.getAddress(), await newOracle.getAddress(), true);
+      .withArgs(await oracle.getAddress(), await newOracle.getAddress());
 
     const secondPolicy = await createPolicyForInsured(
       provider,

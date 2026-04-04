@@ -9,11 +9,17 @@ import {IInsurancePolicy} from "./interfaces/IInsurancePolicy.sol";
 /// @notice Represents one parametric policy lifecycle managed by InsuranceProvider.
 /// @author ClimateChain
 contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
+  /// @notice Policy lifecycle status used by provider/oracle flows.
   enum PolicyStatus {
+    /// @notice Policy deployed but not activated with premium.
     Created,
+    /// @notice Policy activated and weather window checks are allowed.
     Active,
+    /// @notice Trigger condition met and payout path is enabled.
     Triggered,
+    /// @notice Coverage payout executed successfully.
     PaidOut,
+    /// @notice Policy expired without payout execution.
     Expired
   }
 
