@@ -96,6 +96,51 @@ describe("InsuranceProvider invariants", function () {
     };
   }
 
+  async function createPolicyBySpecWithMetadata(
+    provider: Awaited<ReturnType<typeof deployFixture>>["provider"],
+    insured: Awaited<ReturnType<typeof deployFixture>>["insuredA"],
+    spec: PolicySpec,
+    metadataLabel: string,
+  ): Promise<CreatedPolicy> {
+    const minimumPremiumWei = await computeMinimumPremiumWei(provider, spec.coverageWei);
+    const premiumWei = minimumPremiumWei + spec.premiumMarginWei;
+
+    const currentTimestamp = await time.latest();
+    const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+    const requestedStartTimestamp = BigInt(currentTimestamp) + leadTimeSeconds + 120n;
+    const regionCode = ethers.encodeBytes32String(metadataLabel);
+
+    await provider
+      .connect(insured)
+      .createPolicyWithMetadata(
+        spec.coverageWei,
+        spec.thresholdMm,
+        spec.durationDays,
+        regionCode,
+        requestedStartTimestamp,
+        { value: premiumWei },
+      );
+
+    const policies = await provider.getPoliciesByInsured(insured.address);
+    const policyAddress = policies[policies.length - 1];
+    const policy = await ethers.getContractAt("InsurancePolicy", policyAddress);
+
+    const [storedRegionCode, storedRequestedStartTimestamp] =
+      await provider.getPolicyMetadata(policyAddress);
+    expect(storedRegionCode).to.equal(regionCode);
+    expect(storedRequestedStartTimestamp).to.equal(requestedStartTimestamp);
+    expect(await policy.regionCode()).to.equal(regionCode);
+
+    return {
+      policyAddress,
+      policy,
+      premiumWei,
+      coverageWei: spec.coverageWei,
+      thresholdMm: spec.thresholdMm,
+      settlement: spec.settlement,
+    };
+  }
+
   async function assertAccountingInvariant(
     provider: Awaited<ReturnType<typeof deployFixture>>["provider"],
   ) {
@@ -212,6 +257,58 @@ describe("InsuranceProvider invariants", function () {
 
       expect(await provider.isPolicyCreated(created.policyAddress)).to.equal(true);
       expect(await created.policy.status()).to.equal(POLICY_STATUS.Active);
+      expect(await provider.getAllPoliciesCount()).to.equal(BigInt(i + 1));
+      expect(await provider.coverageReserveWei()).to.equal(expectedReserveWei);
+      expect(await provider.premiumBalanceWei()).to.equal(0n);
+
+      await assertAccountingInvariant(provider);
+      await assertReserveCoverageCrossAccountingInvariant(provider, initialReserveWei);
+    }
+  });
+
+  it("preserves reserve and registration invariants across metadata creation matrix", async function () {
+    const { insuredA, insuredB, provider } = await loadFixture(deployFixture);
+
+    const metadataCreationSpecs: PolicySpec[] = [
+      {
+        coverageWei: ethers.parseEther("0.55"),
+        thresholdMm: 18,
+        durationDays: 9,
+        premiumMarginWei: 13n,
+        settlement: "payout",
+      },
+      {
+        coverageWei: ethers.parseEther("0.95"),
+        thresholdMm: 30,
+        durationDays: 15,
+        premiumMarginWei: 21n,
+        settlement: "expiry",
+      },
+      {
+        coverageWei: ethers.parseEther("0.75"),
+        thresholdMm: 27,
+        durationDays: 6,
+        premiumMarginWei: 35n,
+        settlement: "payout",
+      },
+    ];
+
+    const initialReserveWei = await provider.coverageReserveWei();
+    let expectedReserveWei = initialReserveWei;
+
+    for (let i = 0; i < metadataCreationSpecs.length; i += 1) {
+      const insured = i % 2 === 0 ? insuredA : insuredB;
+      const created = await createPolicyBySpecWithMetadata(
+        provider,
+        insured,
+        metadataCreationSpecs[i],
+        `INV_META_${i}`,
+      );
+      expectedReserveWei -= created.coverageWei;
+
+      expect(await provider.isPolicyCreated(created.policyAddress)).to.equal(true);
+      expect(await created.policy.status()).to.equal(POLICY_STATUS.Active);
+      expect(await created.policy.getStatus()).to.be.lte(4n);
       expect(await provider.getAllPoliciesCount()).to.equal(BigInt(i + 1));
       expect(await provider.coverageReserveWei()).to.equal(expectedReserveWei);
       expect(await provider.premiumBalanceWei()).to.equal(0n);

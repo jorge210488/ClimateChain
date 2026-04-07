@@ -15,4 +15,19 @@ interface IInsuranceProviderCreatePolicy {
     uint256 rainfallThresholdMm,
     uint32 durationDays
   ) external payable returns (address);
+
+  /// @notice Creates a policy with explicit risk-bucket metadata and requested start timestamp.
+  /// @param coverageAmountWei Coverage amount requested.
+  /// @param rainfallThresholdMm Rainfall trigger threshold.
+  /// @param durationDays Policy duration in days.
+  /// @param regionCode Region/risk-bucket code used by downstream off-chain systems.
+  /// @param requestedStartTimestamp Requested policy start timestamp.
+  /// @return Newly created policy address.
+  function createPolicyWithMetadata(
+    uint256 coverageAmountWei,
+    uint256 rainfallThresholdMm,
+    uint32 durationDays,
+    bytes32 regionCode,
+    uint64 requestedStartTimestamp
+  ) external payable returns (address);
 }

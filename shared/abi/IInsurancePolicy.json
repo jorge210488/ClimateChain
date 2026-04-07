@@ -1,8 +1,58 @@
 {
+  "schemaVersion": 1,
   "contractName": "IInsurancePolicy",
   "sourceName": "contracts/interfaces/IInsurancePolicy.sol",
-  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "createdAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "PayoutClaimCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "claimedAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "PayoutClaimed",
+      "type": "event"
+    },
     {
       "anonymous": false,
       "inputs": [
@@ -127,6 +177,44 @@
       "inputs": [
         {
           "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "fulfilledAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "WeatherDataFulfillmentTracked",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "requestedAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "WeatherDataRequestTracked",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "address",
           "name": "policy",
           "type": "address"
@@ -146,6 +234,13 @@
       "name": "activate",
       "outputs": [],
       "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimPendingPayout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -204,6 +299,24 @@
     {
       "inputs": [
         {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallMm",
+          "type": "uint256"
+        }
+      ],
+      "name": "fulfillWeatherData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint256",
           "name": "rainfallMm",
           "type": "uint256"
@@ -246,7 +359,7 @@
       "outputs": [
         {
           "internalType": "address payable",
-          "name": "",
+          "name": "insuredAddress",
           "type": "address"
         }
       ],
@@ -333,6 +446,45 @@
     },
     {
       "inputs": [],
+      "name": "pendingPayoutWei",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingWeatherRequestId",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingWeatherRequestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "premiumWei",
       "outputs": [
         {
@@ -359,8 +511,27 @@
     },
     {
       "inputs": [],
+      "name": "regionCode",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "requestWeatherData",
-      "outputs": [],
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
       "stateMutability": "nonpayable",
       "type": "function"
     },

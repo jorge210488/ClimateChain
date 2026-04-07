@@ -23,6 +23,12 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     Expired
   }
 
+  struct WeatherRequestState {
+    bytes32 requestId;
+    uint64 requestedAt;
+    uint64 nonce;
+  }
+
   /// @notice Address that receives coverage payout when policy is triggered.
   address payable public insured;
   /// @notice Authorized oracle address that can fulfill weather data.
@@ -33,6 +39,8 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   uint256 public coverageWei;
   /// @notice Rainfall trigger threshold in millimeters.
   uint256 public rainfallThresholdMm;
+  /// @notice Region/risk-bucket code associated with policy.
+  bytes32 public regionCode;
   /// @notice Policy weather window start timestamp.
   uint64 public startTimestamp;
   /// @notice Policy weather window end timestamp.
@@ -41,23 +49,32 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   uint64 public lastOracleUpdateTimestamp;
   /// @notice Latest rainfall value submitted by oracle.
   uint256 public latestRainfallMm;
+  /// @notice Deferred payout amount claimable by insured when immediate transfer fails.
+  uint256 public pendingPayoutWei;
   /// @notice True when rainfall threshold has been met.
   bool public conditionMet;
   /// @notice Current policy status.
   PolicyStatus public status;
+  /// @notice Pending request tracking state used for oracle request-id lifecycle.
+  WeatherRequestState private weatherRequestState;
 
   error InvalidInsuredAddress();
   error InvalidPolicyWindow(uint64 startTimestamp, uint64 endTimestamp);
   error InvalidCoverageAmount();
   error InvalidPremiumAmount();
   error InvalidRainfallThreshold();
+  error InvalidRegionCode();
   error InvalidOracleAddress();
   error CoverageReserveMismatch(uint256 expected, uint256 received);
   error PremiumMismatch(uint256 expected, uint256 received);
   error OracleOnly(address caller);
   error InvalidStatus(uint8 expected, uint8 actual);
+  error NoPendingWeatherRequest();
+  error InvalidWeatherRequestId(bytes32 expectedRequestId, bytes32 providedRequestId);
   error PolicyNotActivated();
   error PolicyAlreadySettled();
+  error PendingPayoutNotAvailable();
+  error InsuredOnly(address caller);
   error PolicyNotEnded(uint64 currentTimestamp, uint64 endTimestamp);
   error PolicyOutsideWeatherWindow(
     uint64 currentTimestamp,
@@ -79,6 +96,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   /// @param premiumAmountWei Premium amount required to activate policy.
   /// @param coverageAmountWei Coverage amount reserved for payout.
   /// @param rainfallThresholdMm_ Trigger threshold in millimeters.
+  /// @param regionCode_ Region/risk-bucket code used by downstream consumers.
   /// @param startTimestamp_ Policy window start timestamp.
   /// @param endTimestamp_ Policy window end timestamp.
   constructor(
@@ -88,6 +106,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     uint256 premiumAmountWei,
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm_,
+    bytes32 regionCode_,
     uint64 startTimestamp_,
     uint64 endTimestamp_
   ) payable Ownable(policyOwner) {
@@ -97,6 +116,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     if (coverageAmountWei == 0) revert InvalidCoverageAmount();
     if (premiumAmountWei == 0) revert InvalidPremiumAmount();
     if (rainfallThresholdMm_ == 0) revert InvalidRainfallThreshold();
+    if (regionCode_ == bytes32(0)) revert InvalidRegionCode();
     // solhint-disable-next-line gas-strict-inequalities
     if (startTimestamp_ >= endTimestamp_)
       revert InvalidPolicyWindow(startTimestamp_, endTimestamp_);
@@ -108,6 +128,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     premiumWei = premiumAmountWei;
     coverageWei = coverageAmountWei;
     rainfallThresholdMm = rainfallThresholdMm_;
+    regionCode = regionCode_;
     startTimestamp = startTimestamp_;
     endTimestamp = endTimestamp_;
     status = PolicyStatus.Created;
@@ -120,44 +141,64 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
 
     _transitionTo(PolicyStatus.Active);
     emit PolicyActivated(insured, premiumWei, coverageWei);
+    _openWeatherRequest();
   }
 
   /// @notice Emits weather request event while policy remains inside active window.
-  function requestWeatherData() external onlyOwner {
+  /// @return requestId Canonical request id expected on oracle callback.
+  function requestWeatherData() external onlyOwner returns (bytes32 requestId) {
     _requireStatus(PolicyStatus.Active);
     _requireWeatherWindowOpen();
-    emit WeatherDataRequested(address(this), uint64(block.timestamp));
+
+    return _openWeatherRequest();
   }
 
   /// @notice Stores oracle weather input and marks policy as triggered when threshold is met.
   /// @param rainfallMm Observed rainfall value in millimeters.
   function fulfillWeatherData(uint256 rainfallMm) external onlyOracle {
-    _requireStatus(PolicyStatus.Active);
-    _requireWeatherWindowOpen();
-
-    latestRainfallMm = rainfallMm;
-    lastOracleUpdateTimestamp = uint64(block.timestamp);
-    // solhint-disable-next-line gas-strict-inequalities
-    conditionMet = rainfallMm >= rainfallThresholdMm;
-
-    if (conditionMet) {
-      _transitionTo(PolicyStatus.Triggered);
-    }
-
-    emit WeatherDataFulfilled(rainfallMm, conditionMet, lastOracleUpdateTimestamp);
+    _fulfillWeatherData(weatherRequestState.requestId, rainfallMm);
   }
 
-  /// @notice Executes payout to insured and forwards any remaining balance to provider.
+  /// @notice Stores oracle weather input and marks policy as triggered when threshold is met.
+  /// @param requestId Canonical request id expected by policy.
+  /// @param rainfallMm Observed rainfall value in millimeters.
+  function fulfillWeatherData(bytes32 requestId, uint256 rainfallMm) external onlyOracle {
+    _fulfillWeatherData(requestId, rainfallMm);
+  }
+
+  /// @notice Executes payout to insured and forwards any remaining non-locked balance to provider.
   function executePayout() external onlyOwner nonReentrant {
     _requireStatus(PolicyStatus.Triggered);
 
     _transitionTo(PolicyStatus.PaidOut);
-    emit PayoutExecuted(insured, coverageWei, uint64(block.timestamp));
 
+    pendingPayoutWei = 0;
     (bool success, ) = insured.call{value: coverageWei}("");
+
+    if (success) {
+      emit PayoutExecuted(insured, coverageWei, uint64(block.timestamp));
+    } else {
+      pendingPayoutWei = coverageWei;
+      emit PayoutClaimCreated(insured, coverageWei, uint64(block.timestamp));
+    }
+
+    _forwardBalanceToOwnerExcludingLockedAmount(pendingPayoutWei);
+  }
+
+  /// @notice Claims deferred payout when immediate payout transfer failed.
+  function claimPendingPayout() external nonReentrant {
+    if (msg.sender != insured) revert InsuredOnly(msg.sender);
+    _requireStatus(PolicyStatus.PaidOut);
+
+    uint256 claimAmountWei = pendingPayoutWei;
+    if (claimAmountWei == 0) revert PendingPayoutNotAvailable();
+
+    pendingPayoutWei = 0;
+    (bool success, ) = insured.call{value: claimAmountWei}("");
     if (!success) revert EthTransferFailed();
 
-    _forwardBalanceToOwner();
+    emit PayoutClaimed(insured, claimAmountWei, uint64(block.timestamp));
+    _forwardBalanceToOwnerExcludingLockedAmount(0);
   }
 
   /// @notice Expires policy after end timestamp and forwards all remaining funds to provider.
@@ -172,7 +213,19 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
 
     _transitionTo(PolicyStatus.Expired);
     emit PolicyExpired(insured, currentTimestamp);
-    _forwardBalanceToOwner();
+    _forwardBalanceToOwnerExcludingLockedAmount(0);
+  }
+
+  /// @notice Returns currently pending weather request id expected on oracle fulfill.
+  /// @return Pending request id or bytes32(0) when no request is pending.
+  function pendingWeatherRequestId() external view returns (bytes32) {
+    return weatherRequestState.requestId;
+  }
+
+  /// @notice Returns timestamp for currently pending weather request id.
+  /// @return Timestamp when pending request was registered, or zero if none pending.
+  function pendingWeatherRequestTimestamp() external view returns (uint64) {
+    return weatherRequestState.requestedAt;
   }
 
   /// @notice Returns current ETH balance held by this policy contract.
@@ -206,6 +259,35 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     return status == PolicyStatus.Active && _isWeatherWindowOpenAt(uint64(block.timestamp));
   }
 
+  /// @notice Stores one weather update and applies policy state transition when threshold is met.
+  /// @param requestId Canonical request id expected by policy.
+  /// @param rainfallMm Observed rainfall value in millimeters.
+  function _fulfillWeatherData(bytes32 requestId, uint256 rainfallMm) private {
+    _requireStatus(PolicyStatus.Active);
+    _requireWeatherWindowOpen();
+
+    bytes32 expectedRequestId = weatherRequestState.requestId;
+    if (expectedRequestId == bytes32(0)) revert NoPendingWeatherRequest();
+    if (requestId != expectedRequestId) {
+      revert InvalidWeatherRequestId(expectedRequestId, requestId);
+    }
+
+    weatherRequestState.requestId = bytes32(0);
+    weatherRequestState.requestedAt = 0;
+
+    latestRainfallMm = rainfallMm;
+    lastOracleUpdateTimestamp = uint64(block.timestamp);
+    // solhint-disable-next-line gas-strict-inequalities
+    conditionMet = rainfallMm >= rainfallThresholdMm;
+
+    if (conditionMet) {
+      _transitionTo(PolicyStatus.Triggered);
+    }
+
+    emit WeatherDataFulfilled(rainfallMm, conditionMet, lastOracleUpdateTimestamp);
+    emit WeatherDataFulfillmentTracked(expectedRequestId, lastOracleUpdateTimestamp);
+  }
+
   /// @notice Applies status transition and emits a canonical transition event.
   /// @param newStatus New status to set.
   function _transitionTo(PolicyStatus newStatus) private {
@@ -214,10 +296,31 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     emit PolicyStatusTransitioned(previousStatus, uint8(newStatus), uint64(block.timestamp));
   }
 
-  /// @notice Forwards any remaining policy ETH balance to provider owner.
-  function _forwardBalanceToOwner() private {
-    uint256 amountWei = address(this).balance;
-    if (amountWei == 0) return;
+  /// @notice Registers (or reuses) pending weather request id and emits observability events.
+  /// @return requestId Active request id expected on oracle callback.
+  function _openWeatherRequest() private returns (bytes32 requestId) {
+    if (weatherRequestState.requestId == bytes32(0)) {
+      ++weatherRequestState.nonce;
+      requestId = keccak256(abi.encodePacked(address(this), weatherRequestState.nonce));
+      weatherRequestState.requestId = requestId;
+      weatherRequestState.requestedAt = uint64(block.timestamp);
+    } else {
+      requestId = weatherRequestState.requestId;
+    }
+
+    uint64 requestedAt = uint64(block.timestamp);
+    emit WeatherDataRequested(address(this), requestedAt);
+    emit WeatherDataRequestTracked(requestId, requestedAt);
+  }
+
+  /// @notice Forwards policy ETH balance to provider owner while preserving optional locked amount.
+  /// @param lockedAmountWei Amount that must remain in policy balance.
+  function _forwardBalanceToOwnerExcludingLockedAmount(uint256 lockedAmountWei) private {
+    uint256 currentBalanceWei = address(this).balance;
+    if (currentBalanceWei < lockedAmountWei) return;
+    if (currentBalanceWei == lockedAmountWei) return;
+
+    uint256 amountWei = currentBalanceWei - lockedAmountWei;
 
     (bool success, ) = owner().call{value: amountWei}("");
     if (!success) revert EthTransferFailed();

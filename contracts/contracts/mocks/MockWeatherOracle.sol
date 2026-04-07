@@ -24,9 +24,15 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
 
   /// @notice Emitted when mock pushes weather data to policy.
   /// @param policyAddress Target policy address.
+  /// @param requestId Canonical request id consumed by policy fulfillment.
   /// @param rainfallMm Rainfall value pushed in millimeters.
   /// @param pushedAt Timestamp when weather data was pushed.
-  event WeatherDataPushed(address indexed policyAddress, uint256 rainfallMm, uint64 pushedAt);
+  event WeatherDataPushed(
+    address indexed policyAddress,
+    bytes32 indexed requestId,
+    uint256 rainfallMm,
+    uint64 pushedAt
+  );
   /// @notice Emitted when trusted policy registry is updated.
   /// @param previousRegistry Previous registry address.
   /// @param newRegistry New registry address.
@@ -48,15 +54,22 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
   /// @param rainfallMm Rainfall value in millimeters.
   function pushWeatherData(address policyAddress, uint256 rainfallMm) external onlyOwner {
     _assertValidPolicyAddress(policyAddress);
+    bytes32 requestId = IInsurancePolicy(policyAddress).pendingWeatherRequestId();
 
-    // Execute policy transition first; if policy rejects update, local snapshot must remain unchanged.
-    // This is safe in mock context: onlyOwner call, no ETH transfer, and no trusted callback path into oracle.
-    IInsurancePolicy(policyAddress).fulfillWeatherData(rainfallMm);
+    _pushWeatherData(policyAddress, requestId, rainfallMm);
+  }
 
-    lastRainfallMmByPolicy[policyAddress] = rainfallMm;
-    lastUpdatedAtByPolicy[policyAddress] = uint64(block.timestamp);
-
-    emit WeatherDataPushed(policyAddress, rainfallMm, uint64(block.timestamp));
+  /// @notice Pushes rainfall data to policy using explicit request-id provenance.
+  /// @param policyAddress Target policy contract address.
+  /// @param requestId Canonical request id expected by policy.
+  /// @param rainfallMm Rainfall value in millimeters.
+  function pushWeatherData(
+    address policyAddress,
+    bytes32 requestId,
+    uint256 rainfallMm
+  ) external onlyOwner {
+    _assertValidPolicyAddress(policyAddress);
+    _pushWeatherData(policyAddress, requestId, rainfallMm);
   }
 
   /// @notice Sets optional provider registry to validate policy provenance.
@@ -85,6 +98,21 @@ contract MockWeatherOracle is Ownable, IWeatherOracleAdapter {
 
     strictPolicyRegistryMode = enabled;
     emit StrictPolicyRegistryModeUpdated(enabled);
+  }
+
+  /// @notice Executes policy fulfillment call and stores local oracle snapshot.
+  /// @param policyAddress Target policy contract address.
+  /// @param requestId Canonical request id expected by policy.
+  /// @param rainfallMm Rainfall value in millimeters.
+  function _pushWeatherData(address policyAddress, bytes32 requestId, uint256 rainfallMm) private {
+    // Execute policy transition first; if policy rejects update, local snapshot must remain unchanged.
+    // This is safe in mock context: onlyOwner call, no ETH transfer, and no trusted callback path into oracle.
+    IInsurancePolicy(policyAddress).fulfillWeatherData(requestId, rainfallMm);
+
+    lastRainfallMmByPolicy[policyAddress] = rainfallMm;
+    lastUpdatedAtByPolicy[policyAddress] = uint64(block.timestamp);
+
+    emit WeatherDataPushed(policyAddress, requestId, rainfallMm, uint64(block.timestamp));
   }
 
   /// @notice Validates candidate policy shape, oracle binding, and optional registry provenance.

@@ -1,7 +1,7 @@
 {
+  "schemaVersion": 1,
   "contractName": "InsuranceProvider",
   "sourceName": "contracts/InsuranceProvider.sol",
-  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
     {
       "inputs": [
@@ -104,6 +104,22 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "requestedStartTimestamp",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint32",
+          "name": "durationDays",
+          "type": "uint32"
+        }
+      ],
+      "name": "InvalidPolicyWindowComputation",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "InvalidRainfallThreshold",
       "type": "error"
@@ -111,6 +127,27 @@
     {
       "inputs": [],
       "name": "InvalidRecipientAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidRegionCode",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "minimumAllowed",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "providedStart",
+          "type": "uint64"
+        }
+      ],
+      "name": "InvalidRequestedStartTimestamp",
       "type": "error"
     },
     {
@@ -384,6 +421,31 @@
           "type": "address"
         },
         {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "regionCode",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "requestedStartTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "name": "PolicyMetadataRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        },
+        {
           "indexed": false,
           "internalType": "uint256",
           "name": "coveragePaidWei",
@@ -434,6 +496,25 @@
         }
       ],
       "name": "PolicySettled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "PolicyWeatherDataRequestTracked",
       "type": "event"
     },
     {
@@ -533,6 +614,19 @@
     },
     {
       "inputs": [],
+      "name": "LEGACY_REGION_CODE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MAX_DURATION_DAYS",
       "outputs": [
         {
@@ -602,6 +696,45 @@
         }
       ],
       "name": "createPolicy",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "coverageAmountWei",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallThresholdMm",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "durationDays",
+          "type": "uint32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "regionCode",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "requestedStartTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "name": "createPolicyWithMetadata",
       "outputs": [
         {
           "internalType": "address",
@@ -809,6 +942,30 @@
           "type": "address"
         }
       ],
+      "name": "getPolicyMetadata",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "regionCode",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "requestedStartTimestamp",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        }
+      ],
       "name": "getPolicySettlementInfo",
       "outputs": [
         {
@@ -912,7 +1069,13 @@
         }
       ],
       "name": "requestPolicyWeatherData",
-      "outputs": [],
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
       "stateMutability": "nonpayable",
       "type": "function"
     },

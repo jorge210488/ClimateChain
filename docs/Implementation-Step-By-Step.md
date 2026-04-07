@@ -9,6 +9,11 @@ This document is the operational playbook for execution. It expands the implemen
 - Prefer small, reviewable commits aligned to one logical change.
 - Validate each stage with tests before moving to the next one.
 - Keep all code identifiers and environment variables in English.
+- Treat every stage as production-oriented, not as a lightweight placeholder checkpoint.
+- Ensure each stage integrates and executes with artifacts from previous completed stages.
+- Avoid runtime mock dependencies in dev/staging/testnet/prod profiles; mocks are for tests only.
+- Define one reproducible stage verification command per stage and keep it green before closure.
+- Preserve previously established quality gates when adding new complexity; only tighten, never bypass.
 
 ## 2. Stage Completion Rule (Mandatory)
 
@@ -85,6 +90,27 @@ Git template setup (local repository):
 
 - `git config commit.template .gitmessage.txt`
 
+## 2.4 Integration Continuity Standard (Mandatory)
+
+- A stage is complete only if it consumes and validates outputs from previous stages.
+- Stage reports must list which previous-stage artifacts were integrated (for example ABIs, manifests, DTO contracts, model schemas).
+- "Compiles locally" is not sufficient as completion evidence when cross-module integration is in scope.
+- If a dependency stage output is unavailable, mark the stage as blocked or partial; do not label it complete.
+
+## 2.5 Runtime Data and Mocking Policy (Mandatory)
+
+- Mock data is allowed only in automated tests and deterministic local test harnesses.
+- Runtime application paths (backend, oracle integration, ML calls, indexing) must use real integrations for dev/staging/testnet/prod profiles.
+- Any temporary simulation in non-test runtime must be explicitly tagged as transitional and cannot be used to declare production readiness.
+- Stage reports must declare runtime data sources used and whether each source is real or test-only.
+
+## 2.6 Production-Readiness Gate (Mandatory)
+
+- Each stage must define and run one stage gate command that validates the full scope claimed for that stage.
+- Stage completion requires passing local gate execution and CI execution when CI exists for that module.
+- Gate evidence must cover correctness, security checks, observability basics, and operational reproducibility relevant to that stage.
+- Each stage handoff must include explicit unresolved risks, production blockers, and mitigation ownership.
+
 ## 3. Recommended Repository Structure
 
 ```text
@@ -116,6 +142,13 @@ ClimateChain/
 ```
 
 ## 4. Stage-by-Stage Plan
+
+### Cross-Stage Completion Contract (Mandatory)
+
+- Do not close a stage if implemented behavior is isolated and not integrated with prior-stage outputs.
+- Do not close a stage if runtime behavior still depends on mocks outside test environments.
+- Keep previous stage gates active and include them in newer stage gates when applicable.
+- Require at least one end-to-end scenario per stage that exercises the new capability together with prior completed capabilities.
 
 ## Stage 01 - Repository Foundation
 
@@ -169,9 +202,6 @@ Initialize contract development environment with repeatable compilation/testing.
 - Configure compiler version and network profiles.
 - Create initial contracts: `InsuranceProvider.sol`, `InsurancePolicy.sol`.
 - Add local mock contracts for oracle behavior.
-
-### Optional Scalability Extensions (Recommended for larger scope)
-
 - Add interface-first boundaries in `contracts/interfaces/` to decouple provider, policy, and oracle adapters.
 - Add ABI export automation from Hardhat artifacts to `shared/abi/` for downstream backend integration.
 - Add deterministic deployment metadata output (per-network JSON) for reproducible environment promotion.
@@ -179,7 +209,7 @@ Initialize contract development environment with repeatable compilation/testing.
 - Add gas/bytecode baseline checks to prevent uncontrolled growth before Stage 04.
 - Add local stress scripts to simulate high policy-creation volume and catch early storage/indexing bottlenecks.
 
-### Optional Acceptance Criteria (if extensions are selected)
+### Additional Acceptance Criteria
 
 - ABI artifacts required by backend are exportable with one command.
 - Deployment addresses are reproducibly generated and persisted per environment.
@@ -190,6 +220,9 @@ Initialize contract development environment with repeatable compilation/testing.
 
 - Contracts compile with no warnings that affect behavior.
 - Local tests can run from a single command.
+- ABI export and deployment manifest generation are reproducible and consumed as integration outputs.
+- Stage quality and baseline gates pass locally and are ready to be promoted into CI.
+- Non-local deployment path supports real external oracle address configuration (no implicit mock fallback).
 
 ### Risks
 
@@ -242,6 +275,8 @@ Implement policy lifecycle, payout logic, and oracle callback flow safely.
 - Oracle callback updates state correctly.
 - Existing Stage 02 quality and baseline gates remain green after each feature addition.
 - New complexity does not break interface compatibility required by downstream modules.
+- Non-local deployment path remains compatible with real oracle adapter addressing and fail-fast validation.
+- Lifecycle observability is sufficient for backend/indexer consumers without relying on implementation internals.
 
 ### Risks
 
@@ -272,6 +307,8 @@ Establish high-confidence contract correctness with unit and property-focused te
 - Keep gas and bytecode baseline checks active on every release candidate.
 - Run burst stress harness after major lifecycle or accounting changes.
 - Promote quality and baseline checks into CI as required gates.
+- Add ABI drift detection in CI to prevent contract-interface desynchronization in shared artifacts.
+- Configure branch protection to require the contracts quality gate job before merge.
 
 ### Acceptance Criteria
 
@@ -279,6 +316,9 @@ Establish high-confidence contract correctness with unit and property-focused te
 - No unresolved failing tests.
 - Baseline checks pass (size growth within tolerance and gas report produced).
 - Stress harness executes successfully under agreed local workload profile.
+- CI quality gate is mandatory for contracts-related pull requests.
+- Shared ABI synchronization checks pass in CI for contract/interface changes.
+- Branch protection is configured so failing contract gates block merge.
 
 ### Risks
 
@@ -293,11 +333,12 @@ Establish high-confidence contract correctness with unit and property-focused te
 
 ### Objective
 
-Build the API shell with modular architecture and robust defaults.
+Build a production-oriented API foundation with modular architecture, runtime validation, and direct compatibility with existing on-chain artifacts.
 
 ### Inputs
 
 - API responsibilities from `docs/Guide.md`
+- Stage 04 contract outputs (`shared/abi/index.json`, `contracts/deployments/<network>.json`)
 
 ### Tasks
 
@@ -306,11 +347,17 @@ Build the API shell with modular architecture and robust defaults.
 - Configure validation pipes and exception filters.
 - Add structured logging and environment config module.
 - Define DTOs and response contracts.
+- Add startup validation for required ABI/manifests and fail-fast boot behavior on invalid integration metadata.
+- Add readiness endpoint that validates critical runtime dependencies expected at this stage.
+- Add Stage 05 gate command covering build, lint, tests, and startup checks.
 
 ### Acceptance Criteria
 
 - Service boots in local environment with health endpoint.
 - Validation rejects malformed payloads.
+- Readiness checks verify configured dependencies and fail with actionable diagnostics when misconfigured.
+- Backend runtime can load and parse shared ABI/deployment metadata without manual edits.
+- Stage 05 gate command passes locally and in CI (when backend CI is enabled).
 
 ### Risks
 
@@ -336,11 +383,17 @@ Enable backend to create and query policies via smart contracts.
 - Load ABI/address per environment.
 - Implement policy creation and status query methods.
 - Add retry/error mapping strategy for RPC failures.
+- Add startup-time validation that required contracts exist at configured addresses on target network.
+- Add transaction observability (request id, tx hash, network, block number, revert reason mapping).
+- Ensure runtime profile uses real RPC endpoints for dev/staging/testnet/prod (no mocked blockchain client outside tests).
 
 ### Acceptance Criteria
 
 - Backend can create a policy and return transaction metadata.
 - Backend can query and normalize policy state.
+- Integration is validated against real deployed contracts on at least one non-local environment.
+- Reverted transactions are mapped to explicit API error contracts.
+- No mocked chain adapter is used in runtime application profiles.
 
 ### Risks
 
@@ -355,7 +408,7 @@ Enable backend to create and query policies via smart contracts.
 
 ### Objective
 
-Stand up pricing inference API with deterministic interfaces.
+Stand up a production-oriented pricing inference API with deterministic interfaces and real model loading behavior.
 
 ### Inputs
 
@@ -367,11 +420,16 @@ Stand up pricing inference API with deterministic interfaces.
 - Implement `/health` and `/predict` endpoints.
 - Add request/response schemas.
 - Add baseline pricing strategy and deterministic fallback behavior.
+- Implement model-loading lifecycle and fail-fast startup when the required model artifact is missing.
+- Add readiness check that validates model availability and dependency health.
+- Add Stage 07 gate command covering lint, tests, and runtime startup checks.
 
 ### Acceptance Criteria
 
 - API returns predictable JSON schema.
 - Invalid payloads are rejected with clear messages.
+- Runtime `/predict` path uses a real model artifact, not hardcoded mock responses.
+- Service readiness reflects true model availability status.
 
 ### Risks
 
@@ -399,11 +457,15 @@ Implement repeatable model training from climate historical data.
 - Train baseline forecasting model.
 - Evaluate with time-based validation.
 - Serialize model artifact with version tag.
+- Record data provenance metadata and training configuration hashes for reproducibility and auditability.
+- Define dataset and model versioning contract consumed by backend/ML runtime.
 
 ### Acceptance Criteria
 
 - Training process is reproducible from scripts.
 - Metrics are documented and comparable.
+- Model artifact metadata is sufficient for traceability (data version, feature schema, training commit/config).
+- Produced artifact is directly loadable by Stage 07 runtime without manual patching.
 
 ### Risks
 
@@ -431,11 +493,15 @@ Connect quote flow to ML prediction service reliably.
 - Configure timeouts, retry policy, and fallback mode.
 - Map prediction output to policy quote DTO.
 - Add telemetry for latency and failures.
+- Enforce schema-contract validation between backend DTOs and ML request/response schemas.
+- Ensure runtime profile calls a real running ML service endpoint for dev/staging/testnet/prod (no mock prediction service outside tests).
 
 ### Acceptance Criteria
 
 - Quote endpoint works end-to-end with ML service.
 - Failures degrade gracefully with explicit error handling.
+- Integration tests verify real network calls between backend and ML service under normal and degraded conditions.
+- No mocked prediction responses are used in runtime application profiles.
 
 ### Risks
 
@@ -463,11 +529,14 @@ Wire climate data updates to policy state transitions.
 - Configure per-environment oracle metadata.
 - Define update schedule and timeout strategy.
 - Add sanity bounds for anomalous weather data.
+- Validate full callback path on testnet with real oracle configuration and external weather source adapter.
+- Add operational safeguards for delayed/missing callbacks (timeouts, alerting hooks, replay protection checks).
 
 ### Acceptance Criteria
 
-- Oracle updates can be simulated locally.
-- Policy conditions update correctly after callbacks.
+- Local simulation exists only for deterministic tests; release validation uses real oracle flow on testnet.
+- Policy conditions update correctly after real callbacks and are observable through backend/indexer read paths.
+- Oracle integration runbook documents setup, failure modes, and recovery actions.
 
 ### Risks
 
@@ -681,6 +750,8 @@ Use this template for every completed stage report file.
 - Objective achieved:
 - Purpose and value:
 - Functional result:
+- Integrated previous-stage outputs:
+- Runtime data sources (real vs test-only):
 -
 
 ## Files changed
@@ -702,6 +773,7 @@ Use this template for every completed stage report file.
 ## Risks or pending items
 
 -
+- Production blockers and owner:
 
 ## Credentials status
 

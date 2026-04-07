@@ -78,8 +78,6 @@ async function exportAbis(): Promise<void> {
   }
 
   const entries: AbiIndexEntry[] = [];
-  const generatedAt = new Date().toISOString();
-
   for (const artifactFile of artifactFiles) {
     const artifact = await readArtifact(artifactFile);
 
@@ -91,9 +89,9 @@ async function exportAbis(): Promise<void> {
     const outputPath = path.join(abiOutputDir, outputFileName);
 
     const exportPayload = {
+      schemaVersion: 1,
       contractName: artifact.contractName,
       sourceName: artifact.sourceName,
-      generatedAt,
       abi: artifact.abi,
     };
 
@@ -123,7 +121,7 @@ async function exportAbis(): Promise<void> {
 
   const indexPath = path.join(abiOutputDir, "index.json");
   const indexPayload = {
-    generatedAt,
+    schemaVersion: 1,
     contracts: entries,
   };
 

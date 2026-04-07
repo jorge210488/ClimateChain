@@ -47,14 +47,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Compile contracts
-        run: npm run compile
+      - name: Stage 04 full gate
+        run: npm run stage4:check
 
-      - name: Quality gate
-        run: npm run quality:check
+      - name: ABI drift gate
+        run: |
+          if [[ -n "$(git status --porcelain ../shared/abi)" ]]; then
+            echo "Detected ABI drift after stage4:check. Run 'npm run artifacts:sync' and commit shared/abi updates."
+            git --no-pager status --short ../shared/abi
+            exit 1
+          fi
 
-      - name: Baseline gate
-        run: npm run baseline:check
+      - name: Full static analysis report (non-blocking)
+        continue-on-error: true
+        run: npm run analyze:static:full | tee static-analysis-full.log
 
-      - name: Stress smoke gate
-        run: npm run stress:policies:local:smoke
+      - name: Upload full static analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-static-analysis-full
+          path: contracts/static-analysis-full.log

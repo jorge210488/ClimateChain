@@ -26,17 +26,39 @@ interface IInsurancePolicy {
   /// @param requestedAt Timestamp when request was emitted.
   event WeatherDataRequested(address indexed policy, uint64 requestedAt);
 
+  /// @notice Emitted when policy registers or reuses a request id for oracle fulfillment.
+  /// @param requestId Canonical request identifier expected on oracle callback.
+  /// @param requestedAt Timestamp when request id was (re)announced.
+  event WeatherDataRequestTracked(bytes32 indexed requestId, uint64 requestedAt);
+
   /// @notice Emitted when oracle fulfills weather data.
   /// @param rainfallMm Rainfall value provided by oracle.
   /// @param conditionMet Whether trigger condition is met after update.
   /// @param updatedAt Timestamp when weather data was applied.
   event WeatherDataFulfilled(uint256 rainfallMm, bool conditionMet, uint64 updatedAt);
 
+  /// @notice Emitted when policy consumes a tracked request id on successful oracle callback.
+  /// @param requestId Canonical request identifier consumed by fulfillment.
+  /// @param fulfilledAt Timestamp when request id was fulfilled.
+  event WeatherDataFulfillmentTracked(bytes32 indexed requestId, uint64 fulfilledAt);
+
   /// @notice Emitted when payout is executed to insured.
   /// @param insured Insured account receiving payout.
   /// @param amountWei Coverage amount paid out.
   /// @param paidAt Timestamp when payout was executed.
   event PayoutExecuted(address indexed insured, uint256 amountWei, uint64 paidAt);
+
+  /// @notice Emitted when immediate payout transfer fails and insured must claim later.
+  /// @param insured Insured account entitled to claim.
+  /// @param amountWei Coverage amount made claimable.
+  /// @param createdAt Timestamp when claimable payout was created.
+  event PayoutClaimCreated(address indexed insured, uint256 amountWei, uint64 createdAt);
+
+  /// @notice Emitted when insured successfully claims deferred payout.
+  /// @param insured Insured account that claimed deferred payout.
+  /// @param amountWei Claimed amount in wei.
+  /// @param claimedAt Timestamp when claim was executed.
+  event PayoutClaimed(address indexed insured, uint256 amountWei, uint64 claimedAt);
 
   /// @notice Emitted when policy expires without payout.
   /// @param insured Insured account linked to expired policy.
@@ -47,14 +69,23 @@ interface IInsurancePolicy {
   function activate() external payable;
 
   /// @notice Requests weather data update while policy window is open.
-  function requestWeatherData() external;
+  /// @return requestId Canonical request id expected on oracle callback.
+  function requestWeatherData() external returns (bytes32 requestId);
 
   /// @notice Pushes weather data into policy state.
   /// @param rainfallMm Observed rainfall amount in millimeters.
   function fulfillWeatherData(uint256 rainfallMm) external;
 
+  /// @notice Pushes weather data into policy state using an explicit tracked request id.
+  /// @param requestId Canonical request identifier expected by policy.
+  /// @param rainfallMm Observed rainfall amount in millimeters.
+  function fulfillWeatherData(bytes32 requestId, uint256 rainfallMm) external;
+
   /// @notice Executes payout when policy has been triggered.
   function executePayout() external;
+
+  /// @notice Claims deferred payout when immediate insured transfer failed in executePayout.
+  function claimPendingPayout() external;
 
   /// @notice Expires policy after policy window end.
   function expirePolicy() external;
@@ -66,6 +97,18 @@ interface IInsurancePolicy {
   /// @notice Returns current policy status encoded as uint8.
   /// @return Current status value.
   function getStatus() external view returns (uint8);
+
+  /// @notice Returns currently pending weather request id expected on oracle fulfill.
+  /// @return Pending request id or bytes32(0) when no request is pending.
+  function pendingWeatherRequestId() external view returns (bytes32);
+
+  /// @notice Returns timestamp for currently pending weather request id.
+  /// @return Timestamp when pending request was registered, or zero if none pending.
+  function pendingWeatherRequestTimestamp() external view returns (uint64);
+
+  /// @notice Returns deferred payout amount still claimable by insured.
+  /// @return Pending payout amount in wei.
+  function pendingPayoutWei() external view returns (uint256);
 
   /// @notice Returns whether payout execution is currently allowed.
   /// @return True when policy is in Triggered status.
@@ -94,6 +137,10 @@ interface IInsurancePolicy {
   /// @notice Returns policy premium amount.
   /// @return Premium amount in wei.
   function premiumWei() external view returns (uint256);
+
+  /// @notice Returns region code associated with policy risk bucket.
+  /// @return Region code as bytes32 identifier.
+  function regionCode() external view returns (bytes32);
 
   /// @notice Returns policy coverage amount.
   /// @return Coverage amount in wei.

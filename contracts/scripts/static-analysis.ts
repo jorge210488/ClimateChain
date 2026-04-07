@@ -28,6 +28,13 @@ interface SlitherCommand {
   label: string;
 }
 
+type StaticAnalysisProfile = "stage4" | "full";
+
+interface StaticAnalysisOptions {
+  profile: StaticAnalysisProfile;
+  outputPath: string | null;
+}
+
 const contractsDir = path.resolve(__dirname, "..", "contracts");
 const hardhatBuildInfoDir = path.resolve(__dirname, "..", "artifacts", "build-info");
 const slitherExcludedDetectors = [
@@ -362,7 +369,80 @@ function executeSlitherRun(
   };
 }
 
-function runSlitherIfAvailable(projectRoot: string): boolean {
+function parseOptions(): StaticAnalysisOptions {
+  let profile: StaticAnalysisProfile = "stage4";
+  let outputPath: string | null = process.env.STATIC_ANALYSIS_REPORT_PATH ?? null;
+
+  for (let i = 2; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+
+    if (arg === "--profile" && i + 1 < process.argv.length) {
+      const candidateProfile = process.argv[i + 1];
+      if (candidateProfile === "stage4" || candidateProfile === "full") {
+        profile = candidateProfile;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (arg.startsWith("--profile=")) {
+      const candidateProfile = arg.slice("--profile=".length);
+      if (candidateProfile === "stage4" || candidateProfile === "full") {
+        profile = candidateProfile;
+      }
+      continue;
+    }
+
+    if (arg === "--output" && i + 1 < process.argv.length) {
+      outputPath = process.argv[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--output=")) {
+      outputPath = arg.slice("--output=".length);
+      continue;
+    }
+  }
+
+  return { profile, outputPath };
+}
+
+async function writeReportIfRequested(
+  outputPath: string | null,
+  reportContent: string,
+): Promise<void> {
+  if (!outputPath) {
+    return;
+  }
+
+  const resolvedPath = path.resolve(outputPath);
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+  await fs.writeFile(resolvedPath, `${reportContent}\n`, "utf8");
+  console.log(`Static analysis report written to: ${resolvedPath}`);
+}
+
+function buildSlitherArgs(runArgs: string[], profile: StaticAnalysisProfile): string[] {
+  const baseArgs = [...runArgs, "--hardhat-ignore-compile", "--exclude-dependencies"];
+
+  if (profile === "full") {
+    return baseArgs;
+  }
+
+  return [
+    ...baseArgs,
+    "--exclude-low",
+    "--exclude-informational",
+    "--exclude-optimization",
+    "--exclude",
+    slitherExcludedDetectors,
+  ];
+}
+
+async function runSlitherIfAvailable(
+  projectRoot: string,
+  options: StaticAnalysisOptions,
+): Promise<boolean> {
   const slitherCommand = resolveSlitherCommand(projectRoot);
 
   if (!slitherCommand) {
@@ -371,20 +451,10 @@ function runSlitherIfAvailable(projectRoot: string): boolean {
 
   ensureHardhatBuildInfo(projectRoot);
 
-  const slitherArgs = [
-    ...slitherCommand.runArgs,
-    "--hardhat-ignore-compile",
-    "--exclude-dependencies",
-    "--exclude-low",
-    "--exclude-informational",
-    "--exclude-optimization",
-    "--exclude",
-    slitherExcludedDetectors,
-  ];
+  const slitherArgs = buildSlitherArgs(slitherCommand.runArgs, options.profile);
+  const profileLabel = options.profile === "full" ? "full" : "Stage-04";
 
-  console.log(
-    `Slither detected via ${slitherCommand.label}. Running Stage-04 static analysis profile...`,
-  );
+  console.log(`Slither detected via ${slitherCommand.label}. Running ${profileLabel} profile...`);
   let slitherRun = executeSlitherRun(projectRoot, slitherCommand, slitherArgs);
 
   if (
@@ -399,11 +469,14 @@ function runSlitherIfAvailable(projectRoot: string): boolean {
     const statusLabel = slitherRun.status === null ? "null" : String(slitherRun.status);
     const signalLabel = slitherRun.signal ?? "none";
 
+    await writeReportIfRequested(options.outputPath, slitherRun.output);
+
     throw new Error(
       `Slither exited with status ${statusLabel} (signal: ${signalLabel}). This may indicate findings or an execution/configuration error; inspect the output above for root cause.`,
     );
   }
 
+  await writeReportIfRequested(options.outputPath, slitherRun.output);
   console.log("Slither completed without findings.");
   return true;
 }
@@ -434,8 +507,9 @@ async function runFallbackStaticScan(): Promise<void> {
 
 async function main(): Promise<void> {
   const projectRoot = path.resolve(__dirname, "..");
+  const options = parseOptions();
 
-  if (runSlitherIfAvailable(projectRoot)) {
+  if (await runSlitherIfAvailable(projectRoot, options)) {
     return;
   }
 

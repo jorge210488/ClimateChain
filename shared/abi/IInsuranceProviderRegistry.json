@@ -1,7 +1,7 @@
 {
+  "schemaVersion": 1,
   "contractName": "IInsuranceProviderRegistry",
   "sourceName": "contracts/interfaces/IInsuranceProviderRegistry.sol",
-  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
     {
       "inputs": [

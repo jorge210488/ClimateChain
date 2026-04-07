@@ -18,6 +18,8 @@ interface HarnessOptions {
   premiumBps: number;
   rainfallThresholdMm: number;
   durationDays: number;
+  regionCode: string;
+  requestedStartOffsetSeconds: number;
   forceFreshDeployment: boolean;
 }
 
@@ -109,6 +111,16 @@ function loadHarnessOptions(): HarnessOptions {
     false,
     "STRESS_FORCE_DEPLOY",
   );
+  const requestedStartOffsetSeconds = parsePositiveInteger(
+    process.env.STRESS_START_OFFSET_SECONDS,
+    300,
+    "STRESS_START_OFFSET_SECONDS",
+  );
+  const normalizedRegionCode = (process.env.STRESS_REGION_CODE ?? "STRESS").trim();
+
+  if (normalizedRegionCode.length === 0 || normalizedRegionCode.length > 31) {
+    throw new Error("STRESS_REGION_CODE must contain between 1 and 31 ASCII characters.");
+  }
 
   if (burstSize > insuredAccounts) {
     throw new Error(
@@ -124,6 +136,8 @@ function loadHarnessOptions(): HarnessOptions {
     premiumBps,
     rainfallThresholdMm,
     durationDays,
+    regionCode: normalizedRegionCode,
+    requestedStartOffsetSeconds,
     forceFreshDeployment,
   };
 }
@@ -379,6 +393,8 @@ async function main(): Promise<void> {
   const premiumWei =
     (options.coverageWei * BigInt(options.premiumBps) + BASIS_POINTS_DENOMINATOR - 1n) /
     BASIS_POINTS_DENOMINATOR;
+  const regionCodeBytes32 = ethers.encodeBytes32String(options.regionCode);
+  const leadTimeSeconds = await providerContract.MIN_POLICY_START_LEAD_TIME_SECONDS();
 
   const trackedDeficitWei = await providerContract.getBalanceDeficit();
   if (trackedDeficitWei > 0n) {
@@ -420,6 +436,8 @@ async function main(): Promise<void> {
   console.log(`- Premium per policy: ${ethers.formatEther(premiumWei)} ETH`);
   console.log(`- Rainfall threshold: ${options.rainfallThresholdMm} mm`);
   console.log(`- Duration: ${options.durationDays} days`);
+  console.log(`- Region code: ${options.regionCode}`);
+  console.log(`- Requested start offset seconds: ${options.requestedStartOffsetSeconds}`);
 
   const startedAt = Date.now();
 
@@ -428,15 +446,31 @@ async function main(): Promise<void> {
     const policiesThisBurst = Math.min(options.burstSize, remainingPolicies);
     const burstSigners = insuredSigners.slice(0, policiesThisBurst);
 
+    const currentBlock = await ethers.provider.getBlock("latest");
+    if (!currentBlock) {
+      throw new Error("Unable to read latest block while preparing stress burst.");
+    }
+    const requestedStartTimestamp =
+      BigInt(currentBlock.timestamp) +
+      leadTimeSeconds +
+      BigInt(options.requestedStartOffsetSeconds);
+
     const burstStartedAt = Date.now();
 
     const txResponses = await Promise.all(
       burstSigners.map((insuredSigner) =>
         providerContract
           .connect(insuredSigner)
-          .createPolicy(options.coverageWei, options.rainfallThresholdMm, options.durationDays, {
-            value: premiumWei,
-          }),
+          .createPolicyWithMetadata(
+            options.coverageWei,
+            options.rainfallThresholdMm,
+            options.durationDays,
+            regionCodeBytes32,
+            requestedStartTimestamp,
+            {
+              value: premiumWei,
+            },
+          ),
       ),
     );
 
@@ -484,7 +518,7 @@ async function main(): Promise<void> {
 
     const burstDurationMs = Date.now() - burstStartedAt;
     console.log(
-      `Burst ${burstIndex + 1}/${totalBursts}: created ${policiesThisBurst} policies in ${burstDurationMs}ms (gas: ${burstGasUsed.toString()}).`,
+      `Burst ${burstIndex + 1}/${totalBursts}: created ${policiesThisBurst} policies in ${burstDurationMs}ms (gas: ${burstGasUsed.toString()}, requested-start: ${requestedStartTimestamp.toString()}).`,
     );
   }
 

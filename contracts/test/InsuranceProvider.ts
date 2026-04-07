@@ -10,6 +10,7 @@ const POLICY_STATUS = {
   PaidOut: 3n,
   Expired: 4n,
 } as const;
+const DEFAULT_REGION_CODE = ethers.encodeBytes32String("TEST_REGION");
 
 describe("InsuranceProvider", function () {
   async function deployFixture() {
@@ -51,6 +52,7 @@ describe("InsuranceProvider", function () {
       ethers.parseEther("0.10"),
       coverage,
       25,
+      DEFAULT_REGION_CODE,
       startTimestamp,
       endTimestamp,
       { value: coverage },
@@ -80,6 +82,7 @@ describe("InsuranceProvider", function () {
       premium,
       coverage,
       25,
+      DEFAULT_REGION_CODE,
       startTimestamp,
       endTimestamp,
       { value: coverage },
@@ -98,10 +101,23 @@ describe("InsuranceProvider", function () {
     threshold = 30,
     durationDays = 14,
     advanceToWeatherWindow = true,
+    regionCode = DEFAULT_REGION_CODE,
   ) {
+    const currentTimestamp = await time.latest();
+    const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+    // Keep a deterministic safety margin to avoid 1-second drift between latest() and mined tx timestamp.
+    const requestedStartTimestamp = BigInt(currentTimestamp) + leadTimeSeconds + 120n;
+
     await provider
       .connect(insured)
-      .createPolicy(coverage, threshold, durationDays, { value: premium });
+      .createPolicyWithMetadata(
+        coverage,
+        threshold,
+        durationDays,
+        regionCode,
+        requestedStartTimestamp,
+        { value: premium },
+      );
 
     const policies = await provider.getPoliciesByInsured(insured.address);
     const policyAddress = policies[policies.length - 1];
@@ -139,6 +155,88 @@ describe("InsuranceProvider", function () {
     expect(await policy.premiumWei()).to.equal(premium);
     expect(await provider.coverageReserveWei()).to.equal(ethers.parseEther("4.0"));
     expect(await provider.premiumBalanceWei()).to.equal(0n);
+  });
+
+  it("creates policy with explicit metadata and exposes metadata through provider plus policy reads", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const premium = ethers.parseEther("0.10");
+    const coverage = ethers.parseEther("1.0");
+    const threshold = 30;
+    const durationDays = 14;
+    const regionCode = ethers.encodeBytes32String("VALENCIA_ES");
+    const currentTimestamp = await time.latest();
+    const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+    const requestedStartTimestamp = BigInt(currentTimestamp) + leadTimeSeconds + 120n;
+
+    await expect(
+      provider
+        .connect(insured)
+        .createPolicyWithMetadata(
+          coverage,
+          threshold,
+          durationDays,
+          regionCode,
+          requestedStartTimestamp,
+          { value: premium },
+        ),
+    )
+      .to.emit(provider, "PolicyCreated")
+      .and.to.emit(provider, "PolicyMetadataRegistered");
+
+    const policies = await provider.getPoliciesByInsured(insured.address);
+    const policyAddress = policies[policies.length - 1];
+    const policy = await ethers.getContractAt("InsurancePolicy", policyAddress);
+
+    const [storedRegionCode, storedRequestedStartTimestamp] =
+      await provider.getPolicyMetadata(policyAddress);
+
+    expect(storedRegionCode).to.equal(regionCode);
+    expect(storedRequestedStartTimestamp).to.equal(requestedStartTimestamp);
+    expect(await policy.regionCode()).to.equal(regionCode);
+    expect(await policy.startTimestamp()).to.equal(requestedStartTimestamp);
+  });
+
+  it("rejects metadata-aware policy creation when region code is zero", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const currentTimestamp = await time.latest();
+    const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+    const requestedStartTimestamp = BigInt(currentTimestamp) + leadTimeSeconds + 60n;
+
+    await expect(
+      provider
+        .connect(insured)
+        .createPolicyWithMetadata(
+          ethers.parseEther("1.0"),
+          20,
+          10,
+          ethers.ZeroHash,
+          requestedStartTimestamp,
+          { value: ethers.parseEther("0.10") },
+        ),
+    ).to.be.revertedWithCustomError(provider, "InvalidRegionCode");
+  });
+
+  it("rejects metadata-aware policy creation when requested start is below lead-time minimum", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const currentTimestamp = await time.latest();
+    const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+    const invalidRequestedStartTimestamp = BigInt(currentTimestamp) + leadTimeSeconds - 1n;
+
+    await expect(
+      provider
+        .connect(insured)
+        .createPolicyWithMetadata(
+          ethers.parseEther("1.0"),
+          20,
+          10,
+          DEFAULT_REGION_CODE,
+          invalidRequestedStartTimestamp,
+          { value: ethers.parseEther("0.10") },
+        ),
+    ).to.be.revertedWithCustomError(provider, "InvalidRequestedStartTimestamp");
   });
 
   it("returns provider-side financial snapshot for known policy", async function () {
@@ -253,10 +351,16 @@ describe("InsuranceProvider", function () {
   it("emits canonical status transition event when policy activates", async function () {
     const { policy } = await loadFixture(deployUnactivatedPolicyFixture);
     const premium = await policy.premiumWei();
+    const coverage = await policy.coverageWei();
+    const insuredAddress = await policy.insured();
+    const activationTx = await policy.activate({ value: premium });
 
-    await expect(policy.activate({ value: premium }))
+    await expect(activationTx)
       .to.emit(policy, "PolicyStatusTransitioned")
       .withArgs(POLICY_STATUS.Created, POLICY_STATUS.Active, anyValue);
+    await expect(activationTx)
+      .to.emit(policy, "PolicyActivated")
+      .withArgs(insuredAddress, premium, coverage);
   });
 
   it("executes payout after oracle threshold is met and books premium separately", async function () {
@@ -295,6 +399,9 @@ describe("InsuranceProvider", function () {
     await expect(payoutTx)
       .to.emit(policy, "PolicyStatusTransitioned")
       .withArgs(POLICY_STATUS.Triggered, POLICY_STATUS.PaidOut, anyValue);
+    await expect(payoutTx)
+      .to.emit(policy, "PayoutExecuted")
+      .withArgs(insured.address, coverage, anyValue);
     await payoutTx.wait();
 
     const insuredBalanceAfter = await ethers.provider.getBalance(insured.address);
@@ -348,6 +455,9 @@ describe("InsuranceProvider", function () {
 
     const noTriggerTx = await oracle.pushWeatherData(policyAddress, rainfallBelowThreshold);
     await expect(noTriggerTx).to.not.emit(policy, "PolicyStatusTransitioned");
+    await expect(noTriggerTx)
+      .to.emit(policy, "WeatherDataFulfilled")
+      .withArgs(BigInt(rainfallBelowThreshold), false, anyValue);
 
     expect(await policy.latestRainfallMm()).to.equal(BigInt(rainfallBelowThreshold));
     expect(await policy.conditionMet()).to.equal(false);
@@ -457,6 +567,7 @@ describe("InsuranceProvider", function () {
     await expect(expireTx)
       .to.emit(policy, "PolicyStatusTransitioned")
       .withArgs(POLICY_STATUS.Active, POLICY_STATUS.Expired, anyValue);
+    await expect(expireTx).to.emit(policy, "PolicyExpired").withArgs(insured.address, anyValue);
 
     expect(await policy.status()).to.equal(POLICY_STATUS.Expired);
     expect(await policy.isWeatherWindowOpen()).to.equal(false);
@@ -491,6 +602,7 @@ describe("InsuranceProvider", function () {
         ethers.parseEther("0.10"),
         coverage,
         0,
+        DEFAULT_REGION_CODE,
         startTimestamp,
         endTimestamp,
         { value: coverage },
@@ -516,6 +628,7 @@ describe("InsuranceProvider", function () {
         ethers.parseEther("0.10"),
         coverage,
         25,
+        DEFAULT_REGION_CODE,
         startTimestamp,
         endTimestamp,
         { value: coverage },
@@ -801,7 +914,9 @@ describe("InsuranceProvider", function () {
     const reserveBeforeWithdraw = await provider.coverageReserveWei();
     const insuredBalanceBefore = await ethers.provider.getBalance(insured.address);
 
-    await provider.withdrawPremiumBalance(premium, insured.address);
+    await expect(provider.withdrawPremiumBalance(premium, insured.address))
+      .to.emit(provider, "PremiumBalanceWithdrawn")
+      .withArgs(insured.address, premium, 0n);
 
     const insuredBalanceAfter = await ethers.provider.getBalance(insured.address);
 
@@ -1221,12 +1336,92 @@ describe("InsuranceProvider", function () {
       10,
     );
 
+    const expectedRequestId = await provider
+      .connect(owner)
+      .requestPolicyWeatherData.staticCall(policyAddress);
+
     const requestTx = await provider.connect(owner).requestPolicyWeatherData(policyAddress);
 
     await expect(requestTx).to.emit(provider, "PolicyWeatherDataRequested").withArgs(policyAddress);
     await expect(requestTx)
+      .to.emit(provider, "PolicyWeatherDataRequestTracked")
+      .withArgs(policyAddress, expectedRequestId);
+    await expect(requestTx)
       .to.emit(policy, "WeatherDataRequested")
       .withArgs(policyAddress, anyValue);
+    await expect(requestTx)
+      .to.emit(policy, "WeatherDataRequestTracked")
+      .withArgs(expectedRequestId, anyValue);
+  });
+
+  it("tracks pending request id lifecycle and clears it after successful fulfillment", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 25;
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      10,
+    );
+
+    const expectedRequestId = await provider
+      .connect(owner)
+      .requestPolicyWeatherData.staticCall(policyAddress);
+
+    await expect(provider.connect(owner).requestPolicyWeatherData(policyAddress))
+      .to.emit(provider, "PolicyWeatherDataRequestTracked")
+      .withArgs(policyAddress, expectedRequestId);
+
+    expect(await policy.pendingWeatherRequestId()).to.equal(expectedRequestId);
+    expect(await policy.pendingWeatherRequestTimestamp()).to.be.gt(0n);
+
+    await expect(
+      oracle.connect(owner).getFunction("pushWeatherData(address,bytes32,uint256)")(
+        policyAddress,
+        expectedRequestId,
+        threshold + 1,
+      ),
+    )
+      .to.emit(policy, "WeatherDataFulfillmentTracked")
+      .withArgs(expectedRequestId, anyValue);
+
+    expect(await policy.pendingWeatherRequestId()).to.equal(ethers.ZeroHash);
+    expect(await policy.pendingWeatherRequestTimestamp()).to.equal(0n);
+  });
+
+  it("rejects oracle fulfillment with mismatched request id", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 25;
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      10,
+    );
+
+    const expectedRequestId = await provider
+      .connect(owner)
+      .requestPolicyWeatherData.staticCall(policyAddress);
+    await provider.connect(owner).requestPolicyWeatherData(policyAddress);
+
+    const mismatchedRequestId = ethers.keccak256(ethers.toUtf8Bytes("invalid-request"));
+    expect(mismatchedRequestId).to.not.equal(expectedRequestId);
+
+    await expect(
+      oracle.connect(owner).getFunction("pushWeatherData(address,bytes32,uint256)")(
+        policyAddress,
+        mismatchedRequestId,
+        threshold + 1,
+      ),
+    )
+      .to.be.revertedWithCustomError(policy, "InvalidWeatherRequestId")
+      .withArgs(expectedRequestId, mismatchedRequestId);
   });
 
   it("accepts request at endTimestamp minus two, fulfill at minus one, and rejects at endTimestamp", async function () {
@@ -1304,7 +1499,49 @@ describe("InsuranceProvider", function () {
     expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
   });
 
-  it("keeps policy triggered when direct payout to non-payable insured fails", async function () {
+  it("keeps policy status values within declared enum upper bound", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const payoutThreshold = 24;
+    const { policyAddress: payoutPolicyAddress, policy: payoutPolicy } =
+      await createPolicyForInsured(
+        provider,
+        insured,
+        ethers.parseEther("1.0"),
+        ethers.parseEther("0.10"),
+        payoutThreshold,
+        7,
+      );
+
+    expect(await payoutPolicy.getStatus()).to.be.lte(4n);
+
+    await oracle.pushWeatherData(payoutPolicyAddress, payoutThreshold + 1);
+    expect(await payoutPolicy.getStatus()).to.be.lte(4n);
+
+    await provider.connect(owner).executePolicyPayout(payoutPolicyAddress);
+    expect(await payoutPolicy.getStatus()).to.be.lte(4n);
+
+    const expiryThreshold = 500;
+    const { policyAddress: expiryPolicyAddress, policy: expiryPolicy } =
+      await createPolicyForInsured(
+        provider,
+        insured,
+        ethers.parseEther("0.8"),
+        ethers.parseEther("0.08"),
+        expiryThreshold,
+        1,
+      );
+
+    expect(await expiryPolicy.getStatus()).to.be.lte(4n);
+
+    const expiryEndTimestamp = Number(await expiryPolicy.endTimestamp());
+    await time.increaseTo(expiryEndTimestamp);
+
+    await provider.connect(owner).expirePolicy(expiryPolicyAddress);
+    expect(await expiryPolicy.getStatus()).to.be.lte(4n);
+  });
+
+  it("marks payout as deferred claim when direct insured transfer fails", async function () {
     const [owner] = await ethers.getSigners();
 
     const oracleFactory = await ethers.getContractFactory("MockWeatherOracle");
@@ -1331,6 +1568,7 @@ describe("InsuranceProvider", function () {
       premium,
       coverage,
       threshold,
+      DEFAULT_REGION_CODE,
       startTimestamp,
       endTimestamp,
       { value: coverage },
@@ -1343,13 +1581,21 @@ describe("InsuranceProvider", function () {
 
     expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
 
-    await expect(policy.executePayout()).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+    await expect(policy.executePayout())
+      .to.emit(policy, "PayoutClaimCreated")
+      .withArgs(await holder.getAddress(), coverage, anyValue);
 
-    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
-    expect(await policy.getCurrentBalance()).to.equal(coverage + premium);
+    expect(await policy.status()).to.equal(POLICY_STATUS.PaidOut);
+    expect(await policy.pendingPayoutWei()).to.equal(coverage);
+    expect(await policy.getCurrentBalance()).to.equal(coverage);
+
+    await expect(policy.connect(owner).claimPendingPayout()).to.be.revertedWithCustomError(
+      policy,
+      "InsuredOnly",
+    );
   });
 
-  it("reverts provider payout path and preserves provider accounting when insured cannot receive ETH", async function () {
+  it("settles provider payout and leaves claimable balance when insured cannot receive ETH", async function () {
     const { owner, oracle, provider } = await loadFixture(deployFixture);
 
     const holderFactory = await ethers.getContractFactory("NonPayableInsured");
@@ -1381,17 +1627,97 @@ describe("InsuranceProvider", function () {
 
     const premiumBeforePayout = await provider.premiumBalanceWei();
 
+    await expect(provider.connect(owner).executePolicyPayout(policyAddress)).to.emit(
+      provider,
+      "PolicyPayoutExecuted",
+    );
+
+    expect(await provider.premiumBalanceWei()).to.equal(premiumBeforePayout + premium);
+    expect(await policy.status()).to.equal(POLICY_STATUS.PaidOut);
+    expect(await policy.pendingPayoutWei()).to.equal(coverage);
+    expect(await policy.getCurrentBalance()).to.equal(coverage);
+
     await expect(
       provider.connect(owner).executePolicyPayout(policyAddress),
-    ).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+    ).to.be.revertedWithCustomError(provider, "PolicyAlreadySettledInProvider");
+  });
 
-    expect(await provider.premiumBalanceWei()).to.equal(premiumBeforePayout);
-    expect(await policy.status()).to.equal(POLICY_STATUS.Triggered);
+  it("allows insured contract to claim deferred payout after enabling ETH reception", async function () {
+    const { owner, oracle, provider } = await loadFixture(deployFixture);
 
-    // First revert rolls back provider-side tentative settlement marking, so retry fails identically.
-    await expect(
-      provider.connect(owner).executePolicyPayout(policyAddress),
-    ).to.be.revertedWithCustomError(policy, "EthTransferFailed");
+    const holderFactory = await ethers.getContractFactory("ToggleableInsured");
+    const holder = await holderFactory.deploy();
+    await holder.waitForDeployment();
+
+    const coverage = ethers.parseEther("1.0");
+    const premium = ethers.parseEther("0.10");
+    const threshold = 30;
+
+    await holder.createPolicy(await provider.getAddress(), coverage, threshold, 10, {
+      value: premium,
+    });
+
+    const holderAddress = await holder.getAddress();
+    const policies = await provider.getPoliciesByInsured(holderAddress);
+    expect(policies).to.have.length(1);
+
+    const policyAddress = policies[0];
+    const policy = await ethers.getContractAt("InsurancePolicy", policyAddress);
+
+    const policyStartTimestamp = Number(await policy.startTimestamp());
+    const currentTimestamp = await time.latest();
+    if (currentTimestamp < policyStartTimestamp) {
+      await time.increaseTo(policyStartTimestamp);
+    }
+
+    await oracle.pushWeatherData(policyAddress, threshold + 1);
+    const deferredTx = await provider.connect(owner).executePolicyPayout(policyAddress);
+    await expect(deferredTx)
+      .to.emit(policy, "PayoutClaimCreated")
+      .withArgs(holderAddress, coverage, anyValue);
+
+    expect(await policy.pendingPayoutWei()).to.equal(coverage);
+
+    await expect(holder.claimPendingPayout(policyAddress)).to.be.revertedWithCustomError(
+      policy,
+      "EthTransferFailed",
+    );
+    expect(await policy.pendingPayoutWei()).to.equal(coverage);
+
+    const balanceBeforeClaim = await ethers.provider.getBalance(holderAddress);
+    await holder.setAcceptEther(true);
+
+    await expect(holder.claimPendingPayout(policyAddress))
+      .to.emit(policy, "PayoutClaimed")
+      .withArgs(holderAddress, coverage, anyValue);
+
+    const balanceAfterClaim = await ethers.provider.getBalance(holderAddress);
+
+    expect(balanceAfterClaim - balanceBeforeClaim).to.equal(coverage);
+    expect(await policy.pendingPayoutWei()).to.equal(0n);
+    expect(await policy.getCurrentBalance()).to.equal(0n);
+  });
+
+  it("rejects claimPendingPayout when immediate payout transfer already succeeded", async function () {
+    const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
+
+    const threshold = 22;
+    const { policyAddress, policy } = await createPolicyForInsured(
+      provider,
+      insured,
+      ethers.parseEther("1.0"),
+      ethers.parseEther("0.10"),
+      threshold,
+      10,
+    );
+
+    await oracle.pushWeatherData(policyAddress, threshold + 1);
+    await provider.connect(owner).executePolicyPayout(policyAddress);
+
+    await expect(policy.connect(insured).claimPendingPayout()).to.be.revertedWithCustomError(
+      policy,
+      "PendingPayoutNotAvailable",
+    );
   });
 
   it("exposes insured and weather telemetry through IInsurancePolicy interface", async function () {

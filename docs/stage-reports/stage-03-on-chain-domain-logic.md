@@ -4,7 +4,7 @@
 
 - Objective achieved: Implemented and hardened Stage 03 lifecycle domain logic increments on top of Stage 02 guardrails.
 - Purpose and value: Improve lifecycle determinism, observability, and backend-read readiness while preserving interface-first compatibility.
-- Functional result: Policy lifecycle transitions are explicitly observable, weather-window reads now match execution guards, constructor hardening is enforced for direct deployments, and policy telemetry accessors are available through `IInsurancePolicy`.
+- Functional result: Policy lifecycle transitions are explicitly observable, metadata-aware policy creation and request-id weather flows are integrated end-to-end, and payout settlement now supports deferred insured claims when immediate transfer fails.
 - Added canonical lifecycle transition event emission for all policy status changes.
 - Added lifecycle transition event declaration to `IInsurancePolicy` for interface-level event subscription compatibility.
 - Extended policy interface with telemetry getters needed by downstream backend integration.
@@ -20,9 +20,14 @@
 - Added provider-level happy-path weather request test to verify dual-event emission (`PolicyWeatherDataRequested` + `WeatherDataRequested`).
 - Added explicit non-emission assertion for `PolicyStatusTransitioned` when rainfall is below threshold.
 - Added provider policy-start lead-time (`MIN_POLICY_START_LEAD_TIME_SECONDS`) to prevent same-block activation/fulfillment behavior.
+- Added metadata-aware provider creation path (`createPolicyWithMetadata`) plus provider metadata reads for region and requested-start fields.
+- Added policy-level `regionCode` persistence and interface reads to keep provider/policy metadata consistent.
+- Added pending weather request-id lifecycle state and explicit request-id fulfill validation to prevent mismatched callbacks.
+- Added request-id observability events (`WeatherDataRequestTracked`, `WeatherDataFulfillmentTracked`) in policy/provider flows.
+- Added weather-oracle adapter overload with explicit request-id fulfillment path and aligned mock-oracle telemetry.
 - Replaced same-block fulfillment behavior test with deterministic rejection-before-start and acceptance-at-start coverage.
 - Added boundary test coverage for end-window transitions (`endTimestamp - 2`, `endTimestamp - 1`, and `endTimestamp`).
-- Added direct-policy and provider-path payout-failure coverage for non-payable insured contracts (`EthTransferFailed` path).
+- Added payout-failure coverage for non-payable insured contracts and validated deferred-claim settlement path (`PayoutClaimCreated` + `claimPendingPayout`).
 - Clarified provider-level oracle update semantics and expanded payout event payload with explicit coverage and premium accounting fields.
 - Replaced oracle mock policy-status validation magic number with a named constant for readability and maintainability.
 - Aligned `IInsurancePolicy.insured()` to anonymous return style for interface consistency while preserving NatSpec compatibility.
@@ -48,7 +53,9 @@
 - Added provider settlement observability API (`getPolicySettlementInfo`) and canonical settlement event (`PolicySettled`).
 - Added strict mock provenance mode (`setStrictPolicyRegistryMode`) to prevent accidental policy-registry disablement.
 - Hardened ABI export to fail fast when any required contract ABI is missing from artifacts.
+- Made ABI export deterministic by removing per-run generation timestamps from individual ABI files and index metadata.
 - Hardened local stress harness to auto-synchronize mock `policyRegistry` when reusing provider deployments.
+- Extended stress harness inputs with metadata-aware knobs (`STRESS_REGION_CODE`, `STRESS_START_OFFSET_SECONDS`).
 - Added consolidated Stage 03 gate script (`npm run stage3:check`) and deterministic stress smoke profile.
 - Preserved Stage 02 compatibility expectations: interface-first changes, quality/baseline checks, and shared ABI synchronization.
 
@@ -84,6 +91,7 @@
 - Kept interface ABI publication in shared assets to decouple backend event subscriptions from concrete implementation artifacts.
 - Kept weather-window semantics explicit as `[startTimestamp, endTimestamp)` to avoid ambiguous callback timing behavior.
 - Aligned read-model eligibility (`isWeatherWindowOpen`) with execution eligibility (`requestWeatherData` and `fulfillWeatherData`) to avoid backend false positives.
+- Bound oracle fulfill calls to one pending canonical request id to harden callback provenance and prevent stale/mismatched fulfillments.
 - Enforced direct-deployment safety parity with provider safeguards by requiring non-zero rainfall threshold and contract-based oracle address.
 - Kept provider event semantics explicit: `WeatherOracleUpdated` is non-retroactive for deployed policies, and `PolicyPayoutExecuted` includes both coverage and premium amounts for indexer-ready settlement accounting.
 - Kept provider oracle-update event self-descriptive by emitting `appliesToNewPoliciesOnly = true` and documenting non-retroactive behavior for existing policies.
@@ -93,7 +101,7 @@
 - Added explicit provider-to-registry interface conformance (`IInsuranceProviderRegistry`) to catch signature drift at compile time.
 - Prevented oracle-update no-op emissions by rejecting same-address updates before state mutation.
 - Added `nonReentrant` on `expirePolicy` for audit consistency and defense in depth, even though flow already follows CEI and trusted-owner transfer.
-- Kept payout/expiry business events emitted right after lifecycle transition while relying on transaction atomicity for rollback on transfer failure.
+- Kept payout settlement deterministic by marking policy as paid out and creating a deferred claim when insured transfer fails instead of reverting provider settlement.
 - Replaced mock-oracle policy-status bound magic number with `MAX_POLICY_STATUS` to improve code readability during audit and test maintenance.
 - Kept oracle-side status check scoped to enum-range validation and delegated active-status enforcement to policy-level guards.
 - Rejected zero-value withdrawals uniformly across reserve, premium, and untracked balance paths for operational symmetry with zero-value funding rejection.
@@ -103,7 +111,9 @@
 - Added provider settlement metadata (type + timestamp) to reduce off-chain inference for lifecycle analytics.
 - Added strict mock provenance mode as an opt-in safety rail against accidental registry disablement.
 - Enforced ABI export completeness by failing when required contracts are missing from artifacts.
+- Removed ABI timestamp fields to make shared ABI output deterministic and CI-drift friendly.
 - Kept stress harness parity with deployment assumptions by auto-aligning mock policy registry to reused providers when possible.
+- Extended stress harness defaults to metadata-aware inputs while preserving legacy coverage/premium controls.
 - Added a single Stage 03 execution gate (`stage3:check`) to combine quality, baseline, stress smoke, and ABI sync.
 - Preserved strict Stage 02 guardrails (`quality:check`, `baseline:check`, `artifacts:sync`) as mandatory on Stage 03 increments.
 
@@ -120,19 +130,19 @@
 
 ## Tests executed and results
 
-- `npm run test`: passed (`86 passing`).
-- `npm run quality:check`: passed (strict lint, format check, static scan fallback with no findings).
+- `npm run test`: passed (`100 passing`).
+- `npm run quality:check`: passed (strict lint, format check, Stage-04 static profile with 0 findings).
 - `npm run baseline:check`: passed.
   - Size baseline refreshed after intentional Stage 03 hardening growth.
-  - Current baseline values: `InsurancePolicy 3517`, `InsuranceProvider 12649`, `MockWeatherOracle 2563` bytes.
-  - Gas report generated successfully, including telemetry for `requestPolicyWeatherData` and `setStrictPolicyRegistryMode`.
+  - Current baseline values: `InsurancePolicy 4875`, `InsuranceProvider 15071`, `MockWeatherOracle 2876` bytes.
+  - Gas report generated successfully, including telemetry for metadata-aware creation and request-id oracle flows.
 - `npm run stage3:check`: passed (quality + baseline + stress smoke + ABI sync).
   - Stress smoke profile (`STRESS_POLICIES_COUNT=6`, `STRESS_BURST_SIZE=3`) completed with throughput summary.
 
 ## Risks or pending items
 
 - Oracle flow is still mock-based; production Chainlink request/fulfill pipeline remains for Stage 10.
-- Payout failure for non-payable insured contracts remains terminal in current Stage 03 flow and requires explicit remediation strategy in later treasury/ops stages.
+- Deferred payout claims require insured retry and operational monitoring so claimable balances do not remain stranded long-term.
 - Stage 03 lead-time changes temporal assumptions for weather readiness; downstream consumers should use `startTimestamp` rather than creation block time.
 - Size baseline was refreshed after validated Stage 03 hardening changes to keep future growth detection meaningful.
 - Stage 03 has progressed through key lifecycle and interface-readiness increments; further refinements may still be added before declaring downstream-ready freeze.

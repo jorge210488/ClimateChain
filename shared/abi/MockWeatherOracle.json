@@ -1,7 +1,7 @@
 {
+  "schemaVersion": 1,
   "contractName": "MockWeatherOracle",
   "sourceName": "contracts/mocks/MockWeatherOracle.sol",
-  "generatedAt": "2026-04-04T20:00:29.469Z",
   "abi": [
     {
       "inputs": [
@@ -124,6 +124,12 @@
           "type": "address"
         },
         {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
           "indexed": false,
           "internalType": "uint256",
           "name": "rainfallMm",
@@ -201,6 +207,29 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainfallMm",
+          "type": "uint256"
+        }
+      ],
+      "name": "pushWeatherData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {

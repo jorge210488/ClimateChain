@@ -13,6 +13,7 @@
     "abi:export": "ts-node scripts/export-abi.ts",
     "artifacts:sync": "npm run compile && npm run abi:export",
     "analyze:static": "ts-node scripts/static-analysis.ts",
+    "analyze:static:full": "ts-node scripts/static-analysis.ts --profile full",
     "gas:report": "cross-env REPORT_GAS=true hardhat test",
     "size:check": "npm run compile && ts-node scripts/report-contract-size.ts",
     "size:baseline:update": "npm run compile && cross-env UPDATE_SIZE_BASELINE=true ts-node scripts/report-contract-size.ts",

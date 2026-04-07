@@ -9,4 +9,10 @@ interface IWeatherOracleAdapter {
   /// @param policyAddress Target policy contract address.
   /// @param rainfallMm Rainfall value in millimeters.
   function pushWeatherData(address policyAddress, uint256 rainfallMm) external;
+
+  /// @notice Pushes rainfall data for one policy using explicit request-id provenance.
+  /// @param policyAddress Target policy contract address.
+  /// @param requestId Canonical request identifier expected by the target policy.
+  /// @param rainfallMm Rainfall value in millimeters.
+  function pushWeatherData(address policyAddress, bytes32 requestId, uint256 rainfallMm) external;
 }

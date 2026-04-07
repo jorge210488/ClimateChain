@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-04-03T01:34:35.720Z",
+  "generatedAt": "2026-04-06T23:26:10.822Z",
   "contracts": [
     {
       "contractName": "InsurancePolicy",
-      "deployedBytecodeBytes": 3517
+      "deployedBytecodeBytes": 4875
     },
     {
       "contractName": "InsuranceProvider",
-      "deployedBytecodeBytes": 12649
+      "deployedBytecodeBytes": 15071
     },
     {
       "contractName": "MockWeatherOracle",
-      "deployedBytecodeBytes": 2563
+      "deployedBytecodeBytes": 2876
     }
   ]
 }

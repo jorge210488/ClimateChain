@@ -1,13 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24 <0.9.0;
 
+import {IInsurancePolicy} from "../interfaces/IInsurancePolicy.sol";
 import {IInsuranceProviderCreatePolicy} from "../interfaces/IInsuranceProviderCreatePolicy.sol";
 
-/// @title NonPayableInsured
-/// @notice Test helper that can buy policies but intentionally cannot receive plain ETH transfers.
+/// @title ToggleableInsured
+/// @notice Helper mock that can toggle ETH receivability to test deferred payout claim flows.
 /// @author ClimateChain
-contract NonPayableInsured {
-  /// @notice Creates a policy in provider using this contract as insured beneficiary.
+contract ToggleableInsured {
+  /// @notice True when contract accepts incoming ETH transfers.
+  bool public acceptEther;
+
+  /// @notice Emitted when ETH receivability mode is updated.
+  /// @param enabled True when ETH transfers are accepted.
+  event AcceptEtherUpdated(bool enabled);
+
+  error EtherReceptionDisabled();
+
+  /// @notice Receives ETH only when receivability mode is enabled.
+  receive() external payable {
+    if (!acceptEther) revert EtherReceptionDisabled();
+  }
+
+  /// @notice Updates ETH receivability behavior for incoming transfers.
+  /// @param enabled True to accept ETH, false to reject ETH.
+  function setAcceptEther(bool enabled) external {
+    acceptEther = enabled;
+    emit AcceptEtherUpdated(enabled);
+  }
+
+  /// @notice Creates a policy through provider using legacy createPolicy path.
   /// @param providerAddress Provider contract address.
   /// @param coverageAmountWei Coverage amount requested.
   /// @param rainfallThresholdMm Rainfall trigger threshold.
@@ -51,5 +73,11 @@ contract NonPayableInsured {
         regionCode,
         requestedStartTimestamp
       );
+  }
+
+  /// @notice Claims deferred payout from a policy where this contract is the insured account.
+  /// @param policyAddress Target policy address.
+  function claimPendingPayout(address policyAddress) external {
+    IInsurancePolicy(policyAddress).claimPendingPayout();
   }
 }
