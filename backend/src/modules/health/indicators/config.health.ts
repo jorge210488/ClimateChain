@@ -7,13 +7,14 @@ import {
 import { AppConfigService } from "../../../config/app-config.service";
 
 /**
- * Readiness indicator reporting the resolved configuration posture and
- * enforcing profile-specific requirements.
+ * Readiness indicator reporting configuration posture and enforcing
+ * profile-specific requirements.
  *
  * For deployed profiles (staging/testnet/production) a real RPC endpoint must
  * be configured; otherwise the indicator reports down with an actionable
- * reason. Local/test/dev profiles treat the live integrations as optional
- * since they are wired in later stages.
+ * reason. To limit reconnaissance surface on the anonymous readiness probe,
+ * deployed profiles expose only minimal detail, while local/dev/test expose the
+ * full posture for developer diagnostics.
  */
 @Injectable()
 export class ConfigHealthIndicator {
@@ -26,22 +27,24 @@ export class ConfigHealthIndicator {
     const indicator = this.healthIndicatorService.check(key);
     const { app, blockchain, mlService, auth } = this.config;
 
-    const details = {
+    if (app.isDeployedProfile && !blockchain.rpcUrl) {
+      return indicator.down({
+        profile: app.nodeEnv,
+        reason: "RPC_URL must be configured for deployed profiles",
+      });
+    }
+
+    if (app.isDeployedProfile) {
+      return indicator.up({ profile: app.nodeEnv });
+    }
+
+    return indicator.up({
       profile: app.nodeEnv,
       blockchainNetwork: blockchain.network,
       rpcConfigured: Boolean(blockchain.rpcUrl),
       signerConfigured: Boolean(blockchain.privateKey),
       mlServiceConfigured: Boolean(mlService.baseUrl),
       adminTokenEndpointEnabled: Boolean(auth.adminApiKey),
-    };
-
-    if (app.isDeployedProfile && !blockchain.rpcUrl) {
-      return indicator.down({
-        ...details,
-        reason: "RPC_URL must be configured for deployed profiles",
-      });
-    }
-
-    return indicator.up(details);
+    });
   }
 }

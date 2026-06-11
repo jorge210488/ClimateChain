@@ -16,8 +16,8 @@ export function configureApp(app: INestApplication): void {
   app.enableShutdownHooks();
 }
 
-/** Builds and mounts the OpenAPI document, returning it for offline export. */
-export function setupSwagger(app: INestApplication): OpenAPIObject {
+/** Builds the OpenAPI document without mounting it (used by export/check). */
+export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle("ClimateChain API")
     .setDescription(
@@ -33,7 +33,12 @@ export function setupSwagger(app: INestApplication): OpenAPIObject {
     .addTag("auth", "Authentication and administrative access")
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  return SwaggerModule.createDocument(app, config);
+}
+
+/** Builds and mounts the OpenAPI document, returning it for offline export. */
+export function setupSwagger(app: INestApplication): OpenAPIObject {
+  const document = buildOpenApiDocument(app);
   SwaggerModule.setup(SWAGGER_PATH, app, document);
   return document;
 }

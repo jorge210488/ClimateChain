@@ -6,15 +6,17 @@ import {
   IsPositive,
   Matches,
   Max,
-  MaxLength,
   Min,
 } from "class-validator";
 
+import { MaxByteLength } from "../../../common/validation/max-byte-length.validator";
 import {
   ethAmountMessage,
   POSITIVE_ETH_AMOUNT_REGEX,
 } from "../../../common/utils/eth-amount.util";
 import { POLICY_DOMAIN } from "../policy.constants";
+import { IsAfterMinLeadTime } from "../validators/min-lead-time.validator";
+import { IsAtLeastMinPremium } from "../validators/min-premium.validator";
 
 /** Request body for creating a parametric rainfall policy. */
 export class CreatePolicyDto {
@@ -36,6 +38,7 @@ export class CreatePolicyDto {
   @Matches(POSITIVE_ETH_AMOUNT_REGEX, {
     message: ethAmountMessage("premiumEth"),
   })
+  @IsAtLeastMinPremium("coverageEth")
   premiumEth!: string;
 
   @ApiProperty({
@@ -67,7 +70,7 @@ export class CreatePolicyDto {
       "Human-readable region code. Encoded to bytes32 on-chain when provided.",
   })
   @IsOptional()
-  @MaxLength(POLICY_DOMAIN.maxRegionCodeLength)
+  @MaxByteLength(POLICY_DOMAIN.maxRegionCodeLength)
   region?: string;
 
   @ApiPropertyOptional({
@@ -80,5 +83,6 @@ export class CreatePolicyDto {
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  @IsAfterMinLeadTime()
   requestedStartTimestamp?: number;
 }

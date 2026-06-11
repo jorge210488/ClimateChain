@@ -40,13 +40,6 @@ jobs:
         run: npm ci
 
       - name: Stage 05 full gate
+        # Includes build, lint, format, unit + e2e tests, startup smoke, and the
+        # OpenAPI drift check (api:check), so the local and CI gates are equivalent.
         run: npm run stage5:check
-
-      - name: OpenAPI drift gate
-        run: |
-          npm run api:export
-          if [[ -n "$(git status --porcelain ../docs/api/backend-openapi.json)" ]]; then
-            echo "Detected OpenAPI drift. Run 'npm run api:export' and commit docs/api/backend-openapi.json."
-            git --no-pager diff -- ../docs/api/backend-openapi.json
-            exit 1
-          fi

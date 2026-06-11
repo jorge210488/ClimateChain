@@ -123,10 +123,10 @@
 - `npm test` (unit): passed — 14 passing across 4 suites (contract registry
   load + fail-fast cases, auth token issuance, policy status mapping,
   environment validation incl. empty-`.env` and deployed-profile cases).
-- `npm run test:e2e`: passed — 14 passing (liveness/readiness, deployment
-  metadata, policy validation 400 + whitelist + 501, address-pipe 400,
-  pricing validation 400 + 501, auth 401/403 and full admin token flow,
-  error-contract shape).
+- `npm run test:e2e`: passed — 20 passing (liveness/readiness, deployment
+  metadata, Swagger `/docs` + `/docs-json`, policy validation 400 + whitelist +
+  semantic rejections + 501, address-pipe 400, pricing validation 400 + 501,
+  auth 401/403 and full admin token flow, error-contract shape).
 - `npm run build`: passed (clean TypeScript compile).
 - `npm run lint`: passed (ESLint, max-warnings 0).
 - `npm run format:check`: passed (Prettier).
@@ -194,3 +194,38 @@ Two defects were found and fixed during live verification (they were masked by
   exception-contract, or fail-fast boot guarantees.
 - Regenerate `docs/api/backend-openapi.json` (`npm run api:export`) whenever
   controllers/DTOs change to keep the OpenAPI drift gate green.
+
+## Post-review hardening (findings applied)
+
+A follow-up code review raised six findings; all were valid and applied:
+
+- F1 (high): `CreatePolicyDto` now enforces the on-chain semantic rules it
+  documented but did not validate — minimum premium relative to coverage
+  (`coverage * MIN_PREMIUM_BPS / 10000`, ceil-rounded to match the contract) via
+  `@IsAtLeastMinPremium`, and minimum start lead time via `@IsAfterMinLeadTime`.
+  This rejects requests that would otherwise certainly revert in Stage 06.
+- F2 (high): `region` is validated by UTF-8 byte length (`@MaxByteLength`)
+  instead of `@MaxLength` (UTF-16 code units), matching what fits in `bytes32`.
+- F3 (medium): `startup-check` and the e2e suite now boot through the real
+  bootstrap (`configureApp` + `setupSwagger`), so the pino logger, CORS,
+  shutdown hooks, and Swagger (`/docs`, `/docs-json`) are exercised by the gate.
+- F4 (medium): `stage5:check` now runs `api:check` (cross-platform OpenAPI drift
+  check), making the local gate equivalent to CI; the redundant CI drift step
+  was removed.
+- F5 (medium-low): `/health/ready` exposes minimal detail on deployed profiles
+  (status only) and full posture only locally, reducing anonymous recon surface.
+  Full security hardening remains Stage 13.
+- F6 (low): removed the deprecated `baseUrl` and the unused `src/*` path alias
+  from `tsconfig.json` (and matching jest mappers).
+
+New negative tests cover: premium below minimum, `requestedStartTimestamp`
+inside the lead-time window (plus an accepted future timestamp), multibyte
+`region` exceeding 31 UTF-8 bytes, and `/docs` + `/docs-json` availability.
+
+New/changed files: `common/validation/max-byte-length.validator.ts`,
+`modules/policies/validators/min-premium.validator.ts`,
+`modules/policies/validators/min-lead-time.validator.ts`,
+`scripts/check-openapi.ts`, `common/utils/eth-amount.util.ts` (wei parser),
+plus updates to `create-policy.dto.ts`, the health indicators, `app-setup.ts`,
+`startup-check.ts`, `export-openapi.ts`, the e2e suite, `tsconfig.json`,
+`package.json`, and `backend-quality-gates.yml`.

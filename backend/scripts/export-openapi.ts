@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "../src/app.module";
-import { setupSwagger } from "../src/app-setup";
+import { buildOpenApiDocument } from "../src/app-setup";
 
 async function main(): Promise<void> {
   process.env.NODE_ENV = process.env.NODE_ENV ?? "test";
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.create(AppModule, { logger: false });
   try {
     await app.init();
-    const document = setupSwagger(app);
+    const document = buildOpenApiDocument(app);
 
     const outDir = resolve(process.cwd(), "..", "docs", "api");
     mkdirSync(outDir, { recursive: true });

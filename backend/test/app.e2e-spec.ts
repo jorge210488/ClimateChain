@@ -6,6 +6,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
+import { configureApp, setupSwagger } from "../src/app-setup";
 
 const VALID_ADDRESS = "0x1111111111111111111111111111111111111111";
 
@@ -24,6 +25,9 @@ describe("ClimateChain backend (e2e)", () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    // Exercise the same wiring as production bootstrap.
+    configureApp(app);
+    setupSwagger(app);
     await app.init();
     jwtService = app.get(JwtService, { strict: false });
   });
@@ -60,6 +64,20 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.body.loadedContracts).toEqual(
         expect.arrayContaining(["InsuranceProvider", "InsurancePolicy"]),
       );
+    });
+  });
+
+  describe("docs", () => {
+    it("GET /docs -> 200 (Swagger UI)", async () => {
+      const res = await request(app.getHttpServer()).get("/docs");
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /docs-json -> 200 (OpenAPI document)", async () => {
+      const res = await request(app.getHttpServer()).get("/docs-json");
+      expect(res.status).toBe(200);
+      expect(res.body.openapi).toBeDefined();
+      expect(res.body.paths["/health"]).toBeDefined();
     });
   });
 
@@ -104,6 +122,58 @@ describe("ClimateChain backend (e2e)", () => {
       });
       expect(res.status).toBe(501);
       expect(res.body.message).toContain("Stage 06");
+    });
+
+    it("rejects a premium below the on-chain minimum (1% of coverage)", async () => {
+      const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.005", // 0.5% < 1% minimum
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+      });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("premiumEth");
+    });
+
+    it("rejects a region exceeding 31 UTF-8 bytes (multibyte)", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/policies")
+        .send({
+          coverageEth: "1.0",
+          premiumEth: "0.05",
+          rainfallThresholdMm: 50,
+          durationDays: 30,
+          region: "ñ".repeat(16), // 16 chars but 32 UTF-8 bytes
+        });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("region");
+    });
+
+    it("rejects a requestedStartTimestamp inside the lead-time window", async () => {
+      const tooSoon = Math.floor(Date.now() / 1000) + 5; // < 60s lead time
+      const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        requestedStartTimestamp: tooSoon,
+      });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain(
+        "requestedStartTimestamp",
+      );
+    });
+
+    it("accepts a requestedStartTimestamp beyond the lead-time window (-> 501)", async () => {
+      const future = Math.floor(Date.now() / 1000) + 3600;
+      const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        requestedStartTimestamp: future,
+      });
+      expect(res.status).toBe(501);
     });
 
     it("rejects an invalid policy address with 400", async () => {
