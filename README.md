@@ -35,7 +35,8 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 - Stage 02 (Smart Contract Workspace) completed.
 - Stage 03 (On-Chain Domain Logic) completed.
 - Stage 04 (Contract Hardening & Invariant Matrix) completed.
-- Stage 05 (Backend Foundation) next.
+- Stage 05 (Backend Foundation) completed.
+- Stage 06 (Backend to Blockchain Integration) next.
 
 ## Quick Start (Foundation)
 
@@ -50,6 +51,19 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
    - `backend/` with `npm install`
    - `ml-service/` with `pip install -r requirements.txt`
 3. Follow the execution playbook in `docs/Implementation-Step-By-Step.md`.
+
+### Run the backend (Stage 05)
+
+```bash
+cd backend
+npm install
+npm run start:dev      # API on http://localhost:3000, docs at /docs
+npm run stage5:check   # full local gate (build + quality + tests + startup)
+```
+
+The backend boots fail-fast against the Stage 04 outputs (`shared/abi`,
+`contracts/deployments/<network>.json`). Health: `GET /health`; readiness:
+`GET /health/ready`.
 
 ## Credentials Guidance
 

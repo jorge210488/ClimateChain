@@ -1,0 +1,1124 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/blockchain/deployment": {
+      "get": {
+        "description": "Returns the network, chain id, provider address, and loaded contract ABIs resolved from the shared artifacts. Read-only; live RPC calls are introduced in Stage 06.",
+        "operationId": "BlockchainController_getDeployment",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentInfoResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Describe the loaded on-chain deployment metadata",
+        "tags": [
+          "blockchain"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Returns ok when the process is running and able to respond.",
+        "operationId": "HealthController_liveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Verifies the runtime dependencies expected at this stage: validated configuration and loaded on-chain integration metadata. Returns 503 with diagnostics when a dependency is unhealthy.",
+        "operationId": "HealthController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/auth/token": {
+      "post": {
+        "description": "Enabled only when ADMIN_API_KEY is configured; returns 503 otherwise.",
+        "operationId": "AuthController_issueToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Exchange an administrative API key for a JWT",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedUserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Return the authenticated administrative principal",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/policies": {
+      "post": {
+        "operationId": "PoliciesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePolicyResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Live on-chain execution is wired in Stage 06.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a parametric rainfall policy",
+        "tags": [
+          "policies"
+        ]
+      },
+      "get": {
+        "operationId": "PoliciesController_list",
+        "parameters": [
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Zero-based index of the first item to return.",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Maximum number of items to return (capped at 100).",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "insured",
+            "required": false,
+            "in": "query",
+            "description": "Filter policies by the insured account address.",
+            "schema": {
+              "example": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyListResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Live on-chain reads are wired in Stage 06.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List policies with pagination",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/policies/{address}": {
+      "get": {
+        "operationId": "PoliciesController_getByAddress",
+        "parameters": [
+          {
+            "name": "address",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Live on-chain reads are wired in Stage 06.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a policy by contract address",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/pricing/quote": {
+      "post": {
+        "description": "Computes a suggested premium from the ML pricing model for the given region, coverage window, and risk parameters.",
+        "operationId": "PricingController_quote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Live ML pricing is wired in Stage 09.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Quote a premium without creating a policy",
+        "tags": [
+          "pricing"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "ClimateChain API",
+    "description": "Parametric climate micro-insurance backend API. Coordinates policy lifecycle, premium pricing, and on-chain integration.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Liveness and readiness probes"
+    },
+    {
+      "name": "blockchain",
+      "description": "On-chain deployment metadata"
+    },
+    {
+      "name": "policies",
+      "description": "Parametric policy lifecycle"
+    },
+    {
+      "name": "pricing",
+      "description": "Premium quoting"
+    },
+    {
+      "name": "auth",
+      "description": "Authentication and administrative access"
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "DeploymentInfoResponse": {
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string",
+            "example": "hardhat",
+            "description": "Target network key."
+          },
+          "chainId": {
+            "type": "string",
+            "example": "31337",
+            "description": "Chain id from the manifest."
+          },
+          "providerAddress": {
+            "type": "string",
+            "example": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            "description": "Provider/factory contract address."
+          },
+          "providerAddressSource": {
+            "type": "string",
+            "enum": [
+              "manifest",
+              "config-override"
+            ],
+            "description": "Where the provider address was resolved from."
+          },
+          "oracleAddress": {
+            "type": "string",
+            "nullable": true,
+            "example": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "description": "Weather oracle adapter address, when present in the manifest."
+          },
+          "loadedContracts": {
+            "example": [
+              "InsuranceProvider",
+              "InsurancePolicy"
+            ],
+            "description": "Contracts whose ABIs are loaded and available.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "network",
+          "chainId",
+          "providerAddress",
+          "providerAddressSource",
+          "loadedContracts"
+        ]
+      },
+      "IssueTokenDto": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "Administrative API key (matched against ADMIN_API_KEY) exchanged for a short-lived JWT."
+          }
+        },
+        "required": [
+          "apiKey"
+        ]
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "Signed JWT access token."
+          },
+          "tokenType": {
+            "type": "string",
+            "example": "Bearer",
+            "description": "Token scheme."
+          },
+          "expiresIn": {
+            "type": "string",
+            "example": "1d",
+            "description": "Token lifetime as configured by JWT_EXPIRES_IN."
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn"
+        ]
+      },
+      "AuthenticatedUserResponse": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "example": "admin",
+            "description": "Principal identifier."
+          },
+          "roles": {
+            "example": [
+              "admin"
+            ],
+            "description": "Roles granted to the principal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "roles"
+        ]
+      },
+      "CreatePolicyDto": {
+        "type": "object",
+        "properties": {
+          "coverageEth": {
+            "type": "string",
+            "example": "1.0",
+            "description": "Coverage (payout) amount in ETH."
+          },
+          "premiumEth": {
+            "type": "string",
+            "example": "0.05",
+            "description": "Premium to fund in ETH (sent as transaction value). Must be at least 1% of coverage on-chain."
+          },
+          "rainfallThresholdMm": {
+            "type": "number",
+            "example": 50,
+            "minimum": 1,
+            "description": "Rainfall threshold in millimeters that triggers a payout."
+          },
+          "durationDays": {
+            "type": "number",
+            "example": 30,
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Coverage window length in days."
+          },
+          "region": {
+            "type": "string",
+            "example": "Valencia",
+            "maxLength": 31,
+            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided."
+          },
+          "requestedStartTimestamp": {
+            "type": "number",
+            "example": 1767225600,
+            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted."
+          }
+        },
+        "required": [
+          "coverageEth",
+          "premiumEth",
+          "rainfallThresholdMm",
+          "durationDays"
+        ]
+      },
+      "PolicyStatus": {
+        "type": "string",
+        "enum": [
+          "created",
+          "active",
+          "triggered",
+          "paid_out",
+          "expired"
+        ]
+      },
+      "CreatePolicyResponseDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Created policy contract address."
+          },
+          "transactionHash": {
+            "type": "string",
+            "description": "Transaction hash of the creation transaction."
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "transactionHash",
+          "status"
+        ]
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 400,
+            "description": "HTTP status code."
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request",
+            "description": "Short, machine-stable error label."
+          },
+          "message": {
+            "description": "Human-readable message or list of validation messages explaining the failure.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "example": [
+              "coverageEth must be a positive number"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "example": "POST",
+            "description": "HTTP method of the request."
+          },
+          "path": {
+            "type": "string",
+            "example": "/policies",
+            "description": "Request path that produced the error."
+          },
+          "timestamp": {
+            "type": "string",
+            "example": "2026-04-07T12:00:00.000Z",
+            "description": "ISO-8601 timestamp when the error was produced."
+          },
+          "requestId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Correlation id matching the `x-request-id` response header.",
+            "example": "f0c1d2e3-4567-8901-abcd-ef0123456789"
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "method",
+          "path",
+          "timestamp"
+        ]
+      },
+      "PolicyResponseDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Policy contract address."
+          },
+          "insured": {
+            "type": "string",
+            "description": "Insured account address."
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyStatus"
+              }
+            ]
+          },
+          "coverageWei": {
+            "type": "string",
+            "description": "Coverage amount in wei.",
+            "example": "1000000000000000000"
+          },
+          "premiumWei": {
+            "type": "string",
+            "description": "Premium amount in wei.",
+            "example": "50000000000000000"
+          },
+          "rainfallThresholdMm": {
+            "type": "string",
+            "description": "Rainfall threshold in millimeters.",
+            "example": "50"
+          },
+          "latestRainfallMm": {
+            "type": "string",
+            "description": "Latest observed rainfall in millimeters.",
+            "example": "0"
+          },
+          "conditionMet": {
+            "type": "boolean",
+            "description": "Whether the payout condition has been met."
+          },
+          "regionCode": {
+            "type": "string",
+            "description": "Region code as a bytes32 hex string.",
+            "example": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "startTimestamp": {
+            "type": "number",
+            "description": "Coverage start as a Unix timestamp (seconds).",
+            "example": 1767225600
+          },
+          "endTimestamp": {
+            "type": "number",
+            "description": "Coverage end as a Unix timestamp (seconds).",
+            "example": 1769817600
+          },
+          "paidOut": {
+            "type": "boolean",
+            "description": "Whether the coverage payout has been settled."
+          }
+        },
+        "required": [
+          "address",
+          "insured",
+          "status",
+          "coverageWei",
+          "premiumWei",
+          "rainfallThresholdMm",
+          "latestRainfallMm",
+          "conditionMet",
+          "regionCode",
+          "startTimestamp",
+          "endTimestamp",
+          "paidOut"
+        ]
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "Total number of items available.",
+            "example": 42
+          },
+          "offset": {
+            "type": "number",
+            "description": "Offset applied to this page.",
+            "example": 0
+          },
+          "limit": {
+            "type": "number",
+            "description": "Limit applied to this page.",
+            "example": 20
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of items in this page.",
+            "example": 20
+          }
+        },
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "count"
+        ]
+      },
+      "PolicyListResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyResponseDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "QuoteRequestDto": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "example": "Valencia",
+            "description": "Region identifier."
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2026-04-01",
+            "description": "Coverage window start date (ISO-8601)."
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2026-04-30",
+            "description": "Coverage window end date (ISO-8601)."
+          },
+          "coverageEth": {
+            "type": "string",
+            "example": "1.0",
+            "description": "Coverage amount in ETH."
+          },
+          "rainfallThresholdMm": {
+            "type": "number",
+            "example": 50,
+            "minimum": 1,
+            "description": "Rainfall threshold in millimeters that triggers a payout."
+          }
+        },
+        "required": [
+          "region",
+          "startDate",
+          "endDate",
+          "coverageEth",
+          "rainfallThresholdMm"
+        ]
+      },
+      "QuoteResponseDto": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "example": "Valencia",
+            "description": "Region the quote applies to."
+          },
+          "premiumEth": {
+            "type": "string",
+            "example": "0.08",
+            "description": "Suggested premium in ETH."
+          },
+          "premiumWei": {
+            "type": "string",
+            "example": "80000000000000000",
+            "description": "Suggested premium in wei."
+          },
+          "currency": {
+            "type": "string",
+            "example": "ETH",
+            "description": "Premium currency."
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2026-04-01",
+            "description": "Coverage window start date."
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2026-04-30",
+            "description": "Coverage window end date."
+          },
+          "modelVersion": {
+            "type": "string",
+            "nullable": true,
+            "example": "prophet-v1",
+            "description": "Identifier of the pricing model that produced the quote."
+          }
+        },
+        "required": [
+          "region",
+          "premiumEth",
+          "premiumWei",
+          "currency",
+          "startDate",
+          "endDate"
+        ]
+      }
+    }
+  }
+}
