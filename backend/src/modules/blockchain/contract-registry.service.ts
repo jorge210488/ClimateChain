@@ -14,10 +14,7 @@ import {
   PROVIDER_MANIFEST_KEY,
   REQUIRED_CONTRACTS,
 } from "./contract-registry.types";
-import {
-  assertUsableAddress,
-  isEvmAddress,
-} from "../../common/utils/evm-address.util";
+import { assertUsableAddress } from "../../common/utils/evm-address.util";
 
 /**
  * Loads and validates the on-chain integration metadata produced by Stage 04:
@@ -72,7 +69,7 @@ export class ContractRegistryService implements OnModuleInit {
           ? "FACTORY_ADDRESS override"
           : `manifest contract "${PROVIDER_MANIFEST_KEY}"`,
       );
-      const oracleAddress = this.resolveOracleAddress(manifest);
+      const oracleAddress = this.resolveOracleAddress(manifest, manifestFile);
 
       this.manifest = manifest;
       this.snapshot = {
@@ -190,12 +187,23 @@ export class ContractRegistryService implements OnModuleInit {
 
   private resolveOracleAddress(
     manifest: DeploymentManifest,
+    manifestFile: string,
   ): string | undefined {
     for (const key of ORACLE_MANIFEST_KEYS) {
       const candidate = manifest.contracts[key];
-      if (isEvmAddress(candidate)) {
-        return candidate;
+      // Absent or explicitly empty: the oracle is optional, so treat it as
+      // "not configured" and try the next candidate key.
+      if (typeof candidate !== "string" || candidate.trim().length === 0) {
+        continue;
       }
+      // Present and non-empty: the operator intended to wire an oracle here,
+      // so a malformed or zero address is a deployment mistake. Fail fast
+      // instead of silently degrading to no oracle (which Stage 06 would
+      // then run with). assertUsableAddress throws with an actionable message.
+      return assertUsableAddress(
+        candidate,
+        `manifest oracle address "${key}" in ${manifestFile}`,
+      );
     }
     return undefined;
   }

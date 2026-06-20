@@ -1,6 +1,7 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 
+import { AppConfigService } from "../../config/app-config.service";
 import { Public } from "../../common/decorators/public.decorator";
 import { ContractRegistryService } from "./contract-registry.service";
 import { DeploymentInfoResponse } from "./dto/deployment-info.dto";
@@ -8,7 +9,10 @@ import { DeploymentInfoResponse } from "./dto/deployment-info.dto";
 @ApiTags("blockchain")
 @Controller("blockchain")
 export class BlockchainController {
-  constructor(private readonly registry: ContractRegistryService) {}
+  constructor(
+    private readonly registry: ContractRegistryService,
+    private readonly config: AppConfigService,
+  ) {}
 
   @Public()
   @Get("deployment")
@@ -21,6 +25,8 @@ export class BlockchainController {
   })
   @ApiOkResponse({ type: DeploymentInfoResponse })
   getDeployment(): DeploymentInfoResponse {
-    return DeploymentInfoResponse.fromSnapshot(this.registry.getSnapshot());
+    return DeploymentInfoResponse.fromSnapshot(this.registry.getSnapshot(), {
+      includeProviderAddressSource: !this.config.isDeployedProfile,
+    });
   }
 }

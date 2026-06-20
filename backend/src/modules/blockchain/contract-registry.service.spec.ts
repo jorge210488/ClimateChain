@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -85,6 +85,59 @@ describe("ContractRegistryService", () => {
       expect(() => service.load()).toThrow(/shared ABI index/);
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails fast when a present oracle address is malformed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "climatechain-bad-oracle-"));
+    try {
+      writeFileSync(
+        join(dir, "badoracle.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          network: "badoracle",
+          chainId: "31337",
+          contracts: {
+            weatherOracle: "0xnot-a-valid-address",
+            insuranceProvider: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+          },
+        }),
+      );
+      const service = new ContractRegistryService(
+        buildConfig({ network: "badoracle", deploymentsDir: dir }),
+      );
+
+      expect(() => service.load()).toThrow(/oracle address/);
+      expect(service.isReady()).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats an absent oracle address as no oracle configured", () => {
+    const dir = mkdtempSync(join(tmpdir(), "climatechain-no-oracle-"));
+    try {
+      writeFileSync(
+        join(dir, "nooracle.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          network: "nooracle",
+          chainId: "31337",
+          contracts: {
+            insuranceProvider: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+          },
+        }),
+      );
+      const service = new ContractRegistryService(
+        buildConfig({ network: "nooracle", deploymentsDir: dir }),
+      );
+
+      service.load();
+
+      expect(service.isReady()).toBe(true);
+      expect(service.getOracleAddress()).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

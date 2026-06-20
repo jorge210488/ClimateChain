@@ -20,10 +20,13 @@ export class DeploymentInfoResponse {
   providerAddress!: string;
 
   @ApiProperty({
+    required: false,
     enum: ["manifest", "config-override"],
-    description: "Where the provider address was resolved from.",
+    description:
+      "Where the provider address was resolved from. Omitted on deployed " +
+      "profiles (staging/testnet/production) as an internal provenance detail.",
   })
-  providerAddressSource!: ContractRegistrySnapshot["providerAddressSource"];
+  providerAddressSource?: ContractRegistrySnapshot["providerAddressSource"];
 
   @ApiProperty({
     required: false,
@@ -43,14 +46,20 @@ export class DeploymentInfoResponse {
 
   static fromSnapshot(
     snapshot: ContractRegistrySnapshot,
+    options: { includeProviderAddressSource: boolean } = {
+      includeProviderAddressSource: true,
+    },
   ): DeploymentInfoResponse {
-    return {
+    const response: DeploymentInfoResponse = {
       network: snapshot.network,
       chainId: snapshot.chainId,
       providerAddress: snapshot.providerAddress,
-      providerAddressSource: snapshot.providerAddressSource,
       oracleAddress: snapshot.oracleAddress,
       loadedContracts: snapshot.loadedContracts,
     };
+    if (options.includeProviderAddressSource) {
+      response.providerAddressSource = snapshot.providerAddressSource;
+    }
+    return response;
   }
 }

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsPositive,
   Matches,
@@ -17,6 +18,7 @@ import {
 import { POLICY_DOMAIN } from "../policy.constants";
 import { IsAfterMinLeadTime } from "../validators/min-lead-time.validator";
 import { IsAtLeastMinPremium } from "../validators/min-premium.validator";
+import { RequiresRegion } from "../validators/region-required-with-start.validator";
 
 /** Request body for creating a parametric rainfall policy. */
 export class CreatePolicyDto {
@@ -67,9 +69,11 @@ export class CreatePolicyDto {
     example: "Valencia",
     maxLength: POLICY_DOMAIN.maxRegionCodeLength,
     description:
-      "Human-readable region code. Encoded to bytes32 on-chain when provided.",
+      "Human-readable region code. Encoded to bytes32 on-chain when provided; " +
+      "must be non-empty (an empty code maps to the on-chain zero region).",
   })
   @IsOptional()
+  @IsNotEmpty()
   @MaxByteLength(POLICY_DOMAIN.maxRegionCodeLength)
   region?: string;
 
@@ -77,12 +81,14 @@ export class CreatePolicyDto {
     example: 1767225600,
     description:
       "Requested coverage start as a Unix timestamp (seconds). Defaults to a " +
-      "near-future start on-chain when omitted.",
+      "near-future start on-chain when omitted. Requires `region` to be set, " +
+      "since an explicit start is only honored on the on-chain metadata path.",
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsPositive()
   @IsAfterMinLeadTime()
+  @RequiresRegion("region")
   requestedStartTimestamp?: number;
 }

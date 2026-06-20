@@ -64,6 +64,8 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.body.loadedContracts).toEqual(
         expect.arrayContaining(["InsuranceProvider", "InsurancePolicy"]),
       );
+      // Non-deployed (test) profile exposes the provenance detail.
+      expect(res.body.providerAddressSource).toBe("manifest");
     });
   });
 
@@ -164,7 +166,20 @@ describe("ClimateChain backend (e2e)", () => {
       );
     });
 
-    it("accepts a requestedStartTimestamp beyond the lead-time window (-> 501)", async () => {
+    it("accepts a requestedStartTimestamp with region beyond the lead-time window (-> 501)", async () => {
+      const future = Math.floor(Date.now() / 1000) + 3600;
+      const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "Valencia",
+        requestedStartTimestamp: future,
+      });
+      expect(res.status).toBe(501);
+    });
+
+    it("rejects a requestedStartTimestamp without a region", async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
       const res = await request(app.getHttpServer()).post("/policies").send({
         coverageEth: "1.0",
@@ -173,7 +188,22 @@ describe("ClimateChain backend (e2e)", () => {
         durationDays: 30,
         requestedStartTimestamp: future,
       });
-      expect(res.status).toBe(501);
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain(
+        "requestedStartTimestamp",
+      );
+    });
+
+    it("rejects an empty region string", async () => {
+      const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "",
+      });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("region");
     });
 
     it("rejects an invalid policy address with 400", async () => {
@@ -203,6 +233,34 @@ describe("ClimateChain backend (e2e)", () => {
           rainfallThresholdMm: 50,
         });
       expect(res.status).toBe(400);
+    });
+
+    it("rejects a quote whose endDate precedes startDate", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/pricing/quote")
+        .send({
+          region: "Valencia",
+          startDate: "2026-04-30",
+          endDate: "2026-04-01",
+          coverageEth: "1.0",
+          rainfallThresholdMm: 50,
+        });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("endDate");
+    });
+
+    it("rejects a quote region exceeding the on-chain byte budget", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/pricing/quote")
+        .send({
+          region: "x".repeat(32), // 32 bytes > 31-byte bytes32 budget
+          startDate: "2026-04-01",
+          endDate: "2026-04-30",
+          coverageEth: "1.0",
+          rainfallThresholdMm: 50,
+        });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("region");
     });
 
     it("returns 501 for a valid quote (live integration arrives in Stage 09)", async () => {

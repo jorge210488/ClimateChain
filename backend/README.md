@@ -63,6 +63,24 @@ schema; defaults cover local/dev/test. Deployed profiles
 (staging/testnet/production) must supply real secrets (e.g. `JWT_SECRET`,
 `RPC_URL`). See `.env.example` for the full list.
 
+### Working-directory convention (operational)
+
+> **Run all backend processes from the `backend/` package directory.**
+
+The shared-ABI and deployment-manifest paths default to locations resolved
+**relative to the current working directory** (`SHARED_ABI_DIR=../shared/abi`,
+`CONTRACTS_DEPLOYMENTS_DIR=../contracts/deployments`), as do the OpenAPI
+export/check scripts (`../docs/api`). The `npm run` scripts always set the
+working directory to `backend/`, so this holds for normal usage. If a process is
+launched from elsewhere (e.g. `node dist/main.js` from the repo root, or a
+container with a different `WORKDIR`), set those two env vars to **absolute
+paths** instead of relying on the defaults.
+
+> **Known tech debt:** path resolution is anchored to `process.cwd()` rather than
+> the module location. This is intentional for Stage 05 (it matches the NestJS
+> `ConfigModule` convention and keeps `src`/`dist` resolution simple) but should
+> be revisited if the launch directory ever becomes non-deterministic.
+
 ## Commands
 
 ```bash

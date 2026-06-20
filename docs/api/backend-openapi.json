@@ -677,7 +677,7 @@
               "manifest",
               "config-override"
             ],
-            "description": "Where the provider address was resolved from."
+            "description": "Where the provider address was resolved from. Omitted on deployed profiles (staging/testnet/production) as an internal provenance detail."
           },
           "oracleAddress": {
             "type": "string",
@@ -701,7 +701,6 @@
           "network",
           "chainId",
           "providerAddress",
-          "providerAddressSource",
           "loadedContracts"
         ]
       },
@@ -795,12 +794,12 @@
             "type": "string",
             "example": "Valencia",
             "maxLength": 31,
-            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided."
+            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided; must be non-empty (an empty code maps to the on-chain zero region)."
           },
           "requestedStartTimestamp": {
             "type": "number",
             "example": 1767225600,
-            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted."
+            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted. Requires `region` to be set, since an explicit start is only honored on the on-chain metadata path."
           }
         },
         "required": [
@@ -1038,7 +1037,8 @@
           "region": {
             "type": "string",
             "example": "Valencia",
-            "description": "Region identifier."
+            "maxLength": 31,
+            "description": "Region identifier. Constrained to the same on-chain region budget as policy creation so a quoted region is always insurable (quote -> create)."
           },
           "startDate": {
             "type": "string",
@@ -1048,7 +1048,7 @@
           "endDate": {
             "type": "string",
             "example": "2026-04-30",
-            "description": "Coverage window end date (ISO-8601)."
+            "description": "Coverage window end date (ISO-8601). Must be >= startDate."
           },
           "coverageEth": {
             "type": "string",

@@ -208,7 +208,7 @@ _Diagrama entidad-relación:_ Un `USER` puede adquirir varias `POLICY`. Cada vez
 - **Controladores y Servicios:**
   - `POST /policies`: recibe DTO con datos de póliza, invoca `PricingService` para obtener prima, luego llama al contrato con `InsuranceProvider.createPolicy(...)` usando ethers.js. Devuelve la transacción.
   - `GET /policies/:id`: llama al contrato `InsurancePolicy` para leer estado (JSON).
-  - `GET /pricing`: llama al servicio de IA para cotizar sin crear póliza.
+  - `POST /pricing/quote`: llama al servicio de IA para cotizar sin crear póliza.
 - **DTOs y Validación:** Definir clases TypeScript para cada petición (por ejemplo, `CreatePolicyDto` con reglas de validación `@IsNotEmpty()`, `@IsNumber()`).
 - **Autenticación:** Configurar JWT para endpoints sensibles. Guardar claves privadas en variables de entorno (ej. `process.env.ETH_PRIVATE_KEY`).
 - **Retries y Rate Limits:** Implementar lógica de reintentos en llamadas RPC (ethers.js tiene opciones). Usar un middleware de limitación (`throttler`) en NestJS para proteger rutas públicas.
