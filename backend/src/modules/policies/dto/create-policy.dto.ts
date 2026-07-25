@@ -16,7 +16,10 @@ import {
   POSITIVE_ETH_AMOUNT_REGEX,
 } from "../../../common/utils/eth-amount.util";
 import { POLICY_DOMAIN } from "../policy.constants";
-import { IsAfterMinLeadTime } from "../validators/min-lead-time.validator";
+import {
+  IsAfterMinLeadTime,
+  REQUIRED_START_LEAD_TIME_SECONDS,
+} from "../validators/min-lead-time.validator";
 import { IsAtLeastMinPremium } from "../validators/min-premium.validator";
 import { RequiresRegion } from "../validators/region-required-with-start.validator";
 
@@ -82,7 +85,9 @@ export class CreatePolicyDto {
     description:
       "Requested coverage start as a Unix timestamp (seconds). Defaults to a " +
       "near-future start on-chain when omitted. Requires `region` to be set, " +
-      "since an explicit start is only honored on the on-chain metadata path.",
+      "since an explicit start is only honored on the on-chain metadata path. " +
+      `Must be at least ${REQUIRED_START_LEAD_TIME_SECONDS} seconds ahead so ` +
+      "it still satisfies the on-chain lead time once the transaction is mined.",
   })
   @IsOptional()
   @Type(() => Number)

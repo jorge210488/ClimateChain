@@ -1,6 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 
 import { PaginationMeta } from "../../../common/dto/paginated-response.dto";
+import { PolicySettlementType } from "../policy-settlement.enum";
 import { PolicyStatus } from "../policy-status.enum";
 
 /**
@@ -45,6 +46,29 @@ export class PolicyResponseDto {
   conditionMet!: boolean;
 
   @ApiProperty({
+    description:
+      "Coverage amount currently claimable by the insured, in wei. The " +
+      "contract settles payouts pull-style: once a payout executes, the " +
+      "insured must call the policy's claim entry point to receive the funds. " +
+      "A non-zero value here means money is waiting to be claimed.",
+    example: "0",
+  })
+  pendingPayoutWei!: string;
+
+  @ApiProperty({
+    description:
+      "Unix timestamp (seconds) of the last oracle weather update, or 0 if " +
+      "the policy has never been updated. Lets consumers detect stale data.",
+    example: 0,
+  })
+  lastOracleUpdateTimestamp!: number;
+
+  @ApiProperty({
+    description: "Weather oracle adapter bound to this policy at deployment.",
+  })
+  oracle!: string;
+
+  @ApiProperty({
     description: "Region code as a bytes32 hex string.",
     example:
       "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -65,6 +89,25 @@ export class PolicyResponseDto {
 
   @ApiProperty({ description: "Whether the coverage payout has been settled." })
   paidOut!: boolean;
+
+  @ApiProperty({
+    enum: PolicySettlementType,
+    enumName: "PolicySettlementType",
+    description:
+      "How the provider settled its reserve for this policy. Distinct from " +
+      "`status`, which tracks the policy's own lifecycle.",
+  })
+  settlementType!: PolicySettlementType;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description:
+      "Unix timestamp (seconds) when the provider recorded settlement, or " +
+      "null while the policy is unsettled.",
+    example: null,
+  })
+  settledAt?: number;
 }
 
 /** Paginated list of policies. */

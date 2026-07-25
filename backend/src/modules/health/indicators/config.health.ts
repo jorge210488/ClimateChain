@@ -11,8 +11,10 @@ import { AppConfigService } from "../../../config/app-config.service";
  * profile-specific requirements.
  *
  * For deployed profiles (staging/testnet/production) a real RPC endpoint must
- * be configured; otherwise the indicator reports down with an actionable
- * reason. To limit reconnaissance surface on the anonymous readiness probe,
+ * be configured. That requirement is enforced at boot (config schema plus the
+ * deployed-profile invariants in `configuration.ts`), so this check is defense
+ * in depth for a runtime that somehow started without it rather than the
+ * primary gate. To limit reconnaissance surface on the anonymous readiness probe,
  * deployed profiles expose only minimal detail, while local/dev/test expose the
  * full posture for developer diagnostics.
  */

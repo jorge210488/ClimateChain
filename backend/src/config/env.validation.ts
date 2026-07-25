@@ -7,6 +7,7 @@ import {
 } from "./config.defaults";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 /**
  * Fail-fast environment validation schema.
@@ -30,14 +31,52 @@ export const envValidationSchema = Joi.object({
     .empty("")
     .default(CONFIG_DEFAULTS.logLevel),
 
+  // HTTP surface controls.
+  // Comma-separated origin allowlist. Required for deployed profiles, which
+  // must not reflect arbitrary origins.
+  CORS_ORIGINS: Joi.string()
+    .empty("")
+    .when("NODE_ENV", {
+      is: Joi.valid(...DEPLOYED_PROFILES),
+      then: Joi.required().messages({
+        "any.required":
+          "CORS_ORIGINS is required for staging/testnet/production profiles",
+      }),
+      otherwise: Joi.optional(),
+    }),
+  // Defaults to enabled for local profiles and disabled for deployed ones.
+  SWAGGER_ENABLED: Joi.boolean().empty("").optional(),
+  MAX_REQUEST_BODY_SIZE: Joi.string()
+    .empty("")
+    .default(CONFIG_DEFAULTS.maxRequestBodySize),
+
   // Blockchain integration metadata (consumed by the contract registry).
   BLOCKCHAIN_NETWORK: Joi.string()
     .trim()
     .empty("")
     .default(CONFIG_DEFAULTS.blockchainNetwork),
   CHAIN_ID: Joi.number().integer().positive().optional().allow(""),
-  RPC_URL: Joi.string().uri().optional().allow(""),
-  PRIVATE_KEY: Joi.string().optional().allow(""),
+  // Deployed profiles must reach a real chain: enforced at boot rather than
+  // only surfacing as a readiness failure once the process is already serving.
+  RPC_URL: Joi.string()
+    .uri()
+    .empty("")
+    .when("NODE_ENV", {
+      is: Joi.valid(...DEPLOYED_PROFILES),
+      then: Joi.required().messages({
+        "any.required":
+          "RPC_URL is required for staging/testnet/production profiles",
+      }),
+      otherwise: Joi.optional(),
+    }),
+  // Format-checked at boot so a malformed signer key fails here instead of on
+  // the first Stage 06 transaction. Whether a signer is required at all is a
+  // Stage 06 decision (backend-signed vs. user-signed transactions).
+  PRIVATE_KEY: Joi.string()
+    .pattern(PRIVATE_KEY_PATTERN)
+    .message("PRIVATE_KEY must be a 0x-prefixed 32-byte hex string")
+    .optional()
+    .allow(""),
   FACTORY_ADDRESS: Joi.string()
     .pattern(EVM_ADDRESS_PATTERN)
     .message("FACTORY_ADDRESS must be a 0x-prefixed 20-byte hex address")
@@ -67,7 +106,24 @@ export const envValidationSchema = Joi.object({
       otherwise: Joi.string().min(16).default(CONFIG_DEFAULTS.localJwtSecret),
     }),
   JWT_EXPIRES_IN: Joi.string().empty("").default(CONFIG_DEFAULTS.jwtExpiresIn),
-  ADMIN_API_KEY: Joi.string().optional().allow(""),
+  // Optional everywhere (unset disables admin token issuance), but when set it
+  // is the sole credential guarding JWT issuance, so weak keys are rejected.
+  ADMIN_API_KEY: Joi.string()
+    .min(CONFIG_DEFAULTS.minAdminApiKeyLength)
+    .empty("")
+    .optional(),
+
+  // Abuse controls for the administrative token endpoint.
+  AUTH_RATE_LIMIT_TTL_SECONDS: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.authRateLimitTtlSeconds),
+  AUTH_RATE_LIMIT_MAX: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.authRateLimitMax),
 
   // Optional Stage 11 off-chain persistence.
   DATABASE_URL: Joi.string().optional().allow(""),

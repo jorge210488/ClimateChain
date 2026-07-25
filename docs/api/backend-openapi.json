@@ -366,7 +366,7 @@
     },
     "/auth/token": {
       "post": {
-        "description": "Enabled only when ADMIN_API_KEY is configured; returns 503 otherwise.",
+        "description": "Enabled only when ADMIN_API_KEY is configured; returns 503 otherwise. Rate limited per client address (AUTH_RATE_LIMIT_MAX per AUTH_RATE_LIMIT_TTL_SECONDS).",
         "operationId": "AuthController_issueToken",
         "parameters": [],
         "requestBody": {
@@ -386,6 +386,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many token-issuance attempts from this client.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -426,6 +436,7 @@
     },
     "/policies": {
       "post": {
+        "description": "Requires an authenticated principal: creation consumes the provider's coverage reserve and is submitted on-chain from Stage 06 onward.",
         "operationId": "PoliciesController_create",
         "parameters": [],
         "requestBody": {
@@ -449,6 +460,16 @@
               }
             }
           },
+          "401": {
+            "description": "Missing or invalid bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "501": {
             "description": "Live on-chain execution is wired in Stage 06.",
             "content": {
@@ -460,6 +481,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Create a parametric rainfall policy",
         "tags": [
           "policies"
@@ -495,7 +521,7 @@
             "name": "insured",
             "required": false,
             "in": "query",
-            "description": "Filter policies by the insured account address.",
+            "description": "Filter policies by the insured account address. Case-insensitive: the value is normalized before it is matched against on-chain data.",
             "schema": {
               "example": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
               "type": "string"
@@ -740,110 +766,6 @@
           "expiresIn"
         ]
       },
-      "AuthenticatedUserResponse": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "example": "admin",
-            "description": "Principal identifier."
-          },
-          "roles": {
-            "example": [
-              "admin"
-            ],
-            "description": "Roles granted to the principal.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "userId",
-          "roles"
-        ]
-      },
-      "CreatePolicyDto": {
-        "type": "object",
-        "properties": {
-          "coverageEth": {
-            "type": "string",
-            "example": "1.0",
-            "description": "Coverage (payout) amount in ETH."
-          },
-          "premiumEth": {
-            "type": "string",
-            "example": "0.05",
-            "description": "Premium to fund in ETH (sent as transaction value). Must be at least 1% of coverage on-chain."
-          },
-          "rainfallThresholdMm": {
-            "type": "number",
-            "example": 50,
-            "minimum": 1,
-            "description": "Rainfall threshold in millimeters that triggers a payout."
-          },
-          "durationDays": {
-            "type": "number",
-            "example": 30,
-            "minimum": 1,
-            "maximum": 365,
-            "description": "Coverage window length in days."
-          },
-          "region": {
-            "type": "string",
-            "example": "Valencia",
-            "maxLength": 31,
-            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided; must be non-empty (an empty code maps to the on-chain zero region)."
-          },
-          "requestedStartTimestamp": {
-            "type": "number",
-            "example": 1767225600,
-            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted. Requires `region` to be set, since an explicit start is only honored on the on-chain metadata path."
-          }
-        },
-        "required": [
-          "coverageEth",
-          "premiumEth",
-          "rainfallThresholdMm",
-          "durationDays"
-        ]
-      },
-      "PolicyStatus": {
-        "type": "string",
-        "enum": [
-          "created",
-          "active",
-          "triggered",
-          "paid_out",
-          "expired"
-        ]
-      },
-      "CreatePolicyResponseDto": {
-        "type": "object",
-        "properties": {
-          "address": {
-            "type": "string",
-            "description": "Created policy contract address."
-          },
-          "transactionHash": {
-            "type": "string",
-            "description": "Transaction hash of the creation transaction."
-          },
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PolicyStatus"
-              }
-            ]
-          }
-        },
-        "required": [
-          "address",
-          "transactionHash",
-          "status"
-        ]
-      },
       "ApiErrorResponse": {
         "type": "object",
         "properties": {
@@ -905,6 +827,119 @@
           "timestamp"
         ]
       },
+      "AuthenticatedUserResponse": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "example": "admin",
+            "description": "Principal identifier."
+          },
+          "roles": {
+            "example": [
+              "admin"
+            ],
+            "description": "Roles granted to the principal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "roles"
+        ]
+      },
+      "CreatePolicyDto": {
+        "type": "object",
+        "properties": {
+          "coverageEth": {
+            "type": "string",
+            "example": "1.0",
+            "description": "Coverage (payout) amount in ETH."
+          },
+          "premiumEth": {
+            "type": "string",
+            "example": "0.05",
+            "description": "Premium to fund in ETH (sent as transaction value). Must be at least 1% of coverage on-chain."
+          },
+          "rainfallThresholdMm": {
+            "type": "number",
+            "example": 50,
+            "minimum": 1,
+            "description": "Rainfall threshold in millimeters that triggers a payout."
+          },
+          "durationDays": {
+            "type": "number",
+            "example": 30,
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Coverage window length in days."
+          },
+          "region": {
+            "type": "string",
+            "example": "Valencia",
+            "maxLength": 31,
+            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided; must be non-empty (an empty code maps to the on-chain zero region)."
+          },
+          "requestedStartTimestamp": {
+            "type": "number",
+            "example": 1767225600,
+            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted. Requires `region` to be set, since an explicit start is only honored on the on-chain metadata path. Must be at least 180 seconds ahead so it still satisfies the on-chain lead time once the transaction is mined."
+          }
+        },
+        "required": [
+          "coverageEth",
+          "premiumEth",
+          "rainfallThresholdMm",
+          "durationDays"
+        ]
+      },
+      "PolicyStatus": {
+        "type": "string",
+        "enum": [
+          "created",
+          "active",
+          "triggered",
+          "paid_out",
+          "expired"
+        ]
+      },
+      "CreatePolicyResponseDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Created policy contract address."
+          },
+          "transactionHash": {
+            "type": "string",
+            "description": "Transaction hash of the creation transaction."
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "transactionHash",
+          "status"
+        ]
+      },
+      "PolicySettlementType": {
+        "type": "string",
+        "enum": [
+          "none",
+          "payout",
+          "expiry"
+        ],
+        "description": "How the provider settled its reserve for this policy. Distinct from `status`, which tracks the policy's own lifecycle."
+      },
       "PolicyResponseDto": {
         "type": "object",
         "properties": {
@@ -947,6 +982,20 @@
             "type": "boolean",
             "description": "Whether the payout condition has been met."
           },
+          "pendingPayoutWei": {
+            "type": "string",
+            "description": "Coverage amount currently claimable by the insured, in wei. The contract settles payouts pull-style: once a payout executes, the insured must call the policy's claim entry point to receive the funds. A non-zero value here means money is waiting to be claimed.",
+            "example": "0"
+          },
+          "lastOracleUpdateTimestamp": {
+            "type": "number",
+            "description": "Unix timestamp (seconds) of the last oracle weather update, or 0 if the policy has never been updated. Lets consumers detect stale data.",
+            "example": 0
+          },
+          "oracle": {
+            "type": "string",
+            "description": "Weather oracle adapter bound to this policy at deployment."
+          },
           "regionCode": {
             "type": "string",
             "description": "Region code as a bytes32 hex string.",
@@ -965,6 +1014,20 @@
           "paidOut": {
             "type": "boolean",
             "description": "Whether the coverage payout has been settled."
+          },
+          "settlementType": {
+            "description": "How the provider settled its reserve for this policy. Distinct from `status`, which tracks the policy's own lifecycle.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicySettlementType"
+              }
+            ]
+          },
+          "settledAt": {
+            "type": "number",
+            "nullable": true,
+            "description": "Unix timestamp (seconds) when the provider recorded settlement, or null while the policy is unsettled.",
+            "example": null
           }
         },
         "required": [
@@ -976,10 +1039,14 @@
           "rainfallThresholdMm",
           "latestRainfallMm",
           "conditionMet",
+          "pendingPayoutWei",
+          "lastOracleUpdateTimestamp",
+          "oracle",
           "regionCode",
           "startTimestamp",
           "endTimestamp",
-          "paidOut"
+          "paidOut",
+          "settlementType"
         ]
       },
       "PaginationMeta": {

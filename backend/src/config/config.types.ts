@@ -5,6 +5,15 @@ export interface AppRuntimeConfig {
   port: number;
   /** True for staging/testnet/production profiles. */
   isDeployedProfile: boolean;
+  /**
+   * Allowed CORS origins. Empty means "reflect any origin", which is only
+   * permitted for non-deployed profiles.
+   */
+  corsOrigins: string[];
+  /** Whether interactive API docs are mounted for this profile. */
+  swaggerEnabled: boolean;
+  /** Maximum accepted request body size (Express/body-parser syntax). */
+  maxRequestBodySize: string;
 }
 
 export interface BlockchainConfig {
@@ -34,6 +43,10 @@ export interface AuthConfig {
   jwtExpiresIn: string;
   /** When set, enables the administrative token-issuance endpoint. */
   adminApiKey?: string;
+  /** Rolling window (seconds) for the token-issuance rate limiter. */
+  rateLimitTtlSeconds: number;
+  /** Maximum token-issuance attempts per window, per client address. */
+  rateLimitMax: number;
 }
 
 export interface LoggingConfig {

@@ -6,6 +6,10 @@
   "private": true,
   "license": "ISC",
   "main": "dist/main.js",
+  "engines": {
+    "node": ">=20.10.0 <21 || >=22",
+    "npm": ">=10"
+  },
   "scripts": {
     "build": "nest build",
     "start": "nest start",
@@ -21,10 +25,11 @@
     "format:write": "prettier --write \"{src,test,scripts}/**/*.ts\"",
     "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
-    "test:cov": "cross-env NODE_ENV=test jest --coverage",
+    "test:cov": "cross-env NODE_ENV=test jest --config jest.coverage.js --coverage --runInBand",
     "test:e2e": "cross-env NODE_ENV=test jest --config test/jest-e2e.json --runInBand",
+    "audit:check": "npm audit --audit-level=critical",
     "quality:check": "npm run lint && npm run format:check",
-    "stage5:check": "npm run build && npm run quality:check && npm run test && npm run test:e2e && npm run start:check && npm run api:check"
+    "stage5:check": "npm run build && npm run quality:check && npm run audit:check && npm run test && npm run test:e2e && npm run test:cov && npm run start:check && npm run api:check"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -35,8 +40,10 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
+    "@nestjs/throttler": "^6.4.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "helmet": "^8.0.0",
     "joi": "^17.13.3",
     "nestjs-pino": "^4.3.0",
     "passport": "^0.7.0",
@@ -50,6 +57,8 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.0",
+    "@swc/core": "^1.10.0",
+    "@swc/jest": "^0.2.37",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.10.0",
@@ -73,14 +82,18 @@
     "typescript-eslint": "^8.18.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "@swc/jest"
+      ]
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
-    "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
 }

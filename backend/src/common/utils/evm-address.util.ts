@@ -12,6 +12,22 @@ export function isZeroAddress(value: string): boolean {
 }
 
 /**
+ * Canonical comparison form for an address.
+ *
+ * EVM addresses are case-insensitive (mixed case only carries an EIP-55
+ * checksum), so the same account can arrive spelled several ways. Comparing or
+ * keying on the raw input would silently miss matches; every address that
+ * crosses the API boundary is folded to lowercase first.
+ *
+ * Note this drops checksum casing rather than recomputing it. Emitting
+ * checksummed addresses on responses needs keccak256 and is picked up in
+ * Stage 06 along with ethers; lowercase is unambiguous and round-trips safely.
+ */
+export function normalizeEvmAddress(value: string): string {
+  return value.toLowerCase();
+}
+
+/**
  * Validates an address is well-formed and non-zero.
  * Throws an `Error` with an actionable message otherwise.
  */

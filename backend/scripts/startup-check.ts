@@ -12,7 +12,7 @@ import { NestFactory } from "@nestjs/core";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
-import { configureApp, setupSwagger } from "../src/app-setup";
+import { configureApp, HTTP_APP_OPTIONS, setupSwagger } from "../src/app-setup";
 
 const PROBES = [
   "/health",
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
   let app: INestApplication | undefined;
   try {
-    app = await NestFactory.create(AppModule, { bufferLogs: true });
+    app = await NestFactory.create(AppModule, HTTP_APP_OPTIONS);
     configureApp(app);
     setupSwagger(app);
     await app.init();

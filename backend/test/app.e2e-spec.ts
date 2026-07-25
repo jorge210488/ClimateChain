@@ -6,30 +6,41 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
-import { configureApp, setupSwagger } from "../src/app-setup";
+import { configureApp, HTTP_APP_OPTIONS, setupSwagger } from "../src/app-setup";
 
 const VALID_ADDRESS = "0x1111111111111111111111111111111111111111";
+/** Must satisfy the 32-character ADMIN_API_KEY minimum enforced at boot. */
+const ADMIN_API_KEY = "e2e-admin-api-key-0123456789abcdef";
+/** Small limit so the throttling test stays fast and deterministic. */
+const AUTH_RATE_LIMIT_MAX = 5;
 
 describe("ClimateChain backend (e2e)", () => {
   let app: INestApplication;
   let jwtService: JwtService;
+  let bearer: string;
+
+  /** POST /policies requires an authenticated principal. */
+  const createPolicy = () =>
+    request(app.getHttpServer()).post("/policies").set("Authorization", bearer);
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
     process.env.LOG_LEVEL = "silent";
-    process.env.ADMIN_API_KEY = "test-admin-key";
+    process.env.ADMIN_API_KEY = ADMIN_API_KEY;
+    process.env.AUTH_RATE_LIMIT_MAX = String(AUTH_RATE_LIMIT_MAX);
     process.env.JWT_SECRET = "e2e-test-jwt-secret-0123456789";
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication(HTTP_APP_OPTIONS);
     // Exercise the same wiring as production bootstrap.
     configureApp(app);
     setupSwagger(app);
     await app.init();
     jwtService = app.get(JwtService, { strict: false });
+    bearer = `Bearer ${jwtService.sign({ sub: "admin", roles: ["admin"] })}`;
   });
 
   afterAll(async () => {
@@ -69,6 +80,16 @@ describe("ClimateChain backend (e2e)", () => {
     });
   });
 
+  describe("security headers", () => {
+    it("sets helmet baseline headers", async () => {
+      const res = await request(app.getHttpServer()).get("/health");
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+      expect(res.headers["x-frame-options"]).toBeDefined();
+      // helmet removes the framework fingerprint.
+      expect(res.headers["x-powered-by"]).toBeUndefined();
+    });
+  });
+
   describe("docs", () => {
     it("GET /docs -> 200 (Swagger UI)", async () => {
       const res = await request(app.getHttpServer()).get("/docs");
@@ -84,8 +105,76 @@ describe("ClimateChain backend (e2e)", () => {
   });
 
   describe("policies", () => {
-    it("rejects an invalid create body with 400 and the error contract", async () => {
+    it("rejects an anonymous create with 401", async () => {
+      // Creation draws on the provider's coverage reserve from Stage 06, so it
+      // must never be reachable without an authenticated principal.
       const res = await request(app.getHttpServer()).post("/policies").send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "Valencia",
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a create with a malformed bearer token", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/policies")
+        .set("Authorization", "Bearer not-a-real-token")
+        .send({
+          coverageEth: "1.0",
+          premiumEth: "0.05",
+          rainfallThresholdMm: 50,
+          durationDays: 30,
+          region: "Valencia",
+        });
+      expect(res.status).toBe(401);
+    });
+
+    it("keeps reads public", async () => {
+      // On-chain state is world-readable, so gating reads adds friction
+      // without adding confidentiality. 501 (not 401) proves it reached the
+      // handler rather than being rejected by the auth guard.
+      const list = await request(app.getHttpServer()).get("/policies");
+      expect(list.status).toBe(501);
+
+      const byAddress = await request(app.getHttpServer()).get(
+        `/policies/${VALID_ADDRESS}`,
+      );
+      expect(byAddress.status).toBe(501);
+    });
+
+    it("accepts a checksummed insured filter regardless of casing", async () => {
+      const mixedCase = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+      const res = await request(app.getHttpServer())
+        .get("/policies")
+        .query({ insured: mixedCase });
+      // Reaches the handler (501) rather than failing validation (400).
+      expect(res.status).toBe(501);
+    });
+
+    it("rejects a malformed insured filter with 400", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/policies")
+        .query({ insured: "0xnope" });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("insured");
+    });
+
+    it("rejects an oversized request body", async () => {
+      const res = await createPolicy().send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "x".repeat(200_000),
+      });
+      expect(res.status).toBe(413);
+    });
+
+    it("rejects an invalid create body with 400 and the error contract", async () => {
+      const res = await createPolicy().send({
         coverageEth: "0",
         premiumEth: "abc",
         rainfallThresholdMm: 0,
@@ -104,7 +193,7 @@ describe("ClimateChain backend (e2e)", () => {
     });
 
     it("rejects unknown properties via the whitelist", async () => {
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -115,7 +204,7 @@ describe("ClimateChain backend (e2e)", () => {
     });
 
     it("returns 501 for a valid create (live integration arrives in Stage 06)", async () => {
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -127,7 +216,7 @@ describe("ClimateChain backend (e2e)", () => {
     });
 
     it("rejects a premium below the on-chain minimum (1% of coverage)", async () => {
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.005", // 0.5% < 1% minimum
         rainfallThresholdMm: 50,
@@ -138,22 +227,20 @@ describe("ClimateChain backend (e2e)", () => {
     });
 
     it("rejects a region exceeding 31 UTF-8 bytes (multibyte)", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/policies")
-        .send({
-          coverageEth: "1.0",
-          premiumEth: "0.05",
-          rainfallThresholdMm: 50,
-          durationDays: 30,
-          region: "ñ".repeat(16), // 16 chars but 32 UTF-8 bytes
-        });
+      const res = await createPolicy().send({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "ñ".repeat(16), // 16 chars but 32 UTF-8 bytes
+      });
       expect(res.status).toBe(400);
       expect(JSON.stringify(res.body.message)).toContain("region");
     });
 
     it("rejects a requestedStartTimestamp inside the lead-time window", async () => {
       const tooSoon = Math.floor(Date.now() / 1000) + 5; // < 60s lead time
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -168,7 +255,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("accepts a requestedStartTimestamp with region beyond the lead-time window (-> 501)", async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -181,7 +268,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects a requestedStartTimestamp without a region", async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -195,7 +282,7 @@ describe("ClimateChain backend (e2e)", () => {
     });
 
     it("rejects an empty region string", async () => {
-      const res = await request(app.getHttpServer()).post("/policies").send({
+      const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -294,7 +381,7 @@ describe("ClimateChain backend (e2e)", () => {
     it("issues a token and authorizes /auth/me for an admin principal", async () => {
       const tokenRes = await request(app.getHttpServer())
         .post("/auth/token")
-        .send({ apiKey: "test-admin-key" });
+        .send({ apiKey: ADMIN_API_KEY });
       expect(tokenRes.status).toBe(200);
       const token = tokenRes.body.accessToken as string;
       expect(typeof token).toBe("string");
@@ -312,6 +399,22 @@ describe("ClimateChain backend (e2e)", () => {
         .get("/auth/me")
         .set("Authorization", `Bearer ${token}`);
       expect(res.status).toBe(403);
+    });
+
+    // Declared last: the limiter counts every /auth/token call made above, so
+    // running this first would starve the preceding tests of their budget.
+    it("throttles repeated token-issuance attempts with 429", async () => {
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < AUTH_RATE_LIMIT_MAX + 2; attempt += 1) {
+        const res = await request(app.getHttpServer())
+          .post("/auth/token")
+          .send({ apiKey: "brute-force-guess" });
+        statuses.push(res.status);
+      }
+
+      expect(statuses).toContain(429);
+      // Once throttled, further attempts stay throttled within the window.
+      expect(statuses[statuses.length - 1]).toBe(429);
     });
   });
 });

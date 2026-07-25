@@ -14,6 +14,8 @@ function buildConfig(auth: Partial<AuthConfig>): AppConfigService {
   const merged: AuthConfig = {
     jwtSecret: SECRET,
     jwtExpiresIn: "1h",
+    rateLimitTtlSeconds: 60,
+    rateLimitMax: 10,
     ...auth,
   };
   return { auth: merged } as AppConfigService;

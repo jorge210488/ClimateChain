@@ -21,6 +21,26 @@ function optionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** Parses a comma-separated list, dropping empty entries. */
+function optionalList(value: string | undefined): string[] {
+  return (optionalString(value) ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/** Parses a boolean-ish env flag, falling back when unset. */
+function optionalBoolean(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  const normalized = optionalString(value)?.toLowerCase();
+  if (normalized === undefined) {
+    return fallback;
+  }
+  return normalized === "true" || normalized === "1";
+}
+
 function resolveDir(
   override: string | undefined,
   fallbackRelative: string,
@@ -50,6 +70,13 @@ export function configuration(): Record<string, RootConfig> {
       nodeEnv,
       port: optionalNumber(env.PORT) ?? CONFIG_DEFAULTS.port,
       isDeployedProfile,
+      corsOrigins: optionalList(env.CORS_ORIGINS),
+      // Interactive docs describe every route and payload shape, so they are
+      // opt-in for deployed profiles rather than exposed by default.
+      swaggerEnabled: optionalBoolean(env.SWAGGER_ENABLED, !isDeployedProfile),
+      maxRequestBodySize:
+        optionalString(env.MAX_REQUEST_BODY_SIZE) ??
+        CONFIG_DEFAULTS.maxRequestBodySize,
     },
     blockchain: {
       network:
@@ -82,6 +109,12 @@ export function configuration(): Record<string, RootConfig> {
       jwtExpiresIn:
         optionalString(env.JWT_EXPIRES_IN) ?? CONFIG_DEFAULTS.jwtExpiresIn,
       adminApiKey: optionalString(env.ADMIN_API_KEY),
+      rateLimitTtlSeconds:
+        optionalNumber(env.AUTH_RATE_LIMIT_TTL_SECONDS) ??
+        CONFIG_DEFAULTS.authRateLimitTtlSeconds,
+      rateLimitMax:
+        optionalNumber(env.AUTH_RATE_LIMIT_MAX) ??
+        CONFIG_DEFAULTS.authRateLimitMax,
     },
     logging: {
       level: optionalString(env.LOG_LEVEL) ?? CONFIG_DEFAULTS.logLevel,
@@ -92,5 +125,46 @@ export function configuration(): Record<string, RootConfig> {
     },
   };
 
+  assertDeployedProfileInvariants(config);
+
   return { [CONFIG_NAMESPACE]: config };
+}
+
+/**
+ * Defense in depth for deployed profiles.
+ *
+ * The Joi schema already rejects a missing `JWT_SECRET`/`RPC_URL` for
+ * staging/testnet/production, and `@nestjs/config` writes validated values back
+ * to `process.env`. This factory nevertheless resolves its own defaults, so it
+ * would silently fall back to the insecure local placeholder if schema
+ * validation were ever bypassed (a skipped `validationSchema`, a direct call in
+ * a test harness). Re-asserting here means no code path can boot a deployed
+ * profile on development credentials.
+ */
+function assertDeployedProfileInvariants(config: RootConfig): void {
+  if (!config.app.isDeployedProfile) {
+    return;
+  }
+
+  if (config.auth.jwtSecret === CONFIG_DEFAULTS.localJwtSecret) {
+    throw new Error(
+      `JWT_SECRET resolves to the insecure local development placeholder for ` +
+        `profile "${config.app.nodeEnv}". Set a real JWT_SECRET.`,
+    );
+  }
+
+  if (!config.blockchain.rpcUrl) {
+    throw new Error(
+      `RPC_URL is not configured for profile "${config.app.nodeEnv}". ` +
+        `Deployed profiles must target a real JSON-RPC endpoint.`,
+    );
+  }
+
+  if (config.app.corsOrigins.length === 0) {
+    throw new Error(
+      `CORS_ORIGINS is not configured for profile "${config.app.nodeEnv}". ` +
+        `Deployed profiles must declare an explicit origin allowlist instead ` +
+        `of reflecting any origin.`,
+    );
+  }
 }

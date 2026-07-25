@@ -2,16 +2,21 @@ import { NestFactory } from "@nestjs/core";
 import { Logger as NestLogger } from "@nestjs/common";
 
 import { AppModule } from "./app.module";
-import { configureApp, setupSwagger, SWAGGER_PATH } from "./app-setup";
+import {
+  configureApp,
+  HTTP_APP_OPTIONS,
+  setupSwagger,
+  SWAGGER_PATH,
+} from "./app-setup";
 import { AppConfigService } from "./config/app-config.service";
 
 async function bootstrap(): Promise<void> {
   // `bufferLogs` holds startup logs until the pino logger is installed so the
   // fail-fast metadata validation surfaces through structured logging.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, HTTP_APP_OPTIONS);
 
   configureApp(app);
-  setupSwagger(app);
+  const swaggerDocument = setupSwagger(app);
 
   const config = app.get(AppConfigService);
   const { port, nodeEnv } = config.app;
@@ -21,7 +26,9 @@ async function bootstrap(): Promise<void> {
   const logger = new NestLogger("Bootstrap");
   logger.log(
     `ClimateChain backend listening on port ${port} (profile=${nodeEnv}); ` +
-      `API docs at /${SWAGGER_PATH}`,
+      (swaggerDocument
+        ? `API docs at /${SWAGGER_PATH}`
+        : "API docs disabled (set SWAGGER_ENABLED=true to expose them)"),
   );
 }
 
