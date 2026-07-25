@@ -1,0 +1,20 @@
+# ClimateChain ML service dependencies.
+#
+# Stage 01 baseline: enough for the documented onboarding command
+# (`pip install -r requirements.txt`) to succeed and for a virtual environment
+# to be reproducible. The serving stack, model runtime, and training pipeline
+# are added by their owning stages (07 serving, 08 training), which extend this
+# file rather than replacing it.
+#
+# Pins are lower bounds on purpose: the lockfile equivalent arrives with the
+# Stage 12 container build, where the runtime image is what needs to be exact.
+
+# Configuration and validation shared by every later stage.
+# pydantic floor is 2.11: earlier releases ship no pydantic-core wheel for
+# Python 3.13 and fall back to a Rust source build that fails on a clean machine.
+pydantic>=2.11,<3
+pydantic-settings>=2.8,<3
+python-dotenv>=1.0,<2
+
+# Test tooling, so `tests/` is runnable from Stage 01 onward.
+pytest>=8.3,<9

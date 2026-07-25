@@ -65,3 +65,28 @@
 
 - Stage 02 should initialize the contracts workspace with Hardhat dependencies, contract skeletons, and baseline tests.
 - After Stage 02, ABI artifacts strategy for `shared/abi` should be defined.
+
+## Amendment (audited before Stage 06)
+
+A re-audit of the Stage 01 exit deliverable ("working repository skeleton")
+against a fresh clone found two defects. Both are fixed.
+
+- A1: The documented module structure did not survive a clone. `ml-service/app/*`,
+  `ml-service/tests`, `ml-service/notebooks`, `infra/compose`, `infra/docker`,
+  and `shared/schemas` existed only as empty directories, and git does not track
+  those. `git ls-files` returned zero entries for every one of them, so a new
+  contributor cloning the repository received none of the layout this stage
+  claims to deliver. Added `.gitkeep` placeholders naming what each directory is
+  for and which stage fills it.
+- A2: `ml-service/requirements.txt` did not exist, while the root README
+  instructed contributors to run `pip install -r requirements.txt`. The
+  documented onboarding command failed outright. Added a baseline
+  `requirements.txt` (pydantic, pydantic-settings, python-dotenv, pytest) that
+  Stages 07 and 08 extend. The `pydantic` floor is 2.11 because earlier releases
+  ship no `pydantic-core` wheel for Python 3.13 and fall back to a Rust source
+  build that fails on a clean machine — verified by installing into a throwaway
+  virtual environment on Python 3.13.0.
+
+Verification: `python -m venv` + `pip install -r requirements.txt` completes
+(exit 0), all four packages import, and `pytest tests` runs (exit 5, no tests
+collected yet, as expected before Stage 07).
