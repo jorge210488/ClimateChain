@@ -49,27 +49,56 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 2. Install module dependencies once each module baseline is initialized:
    - `contracts/` with `npm install`
    - `backend/` with `npm install`
-   - `ml-service/` with `pip install -r requirements.txt`
+   - `ml-service/` with `python -m venv .venv` then `pip install -r requirements.txt`
 3. Follow the execution playbook in `docs/Implementation-Step-By-Step.md`.
 
-### Run the backend (Stage 05)
+Node is pinned by `.nvmrc` (20.10.0) and `engines` in each package, matching CI.
+
+### Run the local stack (contracts + backend)
+
+Full procedure with expected output and failure modes:
+**[`docs/runbooks/local-stack.md`](docs/runbooks/local-stack.md)**. Short version:
 
 ```bash
-cd backend
-npm install
-npm run start:dev      # API on http://localhost:3000, docs at /docs
-npm run stage5:check   # full local gate (build + quality + tests + startup)
+cd contracts && npx hardhat node          # terminal 1: chain on 127.0.0.1:8545
+cd contracts && npm run deploy:localhost  # terminal 2: writes deployments/localhost.json
+cd backend   && npm run start:dev         # terminal 2: API on http://localhost:3000
 ```
+
+Point the backend at that chain with `BLOCKCHAIN_NETWORK=localhost` and
+`RPC_URL=http://127.0.0.1:8545` in `backend/.env`.
+
+> Use the `localhost` network, not `hardhat`, for anything that runs the
+> backend. `hardhat` is an in-process chain that exists only for the lifetime of
+> the command that created it, so the addresses in `deployments/hardhat.json`
+> are not reachable over RPC.
 
 The backend boots fail-fast against the Stage 04 outputs (`shared/abi`,
 `contracts/deployments/<network>.json`). Health: `GET /health`; readiness:
 `GET /health/ready`.
 
+### Stage gates
+
+Each module has one canonical gate, run locally and in CI:
+
+```bash
+cd contracts && npm run stage4:check   # compile, tests, solhint, slither, size/gas baseline, stress, ABI sync
+cd backend   && npm run stage5:check   # build, lint, audit, unit + e2e, coverage, startup, OpenAPI drift
+```
+
 ## Credentials Guidance
 
-- Stage 01 and Stage 02 (current progress): no real credentials required for local scaffolding, compile, and tests.
-- Starting from integration and deployment stages: credentials become mandatory (for example RPC endpoint and deployment private key).
-- Configure secrets only in local `.env` files derived from `.env.example`, never in committed files.
+- Stages 01 to 05 (completed): no real credentials required. The full local
+  stack — compile, tests, both stage gates, a local chain, and the backend —
+  runs with empty `.env` values.
+- Stage 06 onward: an RPC endpoint is required, and a deployment/signer private
+  key once transactions are submitted. A local Hardhat node covers this for
+  development; testnet needs real values.
+- Deployed profiles (staging/testnet/production) refuse to start without
+  `JWT_SECRET`, `RPC_URL`, and `CORS_ORIGINS`. This is enforced at boot, not
+  reported later as a readiness failure.
+- Configure secrets only in local `.env` files derived from `.env.example`,
+  never in committed files.
 
 ## Stage 02 Scalability Extensions
 

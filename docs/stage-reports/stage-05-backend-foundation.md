@@ -229,3 +229,182 @@ New/changed files: `common/validation/max-byte-length.validator.ts`,
 plus updates to `create-policy.dto.ts`, the health indicators, `app-setup.ts`,
 `startup-check.ts`, `export-openapi.ts`, the e2e suite, `tsconfig.json`,
 `package.json`, and `backend-quality-gates.yml`.
+
+## Post-review hardening, round 2 (pre-Stage 06)
+
+A second review, run before starting Stage 06, raised findings whose cost rises
+sharply once the live chain client exists. The configuration, abuse-control, and
+lead-time items were applied; the rest are carried into the handoff below.
+
+- H1 (high): `RPC_URL` is now required at boot for deployed profiles
+  (`env.validation.ts`) instead of only being reported as a readiness failure.
+  The previous behavior contradicted the stage's own fail-fast principle: a
+  staging/production process would start, answer `GET /health` with 200, and
+  serve traffic while structurally unable to reach a chain. The readiness
+  indicator keeps its check as defense in depth.
+- H2 (high): `ADMIN_API_KEY` now requires 32 characters minimum and
+  `POST /auth/token` is rate limited per client address (`@nestjs/throttler`,
+  configurable via `AUTH_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_TTL_SECONDS`).
+  Together these close a brute-force path that was open from the moment the
+  endpoint shipped: the key was the sole credential guarding JWT issuance, had
+  no strength requirement, and could be guessed without limit. The limiter is
+  scoped to the auth module; blanket throttling remains a Stage 13 decision.
+- H3 (high): `IsAfterMinLeadTime` now requires the on-chain minimum plus a
+  120-second margin (`POLICY_DOMAIN.startLeadTimeSafetyMarginSeconds`). The
+  validator compares against wall-clock time at request time while the contract
+  compares against `block.timestamp` at mining time, so a request accepted at
+  exactly the on-chain minimum was guaranteed to revert. This would have
+  surfaced in Stage 06 as intermittent, hard-to-diagnose reverts.
+- H4 (medium): `PRIVATE_KEY` is format-validated (`0x` + 64 hex) at boot, so a
+  malformed signer key fails at startup rather than on the first Stage 06
+  transaction.
+- H5 (medium): `configuration.ts` now asserts deployed-profile invariants
+  directly (no local JWT placeholder, RPC endpoint present). The factory
+  resolves its own defaults independently of the Joi schema, so this removes a
+  latent path where a deployed profile could boot on development credentials if
+  schema validation were ever bypassed.
+
+New/changed files: `config/configuration.spec.ts`,
+`modules/policies/validators/min-lead-time.validator.spec.ts`, plus updates to
+`config/env.validation.ts`, `config/config.defaults.ts`, `config/config.types.ts`,
+`config/configuration.ts`, `config/env.validation.spec.ts`,
+`modules/auth/auth.module.ts`, `modules/auth/auth.controller.ts`,
+`modules/auth/auth.service.spec.ts`, `modules/health/indicators/config.health.ts`,
+`modules/policies/policy.constants.ts`,
+`modules/policies/validators/min-lead-time.validator.ts`,
+`modules/policies/dto/create-policy.dto.ts`, `test/app.e2e-spec.ts`,
+`.env.example`, `README.md`, `package.json`, and `docs/api/backend-openapi.json`.
+
+New tests cover: `RPC_URL` required/optional per profile, `PRIVATE_KEY` format,
+`ADMIN_API_KEY` strength, rate-limit defaults, the deployed-profile boot
+invariants, the lead-time margin, and a `429` on repeated token-issuance
+attempts.
+
+Gate after round 2: `npm run stage5:check` passes — 39 unit tests (7 suites) and
+25 e2e tests, up from 19 and 24.
+
+## Post-review hardening, round 3 (pre-Stage 06)
+
+The remaining findings from the round 2 review were applied, plus one defect
+they uncovered.
+
+### Authorization
+
+- H6 (high): `POST /policies` now requires an authenticated principal; the read
+  paths stay public. From Stage 06 creation submits a transaction and draws down
+  the provider's coverage reserve, so an anonymous caller could have drained it.
+  Reads project world-readable chain state, so gating them would add friction
+  without adding confidentiality. Which identities may create a policy, and on
+  whose behalf, is refined in Stage 06 and Stage 11; requiring a valid principal
+  is the floor, not the final model.
+
+### Contract fidelity
+
+- H7 (high): added source-level drift detection for the mirrored on-chain
+  values (`policy.constants.spec.ts`, `policy-settlement.enum.spec.ts`). The
+  specs parse `InsuranceProvider.sol` / `InsurancePolicy.sol` and assert that
+  `MAX_DURATION_DAYS`, `MIN_PREMIUM_BPS`, `BASIS_POINTS_DENOMINATOR`,
+  `MIN_POLICY_START_LEAD_TIME_SECONDS`, and both enum orderings still match.
+  The Stage 04 ABI drift gate cannot cover this: an ABI carries neither
+  constant values nor enum ordering. This is a source-level guard and does not
+  replace the on-chain verification Stage 06 should add once a live client can
+  call the public getters — it just catches drift earlier and without a node.
+- H8 (medium): `PolicyResponseDto` now exposes `pendingPayoutWei`,
+  `lastOracleUpdateTimestamp`, `oracle`, `settlementType`, and `settledAt`. The
+  contract settles payouts pull-style (`claimPendingPayout()`), so without
+  `pendingPayoutWei` an insured party had no way to learn that money was waiting
+  to be claimed — the API contract was describing an incomplete user flow.
+  `PolicySettlementType` mirrors the provider's `SettlementType` enum.
+- H9 (medium): EVM addresses are normalized at the boundary
+  (`normalizeEvmAddress`, applied in `ParseEvmAddressPipe` and the `insured`
+  filter) and validated through one shared `@IsEvmAddress` decorator instead of
+  a re-implemented regex. Addresses are case-insensitive, so Stage 06 lookups
+  would otherwise miss on capitalization alone. Checksum *output* needs keccak
+  and arrives with ethers in Stage 06.
+
+### HTTP surface
+
+- H10 (medium): helmet security headers, an explicit request-body cap
+  (`MAX_REQUEST_BODY_SIZE`, default 64kb), a CORS origin allowlist
+  (`CORS_ORIGINS`, required for deployed profiles), and Swagger mounting that is
+  opt-in on deployed profiles (`SWAGGER_ENABLED`). Docs are mounted outside the
+  guard chain, so they were anonymously enumerable in production; disabling the
+  mount costs nothing offline because `api:export`/`api:check` build the
+  document without mounting it.
+- H11 (medium, defect found while testing H10): the global exception filter
+  collapsed every non-`HttpException` to 500. Errors raised by middleware below
+  Nest — body-parser and anything else built on `http-errors` — carry their own
+  status, so an oversized body was reported as a server fault instead of 413,
+  and logged at error level with a stack. The filter now honors an
+  `http-errors`-style status (bounded to 4xx/5xx so an incidental `status`
+  field is not mistaken for one) and picks log severity from the resolved
+  status. Covered by a new `all-exceptions.filter.spec.ts`.
+- H12 (medium, same investigation): `MAX_REQUEST_BODY_SIZE` was inert as first
+  written. Nest registers its own body parser at its default limit, which
+  consumes the body before any parser added later can see it, so the configured
+  value did nothing. Entry points now share `HTTP_APP_OPTIONS`
+  (`bodyParser: false`) and register the parsers in `configureApp`, which is
+  what makes the setting authoritative.
+
+### Gate
+
+- H13 (medium): coverage thresholds now run in the gate, measured over the unit
+  and e2e suites together (`jest.coverage.js`). Measuring units alone would have
+  understated reality and rewarded redundant tests for layers the e2e suite
+  already covers. Current: 95.2% statements, 86.2% branches, 94.2% functions.
+- H14 (medium): migrated both suites from `ts-jest` to `@swc/jest`. Unit runtime
+  fell from ~90s to ~16s, and the "worker process has failed to exit gracefully"
+  leak warning disappeared with it. Coverage uses the `v8` provider: under
+  istanbul, swc's decorator-metadata emit is charged to the decorator lines and
+  reports ~54% branches on fully-tested files.
+- H15 (low): `npm audit --audit-level=critical` blocks in the gate; a
+  high-severity report runs non-blocking in CI. All 9 current advisories are
+  transitive through NestJS 11's own dependencies (multer, js-yaml, form-data,
+  body-parser, brace-expansion, fast-uri) with no fixed release available, so a
+  blocking `high` gate would sit permanently red and train people to ignore it.
+  `npm audit fix` was evaluated and rejected: it resolved nothing and inflated
+  the count from 9 to 28 by installing nested duplicates.
+- H16 (low): CI workflows declare `permissions: contents: read`, cancel
+  superseded runs via `concurrency`, and carry job timeouts. Node is pinned
+  consistently through `engines` and a repository `.nvmrc`.
+
+### Stage 06 entry conditions (prepared and verified)
+
+- A reachable chain now exists as a committed artifact:
+  `contracts/deployments/localhost.json`, produced by `npx hardhat node` plus
+  `npm run deploy:localhost`. Previously the only manifest was `hardhat.json`,
+  whose addresses belong to the in-process network and are unreachable over RPC
+  — Stage 06 had nothing real to connect to. Addresses are deterministic (fresh
+  node, deployer at nonce 0), so the committed manifest reproduces exactly.
+- Verified end to end: the backend boots with `BLOCKCHAIN_NETWORK=localhost` and
+  `RPC_URL=http://127.0.0.1:8545`, `/health/ready` returns 200, and
+  `/blockchain/deployment` reports the live provider and oracle addresses.
+  Independently, `eth_getCode` returns real bytecode at both
+  (`InsuranceProvider` 15037 bytes, `MockWeatherOracle` 2876 bytes), confirming
+  the manifest describes deployed code rather than merely parsing.
+- `docs/runbooks/local-stack.md` documents the procedure, expected output, and
+  seven failure modes. The two boot-abort paths in it were executed to confirm
+  the exact diagnostics: a network with no manifest, and a `CHAIN_ID` that
+  disagrees with the manifest.
+- Remaining Stage 06 work on this seam: readiness still validates only that the
+  metadata is well-formed, not that code exists at those addresses. The
+  `eth_getCode` check moves into the readiness aggregate once the live client
+  exists — that is Stage 06's own deliverable, not a Stage 05 gap.
+- The provider's coverage reserve is empty after a fresh deploy, so
+  `createPolicy` reverts with `InsufficientCoverageReserve` until funded. Stage
+  06 must fund it (or handle the revert explicitly) before the creation path can
+  succeed.
+
+### Still open (owned by later stages)
+
+- `trust proxy` is not configured, so behind a load balancer the auth rate
+  limiter keys on the proxy and all traffic shares one bucket. Deferred to
+  Stage 12/13, when the deployment topology exists.
+- Repository branch protection still needs both gate jobs marked as required;
+  until then the gates are informative rather than blocking. This is a
+  repository-settings change and cannot be made from the codebase.
+- `ml-service/` remains scaffolding (Stage 07); `infra/docker` and
+  `infra/compose` are empty placeholders (Stage 12).
+
+Gate after round 3: `npm run stage5:check` passes — 85 unit tests (11 suites),
+32 e2e tests, 117 under the combined coverage run.
