@@ -14,10 +14,19 @@ on:
       - "shared/abi/**"
       - ".github/workflows/contracts-quality-gates.yml"
 
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-gates-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   contracts-stage4-gates:
     name: contracts-stage4-gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     defaults:
       run:

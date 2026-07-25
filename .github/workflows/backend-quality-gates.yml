@@ -16,10 +16,21 @@ on:
       - "contracts/deployments/**"
       - ".github/workflows/backend-quality-gates.yml"
 
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same ref; the latest commit is the one that
+# matters and stale runs only consume runners.
+concurrency:
+  group: backend-gates-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-stage5-gates:
     name: backend-stage5-gates
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -40,6 +51,18 @@ jobs:
         run: npm ci
 
       - name: Stage 05 full gate
-        # Includes build, lint, format, unit + e2e tests, startup smoke, and the
-        # OpenAPI drift check (api:check), so the local and CI gates are equivalent.
+        # Includes build, lint, format, a blocking critical-severity audit,
+        # unit + e2e tests, combined coverage thresholds, startup smoke, and the
+        # OpenAPI drift check, so the local and CI gates are equivalent.
         run: npm run stage5:check
+
+      # Reported, not blocking. Every current high advisory is transitive
+      # through NestJS 11's own dependencies (multer, js-yaml, form-data) with
+      # no fixed version available, so failing on `high` would leave the gate
+      # permanently red and train people to ignore it. `stage5:check` blocks on
+      # `critical`; this step keeps the rest visible so a newly fixable
+      # advisory gets noticed instead of buried.
+      - name: Dependency audit report (high severity, non-blocking)
+        if: always()
+        continue-on-error: true
+        run: npm audit --audit-level=high
