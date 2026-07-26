@@ -118,6 +118,16 @@ export const envValidationSchema = Joi.object({
     .max(200)
     .empty("")
     .default(CONFIG_DEFAULTS.chainMaxPageSize),
+  CHAIN_READ_RATE_LIMIT_TTL_SECONDS: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainReadRateLimitTtlSeconds),
+  CHAIN_READ_RATE_LIMIT_MAX: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainReadRateLimitMax),
 
   // ML pricing service integration (live calls wired in Stage 09).
   ML_SERVICE_BASE_URL: Joi.string()

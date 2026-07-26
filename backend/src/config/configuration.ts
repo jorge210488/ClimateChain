@@ -112,6 +112,12 @@ export function configuration(): Record<string, RootConfig> {
       maxPageSize:
         optionalNumber(env.CHAIN_MAX_PAGE_SIZE) ??
         CONFIG_DEFAULTS.chainMaxPageSize,
+      readRateLimitTtlSeconds:
+        optionalNumber(env.CHAIN_READ_RATE_LIMIT_TTL_SECONDS) ??
+        CONFIG_DEFAULTS.chainReadRateLimitTtlSeconds,
+      readRateLimitMax:
+        optionalNumber(env.CHAIN_READ_RATE_LIMIT_MAX) ??
+        CONFIG_DEFAULTS.chainReadRateLimitMax,
     },
     mlService: {
       baseUrl:

@@ -70,10 +70,10 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
 
     app = moduleRef.createNestApplication(HTTP_APP_OPTIONS);
     configureApp(app);
+    // `init` runs the application-bootstrap hooks, so chain verification has
+    // already succeeded by the time the first request is issued.
     await app.init();
 
-    // Boot verification runs on application bootstrap, not module init.
-    await app.getHttpAdapter().getInstance();
     const jwt = app.get(JwtService, { strict: false });
     bearer = `Bearer ${jwt.sign({ sub: "admin", roles: ["admin"] })}`;
   });
@@ -121,6 +121,34 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.body.status).toBe("active");
 
       createdAddress = res.body.address;
+    });
+
+    it("creates concurrent policies without a nonce collision", async () => {
+      // The regression this guards: every transaction from one account needs
+      // the next sequential nonce, and asking the node for it per transaction
+      // returns a stale value under concurrency. Before local nonce tracking
+      // plus submission queuing, this failed with NONCE_EXPIRED.
+      const create = (threshold: number) =>
+        request(app.getHttpServer())
+          .post("/policies")
+          .set("Authorization", bearer)
+          .send({
+            coverageEth: "0.05",
+            premiumEth: "0.002",
+            rainfallThresholdMm: threshold,
+            durationDays: 7,
+            region: "Concurrent",
+          });
+
+      const responses = await Promise.all([create(11), create(12), create(13)]);
+
+      expect(responses.map((r) => r.status)).toEqual([201, 201, 201]);
+      // Distinct policies, not one transaction reported three times.
+      const addresses = responses.map((r) => r.body.address);
+      expect(new Set(addresses).size).toBe(3);
+      expect(new Set(responses.map((r) => r.body.transactionHash)).size).toBe(
+        3,
+      );
     });
 
     it("creates a policy through the legacy path when no region is given", async () => {
@@ -205,6 +233,19 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([]);
       expect(res.body.meta.total).toBe(0);
+    });
+
+    it("reports the applied page limit, not the requested one", async () => {
+      // Guards the pagination contract: a client that advanced its offset by
+      // the value it asked for would skip every record the cap removed.
+      const res = await request(app.getHttpServer())
+        .get("/policies")
+        .query({ offset: 0, limit: 100 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.meta.limit).toBeLessThanOrEqual(50);
+      expect(res.body.data.length).toBe(res.body.meta.count);
+      expect(res.body.meta.count).toBeLessThanOrEqual(res.body.meta.limit);
     });
 
     it("returns 404 for an address the provider never created", async () => {

@@ -180,6 +180,34 @@ describe("ChainProviderService", () => {
       service.onModuleDestroy();
     });
 
+    it("resets the tracked nonce after a failed submission", async () => {
+      // A local counter that advanced past a transaction which never reached
+      // the mempool would fail every later send from the same account.
+      const service = new ChainProviderService(
+        buildConfig({ privateKey: HARDHAT_ACCOUNT_0 }),
+      );
+      const reset = jest.spyOn(service, "resetNonce");
+
+      await expect(
+        service.submitTransaction(() => Promise.reject(new Error("dropped"))),
+      ).rejects.toThrow("dropped");
+
+      expect(reset).toHaveBeenCalledTimes(1);
+      service.onModuleDestroy();
+    });
+
+    it("leaves the nonce alone on a successful submission", async () => {
+      const service = new ChainProviderService(
+        buildConfig({ privateKey: HARDHAT_ACCOUNT_0 }),
+      );
+      const reset = jest.spyOn(service, "resetNonce");
+
+      await service.submitTransaction(() => Promise.resolve("sent"));
+
+      expect(reset).not.toHaveBeenCalled();
+      service.onModuleDestroy();
+    });
+
     it("propagates each caller's own error", async () => {
       const service = new ChainProviderService(buildConfig());
 

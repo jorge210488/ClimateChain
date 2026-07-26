@@ -43,6 +43,10 @@ export interface BlockchainConfig {
   retryBaseDelayMs: number;
   /** Maximum policies one paginated chain read may pull. */
   maxPageSize: number;
+  /** Rolling window (seconds) for the public policy read limiter. */
+  readRateLimitTtlSeconds: number;
+  /** Maximum policy reads per window, per client address. */
+  readRateLimitMax: number;
 }
 
 export interface MlServiceConfig {

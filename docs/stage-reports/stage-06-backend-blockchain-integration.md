@@ -148,6 +148,54 @@ suites alone would have surfaced:
 - A mapped 500 discarded its cause, making the generic response undebuggable.
   The cause is now attached to the exception and logged with its stack.
 
+## Pre-merge audit (findings applied)
+
+A review before merging, aimed specifically at production readiness and
+integration completeness, found six defects. All are fixed.
+
+- A1 (high): **Pagination could silently skip records.** `CHAIN_MAX_PAGE_SIZE`
+  capped the page read from chain, but the response reported the *requested*
+  limit. A client asking for 100, receiving 50, and advancing its offset by 100
+  would drop fifty policies without any error. `listPolicies` now returns the
+  applied limit and the response reports that.
+- A2 (high): **Nonce assignment was still unreliable.** Serializing submission
+  was not sufficient, because ethers asks the node for the nonce per
+  transaction and the pending count can lag a transaction the node has already
+  accepted. The signer is now wrapped in a `NonceManager` that tracks the nonce
+  locally, and a failed submission resets it so a counter that advanced past a
+  dropped transaction cannot poison every later send. Covered by a live-chain
+  test that creates three policies concurrently and asserts three distinct
+  addresses and transaction hashes.
+- A3 (medium): **Unbounded RPC fan-out.** A page issued one `Promise.all` over
+  every policy, each costing about a dozen calls — a 50-item page meant roughly
+  700 simultaneous requests, enough to push a node into rate limiting. Reads now
+  run in bounded batches.
+- A4 (medium): **Public reads had no rate limit** while amplifying each HTTP
+  request into many RPC calls, letting a caller convert modest traffic into RPC
+  load and cost. The read endpoints are now metered per client address, with a
+  budget separate from the credential-guarding limiter.
+- A5 (medium): **Two `ThrottlerModule.forRoot` registrations silently
+  conflicted.** Registering per feature module does not give each module its own
+  limiter: the later registration replaces the earlier one's limits. Both named
+  limiters are now declared in a single `ThrottlingModule`, and routes opt out
+  of the ones that do not apply.
+- A6 (low): **An unrepresentable region returned 500 instead of 400.** The DTO
+  rejects oversized regions first, so this was only reachable from another
+  caller of the service — which Stage 10 will be. Encoding failures are now
+  reported as client errors.
+
+The audit also removed dead code (`PolicyChainService.isEnabled`,
+`effectiveGasPriceWei`, a no-op line in the chain e2e setup) and closed the
+largest test gap: the boot-abort paths — wrong chain, missing bytecode,
+constant drift — had 59% branch coverage, meaning the safety net that stops the
+service running against the wrong chain was largely an assumption. They now have
+dedicated specs, as do the chain readiness indicator and the policy chain
+service.
+
+Gate after the audit: 200 unit, 33 no-chain e2e, 12 live-chain e2e, 245 in the
+combined coverage run at 97.06% statements and 89.48% branches (up from 95.26%
+and 86.78%).
+
 ## Risks or pending items
 
 - **The contract assigns the insured from `msg.sender`.** A policy created
@@ -157,9 +205,21 @@ suites alone would have surfaced:
   product-level gap: resolving it needs either an `insured` parameter on
   `InsuranceProvider` or a user-signed transaction flow. **This blocks any
   real-user deployment** and is the most important open item.
-- Transaction serialization is per process. Running several instances against
-  one signer reintroduces the nonce race; give each instance its own account, or
-  add external nonce coordination.
+- Nonce tracking is per process. Running several instances against one signer
+  reintroduces the race, because each process would track its own counter for
+  the same account; give each instance its own signing account, or add external
+  nonce coordination.
+- Rate limiting is also per process and keys on the client address Express
+  reports. Behind a load balancer, enable `trust proxy` or the limiter meters
+  the proxy; across instances the effective budget multiplies by instance count.
+  Both are Stage 12/13 topology decisions.
+- There is no idempotency key on policy creation. A client that retries after a
+  timeout creates a second policy and spends the reserve twice. The dry run and
+  the mined-status check make silent duplicates unlikely, but a caller-supplied
+  idempotency key is the real fix and belongs with the user-facing flow.
+- Reads are uncached and always hit the chain, which is correct for
+  consistency and expensive under load. A read-through cache with explicit
+  invalidation is worth considering if list traffic grows.
 - `CHAIN_CONFIRMATIONS` defaults to 1, correct for a local node. Public networks
   should raise it: a single confirmation can still be reorganized away, which
   would report a policy as created that no longer exists.
@@ -169,9 +229,6 @@ suites alone would have surfaced:
 - No write path exists yet for the owner-only operations (`requestPolicyWeatherData`,
   `executePolicyPayout`, `expirePolicy`); those belong to the Stage 10 oracle and
   automation flow.
-- Reads are not cached. Each policy costs several RPC calls, so a large page is
-  proportionally expensive; the page-size cap bounds it but a read-through cache
-  is worth considering if list traffic grows.
 - Production blockers and owner: the insured-assignment gap above, owned by the
   domain/contract decision that precedes Stage 10.
 

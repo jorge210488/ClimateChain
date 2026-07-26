@@ -14,7 +14,9 @@ import {
   ApiTags,
   ApiTooManyRequestsResponse,
 } from "@nestjs/swagger";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
+
+import { POLICIES_THROTTLER } from "../../common/throttling/throttling.module";
 
 import { ApiErrorResponse } from "../../common/dto/api-error-response.dto";
 import { Public } from "../../common/decorators/public.decorator";
@@ -34,7 +36,9 @@ export class AuthController {
   @Public()
   // Rate limited: this is the only credential check guarding JWT issuance, so
   // an unthrottled endpoint is a brute-force oracle over ADMIN_API_KEY.
+  // Only the auth budget applies; the policy read limiter is unrelated here.
   @UseGuards(ThrottlerGuard)
+  @SkipThrottle({ [POLICIES_THROTTLER]: true })
   @Post("token")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

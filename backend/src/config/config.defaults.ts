@@ -64,6 +64,14 @@ export const CONFIG_DEFAULTS = {
    * into a burst against the node.
    */
   chainMaxPageSize: 50,
+  /**
+   * Rate limit for the public policy read endpoints, per client address.
+   *
+   * These are anonymous and each one fans out into many RPC calls, so the limit
+   * exists to protect the node and the RPC bill, not the API process.
+   */
+  chainReadRateLimitTtlSeconds: 60,
+  chainReadRateLimitMax: 60,
   /** Relative directory (from the backend working dir) holding shared ABIs. */
   sharedAbiDir: "../shared/abi",
   /** Relative directory (from the backend working dir) holding deployment manifests. */

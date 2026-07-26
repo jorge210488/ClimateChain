@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
+import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
+
+import { AUTH_THROTTLER } from "../../common/throttling/throttling.module";
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
@@ -29,6 +41,12 @@ type RequestWithId = Request & { id?: string | number };
 
 @ApiTags("policies")
 @Controller("policies")
+// Applied at controller level: every route here reaches the chain, and the
+// read routes are anonymous, so each request a caller sends becomes many
+// requests the RPC endpoint has to answer and bill for. Only the policy budget
+// applies; the auth limiter guards a different resource.
+@UseGuards(ThrottlerGuard)
+@SkipThrottle({ [AUTH_THROTTLER]: true })
 export class PoliciesController {
   constructor(private readonly policiesService: PoliciesService) {}
 

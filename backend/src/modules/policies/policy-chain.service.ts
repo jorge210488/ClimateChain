@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -59,7 +60,6 @@ export interface ChainWriteResult {
   transactionHash: string;
   blockNumber: number;
   gasUsed: string;
-  effectiveGasPriceWei?: string;
   insured: string;
   status: PolicyStatus;
 }
@@ -67,7 +67,27 @@ export interface ChainWriteResult {
 export interface PolicyPage {
   items: ChainPolicy[];
   total: number;
+  /**
+   * Page size actually applied, after the configured cap.
+   *
+   * Reported separately from the requested limit because a client paginating
+   * with its own value would skip records whenever the cap reduced the page:
+   * asking for 100, receiving 50, then advancing the offset by 100 silently
+   * drops fifty policies.
+   */
+  appliedLimit: number;
 }
+
+/**
+ * Policies read concurrently within one page.
+ *
+ * Each policy costs a dozen RPC calls, so an unbounded `Promise.all` over a
+ * full page issues hundreds of simultaneous requests and can push a node into
+ * rate limiting — turning one API request into a self-inflicted outage. Reading
+ * in bounded batches keeps the fan-out proportional to this constant instead of
+ * to the page size.
+ */
+const POLICY_READ_CONCURRENCY = 5;
 
 /**
  * All chain access for the policy domain.
@@ -87,11 +107,6 @@ export class PolicyChainService {
     private readonly contracts: ContractFactoryService,
     private readonly config: AppConfigService,
   ) {}
-
-  /** True when an RPC endpoint is configured. */
-  isEnabled(): boolean {
-    return this.chain.isEnabled();
-  }
 
   /** Interfaces used to decode reverts bubbling from either contract. */
   private get revertInterfaces(): Interface[] {
@@ -182,19 +197,40 @@ export class PolicyChainService {
               >,
           );
 
-      // Each policy needs several calls; issuing them per policy sequentially
-      // would make a 50-item page dozens of round trips deep. The page size cap
-      // is what keeps this concurrency bounded.
-      const items = await Promise.all(
-        addresses.map((policyAddress) =>
-          this.readPolicy(normalizeEvmAddress(policyAddress), provider),
-        ),
+      const items = await this.readPoliciesBounded(
+        addresses.map(normalizeEvmAddress),
+        provider,
       );
 
-      return { items, total: Number(total) };
+      return { items, total: Number(total), appliedLimit: effectiveLimit };
     } catch (error) {
       throw toHttpException(error, this.revertInterfaces, "listPolicies");
     }
+  }
+
+  /**
+   * Reads a set of policies with bounded concurrency, preserving input order.
+   *
+   * Order is preserved because the caller's page comes from the contract's own
+   * index; reordering it would make pagination non-deterministic across
+   * requests.
+   */
+  private async readPoliciesBounded(
+    addresses: string[],
+    provider: Contract,
+  ): Promise<ChainPolicy[]> {
+    const results: ChainPolicy[] = [];
+
+    for (let i = 0; i < addresses.length; i += POLICY_READ_CONCURRENCY) {
+      const batch = addresses.slice(i, i + POLICY_READ_CONCURRENCY);
+      results.push(
+        ...(await Promise.all(
+          batch.map((address) => this.readPolicy(address, provider)),
+        )),
+      );
+    }
+
+    return results;
   }
 
   /** Reads and normalizes a single known policy. */
@@ -384,7 +420,6 @@ export class PolicyChainService {
         transactionHash: receipt.hash,
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed.toString(),
-        effectiveGasPriceWei: receipt.gasPrice?.toString(),
         insured: normalizeEvmAddress(this.chain.getSignerAddress() as string),
         // A freshly created policy is activated in the same transaction.
         status: PolicyStatus.Active,
@@ -423,10 +458,28 @@ export class PolicyChainService {
         coverageWei,
         dto.rainfallThresholdMm,
         dto.durationDays,
-        encodeRegionCode(dto.region),
+        this.encodeRegion(dto.region),
         requestedStart,
       ],
     };
+  }
+
+  /**
+   * Encodes a region, reporting an unrepresentable value as a client error.
+   *
+   * The DTO already rejects oversized regions, so this is the second line of
+   * defense — and it matters because the encoder throws a plain `Error`, which
+   * the chain mapper would otherwise classify as an unexpected internal
+   * failure. A value the caller supplied and can correct is a 400, not a 500.
+   */
+  private encodeRegion(region: string): string {
+    try {
+      return encodeRegionCode(region);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   /**

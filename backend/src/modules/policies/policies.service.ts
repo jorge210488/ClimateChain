@@ -39,7 +39,7 @@ export class PoliciesService {
   }
 
   async list(query: ListPoliciesQueryDto): Promise<PolicyListResponseDto> {
-    const { items, total } = await this.chain.listPolicies(
+    const { items, total, appliedLimit } = await this.chain.listPolicies(
       query.offset,
       query.limit,
       query.insured,
@@ -50,7 +50,10 @@ export class PoliciesService {
       meta: {
         total,
         offset: query.offset,
-        limit: query.limit,
+        // The applied limit, not the requested one: when the configured cap
+        // reduces the page, a client advancing its offset by the value it asked
+        // for would skip every record the cap removed.
+        limit: appliedLimit,
         count: items.length,
       },
     };

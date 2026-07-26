@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { JsonRpcProvider, Network, Wallet } from "ethers";
+import { JsonRpcProvider, Network, NonceManager, Wallet } from "ethers";
 
 import { AppConfigService } from "../../config/app-config.service";
 import { withRpcRetry } from "./chain-retry.util";
@@ -21,6 +21,7 @@ export class ChainProviderService implements OnModuleDestroy {
   private readonly logger = new Logger(ChainProviderService.name);
   private provider?: JsonRpcProvider;
   private wallet?: Wallet;
+  private signer?: NonceManager;
 
   constructor(private readonly config: AppConfigService) {}
 
@@ -76,10 +77,19 @@ export class ChainProviderService implements OnModuleDestroy {
    * Absence is a configuration state, not a bug: reads work fine without a
    * signer, so this fails only when a write is actually attempted, and with a
    * message naming the missing variable.
+   *
+   * The wallet is wrapped in a `NonceManager`, which assigns nonces locally
+   * instead of asking the node for each transaction. Querying the node is
+   * unreliable here: the pending count can lag a transaction the node has
+   * already accepted, and the next send then reuses a spent nonce and is
+   * rejected. Tracking locally makes the sequence authoritative on our side.
+   *
+   * This assumes the account sends only through this process — the same
+   * constraint the submission queue documents.
    */
-  getSigner(): Wallet {
-    if (this.wallet) {
-      return this.wallet;
+  getSigner(): NonceManager {
+    if (this.signer) {
+      return this.signer;
     }
 
     const privateKey = this.config.blockchain.privateKey;
@@ -90,12 +100,28 @@ export class ChainProviderService implements OnModuleDestroy {
     }
 
     this.wallet = new Wallet(privateKey, this.getProvider());
-    return this.wallet;
+    this.signer = new NonceManager(this.wallet);
+    return this.signer;
   }
 
   /** Address transactions are sent from, or undefined when unsigned. */
   getSignerAddress(): string | undefined {
-    return this.hasSigner() ? this.getSigner().address : undefined;
+    if (!this.hasSigner()) {
+      return undefined;
+    }
+    // Read from the underlying wallet: NonceManager resolves its address
+    // asynchronously, while the wallet exposes it synchronously.
+    this.getSigner();
+    return this.wallet?.address;
+  }
+
+  /**
+   * Discards the locally tracked nonce so the next send re-reads it from the
+   * node. Used after a submission failure, where the local counter may have
+   * advanced past a transaction that never entered the mempool.
+   */
+  resetNonce(): void {
+    this.signer?.reset();
   }
 
   /**
@@ -179,7 +205,19 @@ export class ChainProviderService implements OnModuleDestroy {
    * instance; see the Stage 06 report.
    */
   async submitTransaction<T>(send: () => Promise<T>): Promise<T> {
-    const run = this.submissionQueue.then(send, send);
+    const attempt = async (): Promise<T> => {
+      try {
+        return await send();
+      } catch (error) {
+        // The local nonce may have advanced past a transaction that never
+        // reached the mempool; leaving it advanced would fail every later
+        // send with the same account.
+        this.resetNonce();
+        throw error;
+      }
+    };
+
+    const run = this.submissionQueue.then(attempt, attempt);
     // Swallow rejection on the chain itself so one failed submission does not
     // reject every queued follow-up; the caller still receives its own error.
     this.submissionQueue = run.then(
@@ -196,6 +234,7 @@ export class ChainProviderService implements OnModuleDestroy {
     this.provider?.destroy();
     this.provider = undefined;
     this.wallet = undefined;
+    this.signer = undefined;
   }
 }
 

@@ -1,8 +1,8 @@
 import { Module } from "@nestjs/common";
 import { JwtModule, JwtSignOptions } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
-import { ThrottlerModule } from "@nestjs/throttler";
 
+import { ThrottlingModule } from "../../common/throttling/throttling.module";
 import { AppConfigService } from "../../config/app-config.service";
 import { AppConfigModule } from "../../config/config.module";
 import { AuthController } from "./auth.controller";
@@ -22,18 +22,7 @@ import { JwtStrategy } from "./jwt.strategy";
 @Module({
   imports: [
     PassportModule,
-    ThrottlerModule.forRootAsync({
-      imports: [AppConfigModule],
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => [
-        {
-          name: "auth",
-          // Throttler expects milliseconds; configuration exposes seconds.
-          ttl: config.auth.rateLimitTtlSeconds * 1000,
-          limit: config.auth.rateLimitMax,
-        },
-      ],
-    }),
+    ThrottlingModule,
     JwtModule.registerAsync({
       imports: [AppConfigModule],
       inject: [AppConfigService],

@@ -11,8 +11,15 @@ import { configureApp, HTTP_APP_OPTIONS, setupSwagger } from "../src/app-setup";
 const VALID_ADDRESS = "0x1111111111111111111111111111111111111111";
 /** Must satisfy the 32-character ADMIN_API_KEY minimum enforced at boot. */
 const ADMIN_API_KEY = "e2e-admin-api-key-0123456789abcdef";
-/** Small limit so the throttling test stays fast and deterministic. */
+/**
+ * Small limits so the throttling tests stay fast and deterministic.
+ *
+ * The policy budget must exceed the number of policy requests the rest of this
+ * suite makes, or those tests would exhaust it and fail on 429 instead of the
+ * behavior they assert.
+ */
 const AUTH_RATE_LIMIT_MAX = 5;
+const POLICY_READ_LIMIT = 30;
 
 describe("ClimateChain backend (e2e)", () => {
   let app: INestApplication;
@@ -35,6 +42,7 @@ describe("ClimateChain backend (e2e)", () => {
     delete process.env.BLOCKCHAIN_NETWORK;
     process.env.ADMIN_API_KEY = ADMIN_API_KEY;
     process.env.AUTH_RATE_LIMIT_MAX = String(AUTH_RATE_LIMIT_MAX);
+    process.env.CHAIN_READ_RATE_LIMIT_MAX = String(POLICY_READ_LIMIT);
     process.env.JWT_SECRET = "e2e-test-jwt-secret-0123456789";
 
     const moduleRef = await Test.createTestingModule({
@@ -316,6 +324,28 @@ describe("ClimateChain backend (e2e)", () => {
         `/policies/${VALID_ADDRESS}`,
       );
       expect(res.status).toBe(503);
+    });
+
+    // Declared last: the limiter counts every policy request made above, so
+    // running this earlier would starve the preceding tests of their budget.
+    it("throttles the public read endpoints independently of auth", async () => {
+      // These reads are anonymous and each fans out into many RPC calls, so an
+      // unmetered endpoint lets a caller amplify HTTP traffic into RPC load.
+      // The budgets are separate: exhausting the read limiter must not consume
+      // the credential-guarding one.
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < POLICY_READ_LIMIT + 3; attempt += 1) {
+        const res = await request(app.getHttpServer()).get("/policies");
+        statuses.push(res.status);
+      }
+
+      expect(statuses).toContain(429);
+      expect(statuses[statuses.length - 1]).toBe(429);
+
+      const tokenRes = await request(app.getHttpServer())
+        .post("/auth/token")
+        .send({ apiKey: ADMIN_API_KEY });
+      expect(tokenRes.status).not.toBe(429);
     });
   });
 
