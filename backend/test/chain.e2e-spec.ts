@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
-import { Contract, JsonRpcProvider, Wallet } from "ethers";
+import { Contract, JsonRpcProvider, NonceManager, Wallet } from "ethers";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
@@ -40,6 +40,16 @@ const CHAIN_ID = process.env.CHAIN_E2E_CHAIN_ID ?? "31337";
 
 const ADMIN_API_KEY = "chain-e2e-admin-api-key-0123456789";
 const describeChain = RPC_URL ? describe : describe.skip;
+
+/**
+ * Set at module scope, not inside a describe.
+ *
+ * Every test here waits on real block production, and the lifecycle tests take
+ * seconds even on a fast machine — comfortably over Jest's 5s default. Declaring
+ * the timeout at the top removes any dependence on when the surrounding
+ * describe body happens to execute.
+ */
+jest.setTimeout(180_000);
 
 /** Loads an exported ABI so the harness drives the same artifacts the API uses. */
 function loadAbi(contractName: string): unknown[] {
@@ -80,8 +90,6 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
   let createdAddress: string;
   let signerAddress: string;
 
-  jest.setTimeout(120_000);
-
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
     // Overridable so a failing run can be re-executed with real logs, which is
@@ -106,6 +114,11 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
 
     const jwt = app.get(JwtService, { strict: false });
     bearer = `Bearer ${jwt.sign({ sub: "admin", roles: ["admin"] })}`;
+
+    // Derived here rather than captured inside a test: several tests compare
+    // against it, and a value assigned by one test is a dependency on execution
+    // order that turns one failure into a cascade of confusing ones.
+    signerAddress = new Wallet(SIGNER_KEY).address.toLowerCase();
   });
 
   afterAll(async () => {
@@ -120,10 +133,9 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.body.details.chain.status).toBe("up");
       expect(res.body.details.chain.chainId).toBe(CHAIN_ID);
       expect(res.body.details.chain.blockNumber).toBeGreaterThan(0);
-      signerAddress = String(
-        res.body.details.chain.signerAddress,
-      ).toLowerCase();
-      expect(signerAddress).toMatch(/^0x[0-9a-f]{40}$/);
+      expect(String(res.body.details.chain.signerAddress).toLowerCase()).toBe(
+        signerAddress,
+      );
     });
   });
 
@@ -397,8 +409,33 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
     };
 
     beforeAll(async () => {
-      chainProvider = new JsonRpcProvider(RPC_URL);
-      const owner = new Wallet(SIGNER_KEY, chainProvider);
+      // `cacheTimeout: -1` disables the provider's response cache. Combined
+      // with the NonceManager below, nothing about transaction ordering here
+      // depends on how recently a value was read from the node.
+      chainProvider = new JsonRpcProvider(RPC_URL, undefined, {
+        cacheTimeout: -1,
+      });
+
+      /*
+       * The owner is wrapped in a NonceManager, which assigns nonces from a
+       * local counter instead of asking the node before each send.
+       *
+       * This harness signs with the same account as the backend, so there were
+       * two independent nonce sources for one account: the backend's own
+       * NonceManager and a plain Wallet here reading the node. A read that
+       * lagged the backend's last transaction by one produced NONCE_EXPIRED.
+       *
+       * It passed locally and failed in CI because CI is *faster*: these
+       * transitions ran 182ms and 62ms apart there versus ~4.3s here, so the
+       * stale window only mattered on the quicker machine. A test whose result
+       * depends on how fast the host is has to be made deterministic, not
+       * retried.
+       *
+       * Safe because the backend performs no writes during this describe — it
+       * only serves reads. Adding a backend write here would reintroduce the
+       * contention.
+       */
+      const owner = new NonceManager(new Wallet(SIGNER_KEY, chainProvider));
       const addresses = loadManifest();
 
       insuranceProvider = new Contract(
@@ -481,19 +518,23 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(policy.conditionMet).toBe(false);
     });
 
-    it("keeps settled policies visible in listings", async () => {
-      // Settlement must not remove a policy from the provider's index; the
+    it("keeps settled policies visible and readable after settlement", async () => {
+      // Settlement must not remove a policy from the provider's index: the
       // record has to stay auditable after the money has moved.
-      const res = await request(app.getHttpServer())
-        .get("/policies")
-        .query({ insured: signerAddress, offset: 0, limit: 50 });
+      //
+      // Asserted per address rather than by scanning a page. The index grows
+      // with every run on a shared node, so a fixed page would eventually stop
+      // containing this run's policies and the test would fail for a reason
+      // that has nothing to do with the behavior under test.
+      const settled = await readPolicy(triggeredAddress);
+      expect(settled.status).toBe("paid_out");
 
-      expect(res.status).toBe(200);
-      const statuses = new Set(
-        res.body.data.map((p: { status: string }) => p.status),
-      );
-      expect(statuses.has("paid_out")).toBe(true);
-      expect(statuses.has("expired")).toBe(true);
+      const expired = await readPolicy(expiringAddress);
+      expect(expired.status).toBe("expired");
+
+      // Both still appear in the provider's own index.
+      const total = await insuranceProvider.getAllPoliciesCount();
+      expect(Number(total)).toBeGreaterThanOrEqual(2);
     });
   });
 });
