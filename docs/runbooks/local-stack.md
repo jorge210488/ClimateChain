@@ -169,6 +169,91 @@ Premium quoting still returns HTTP 501 until Stage 09.
 | Policy creation returns 409 "nonce" | Two processes share one signer | Give each instance its own account |
 | `/docs` returns 404 | Expected on staging/testnet/production | Set `SWAGGER_ENABLED=true` if docs are genuinely wanted there |
 
+## Load and concurrency check
+
+Correctness is covered by the test suites; this measures behavior under
+simultaneous traffic, which is where the chain client's design decisions
+actually get exercised. Not part of the gate — it takes minutes and submits many
+transactions.
+
+```bash
+cd backend && npm run load:check
+```
+
+It asserts that concurrent creations all succeed with distinct addresses and
+transaction hashes (the nonce path), that concurrent list reads survive the RPC
+fan-out, and that the read limiter sheds traffic once its window is exhausted.
+Latency is reported, never asserted — timings depend on the machine and the node.
+
+Reference numbers from a local Hardhat node (10 concurrent writes, 40 concurrent
+reads at page size 25):
+
+| Burst | p50 | p95 |
+| --- | --- | --- |
+| Policy creation | ~1.5s | ~1.5s |
+| List reads | ~6.4s | ~6.4s |
+
+> **Read latency is the known weak point.** A page of 25 policies costs roughly
+> 325 RPC calls, so 40 concurrent readers issue thousands. Nothing fails — the
+> batching holds — but multi-second reads are not production numbers for a public
+> endpoint. The structural fix is an off-chain read model, which is what
+> **Stage 11** is for. Until then, keep `CHAIN_MAX_PAGE_SIZE` modest and treat
+> the read limiter as load-bearing rather than decorative.
+
+## Promoting to a public testnet
+
+Everything below is parameterized and ready; it is blocked only on operator
+credentials, which is why Stage 06 was validated against a local node over real
+RPC rather than a public network.
+
+**What you need first:** an RPC endpoint for the target network, a funded
+deployer account, and the address of a real weather oracle adapter (the mock is
+only deployed on local networks).
+
+```bash
+# contracts/.env
+RPC_URL=<provider endpoint>
+PRIVATE_KEY=<deployer key, funded with testnet ETH>
+EXTERNAL_WEATHER_ORACLE_ADDRESS=<real oracle adapter>
+
+cd contracts
+npm run deploy:sepolia            # writes deployments/sepolia.json
+npm run reserve:fund:sepolia      # COVERAGE_RESERVE_ETH sized for the test
+```
+
+```bash
+# backend/.env
+BLOCKCHAIN_NETWORK=sepolia
+CHAIN_ID=11155111
+RPC_URL=<provider endpoint>
+PRIVATE_KEY=<a dedicated signing account, not the deployer>
+# One confirmation can be reorganized away on a public chain.
+CHAIN_CONFIRMATIONS=3
+```
+
+Boot verification does the rest: it refuses to start if the chain id disagrees
+with the manifest, if no bytecode exists at the configured addresses, or if the
+deployed contract constants differ from the ones the API validates against.
+
+Then run the same live suite against it:
+
+```bash
+cd backend
+CHAIN_E2E_RPC_URL=<endpoint> \
+CHAIN_E2E_PRIVATE_KEY=<signing key> \
+CHAIN_E2E_NETWORK=sepolia \
+CHAIN_E2E_CHAIN_ID=11155111 \
+npm run test:e2e:chain
+```
+
+Expect it to be far slower than local: the suite waits for real block times, and
+the lifecycle tests will not work as written because they advance the chain clock
+with `evm_increaseTime`, which no public network supports. Those transitions have
+to be driven by real elapsed time or skipped.
+
+**Never reuse a key that holds real funds.** Use a dedicated account carrying
+only what the test needs.
+
 ## Teardown
 
 Stop the backend, then the node. Node state is in-memory: stopping it discards

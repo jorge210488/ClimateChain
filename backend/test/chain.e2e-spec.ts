@@ -1,8 +1,11 @@
 import "reflect-metadata";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
+import { Contract, JsonRpcProvider, Wallet } from "ethers";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
@@ -37,6 +40,33 @@ const CHAIN_ID = process.env.CHAIN_E2E_CHAIN_ID ?? "31337";
 
 const ADMIN_API_KEY = "chain-e2e-admin-api-key-0123456789";
 const describeChain = RPC_URL ? describe : describe.skip;
+
+/** Loads an exported ABI so the harness drives the same artifacts the API uses. */
+function loadAbi(contractName: string): unknown[] {
+  const path = resolve(
+    process.cwd(),
+    "..",
+    "shared",
+    "abi",
+    `${contractName}.json`,
+  );
+  return (JSON.parse(readFileSync(path, "utf-8")) as { abi: unknown[] }).abi;
+}
+
+/** Reads the deployed addresses the backend also resolves from. */
+function loadManifest(): { insuranceProvider: string; weatherOracle: string } {
+  const path = resolve(
+    process.cwd(),
+    "..",
+    "contracts",
+    "deployments",
+    `${NETWORK}.json`,
+  );
+  const manifest = JSON.parse(readFileSync(path, "utf-8")) as {
+    contracts: { insuranceProvider: string; weatherOracle: string };
+  };
+  return manifest.contracts;
+}
 
 if (!RPC_URL) {
   console.warn(
@@ -288,6 +318,182 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  /**
+   * Reads across the full policy lifecycle.
+   *
+   * Every test above observes a freshly created policy, so they only ever
+   * exercise `active` / `settlementType: none` / `pendingPayoutWei: 0`. The
+   * status and settlement mappings exist precisely for the other states, and
+   * until now nothing verified them against real on-chain state — a mapping
+   * error would have surfaced the first time a policy actually paid out.
+   *
+   * The lifecycle transitions themselves are owner-only contract operations
+   * that the backend does not drive until Stage 10, so this harness performs
+   * them directly against the contracts and then asserts what the **API**
+   * reports. It tests the read path, not a backend capability that exists.
+   *
+   * Declared last on purpose: it moves the chain clock forward, and a later
+   * creation would compute its start from wall-clock time, landing in the
+   * chain's past and reverting.
+   */
+  describe("policy lifecycle as reported by the API", () => {
+    let chainProvider: JsonRpcProvider;
+    let insuranceProvider: Contract;
+    let weatherOracle: Contract;
+    let triggeredAddress: string;
+    let expiringAddress: string;
+
+    const THRESHOLD_MM = 40;
+    const START_LEAD_SECONDS = 200;
+    const DURATION_DAYS = 1;
+
+    /** Moves the chain clock forward and mines, so time-gated guards open. */
+    const advanceChain = async (seconds: number): Promise<void> => {
+      await chainProvider.send("evm_increaseTime", [seconds]);
+      await chainProvider.send("evm_mine", []);
+    };
+
+    /**
+     * A start both clocks accept.
+     *
+     * The DTO validates a caller-supplied start against wall-clock time, while
+     * the contract validates it against `block.timestamp`. Those diverge here
+     * because this suite moves the chain clock, so taking the later of the two
+     * is what satisfies both. On a real network they agree within seconds.
+     */
+    const acceptableStart = async (): Promise<number> => {
+      const block = await chainProvider.getBlock("latest");
+      const chainNow = Number(block?.timestamp ?? 0);
+      const serverNow = Math.floor(Date.now() / 1000);
+      return Math.max(chainNow, serverNow) + START_LEAD_SECONDS;
+    };
+
+    const createPolicy = async (region: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post("/policies")
+        .set("Authorization", bearer)
+        .send({
+          coverageEth: "0.05",
+          premiumEth: "0.002",
+          rainfallThresholdMm: THRESHOLD_MM,
+          durationDays: DURATION_DAYS,
+          region,
+          requestedStartTimestamp: await acceptableStart(),
+        });
+
+      expect(res.status).toBe(201);
+      return res.body.address as string;
+    };
+
+    const readPolicy = async (address: string) => {
+      const res = await request(app.getHttpServer()).get(
+        `/policies/${address}`,
+      );
+      expect(res.status).toBe(200);
+      return res.body;
+    };
+
+    beforeAll(async () => {
+      chainProvider = new JsonRpcProvider(RPC_URL);
+      const owner = new Wallet(SIGNER_KEY, chainProvider);
+      const addresses = loadManifest();
+
+      insuranceProvider = new Contract(
+        addresses.insuranceProvider,
+        loadAbi("InsuranceProvider") as never,
+        owner,
+      );
+      weatherOracle = new Contract(
+        addresses.weatherOracle,
+        loadAbi("MockWeatherOracle") as never,
+        owner,
+      );
+
+      // Both policies are created before any clock movement, for the reason in
+      // the describe comment.
+      triggeredAddress = await createPolicy("Triggered");
+      expiringAddress = await createPolicy("Expiring");
+
+      // Past the requested start, so each policy's weather window is open.
+      await advanceChain(START_LEAD_SECONDS + 60);
+    });
+
+    afterAll(() => {
+      chainProvider?.destroy();
+    });
+
+    it("reports a policy as triggered after the oracle reports rainfall", async () => {
+      const before = await readPolicy(triggeredAddress);
+      expect(before.status).toBe("active");
+      expect(before.conditionMet).toBe(false);
+      expect(before.lastOracleUpdateTimestamp).toBe(0);
+
+      // Rainfall at or above the threshold is what trips the policy.
+      await (
+        await weatherOracle["pushWeatherData(address,uint256)"](
+          triggeredAddress,
+          THRESHOLD_MM + 10,
+        )
+      ).wait();
+
+      const after = await readPolicy(triggeredAddress);
+
+      expect(after.status).toBe("triggered");
+      expect(after.conditionMet).toBe(true);
+      expect(after.latestRainfallMm).toBe(String(THRESHOLD_MM + 10));
+      expect(after.lastOracleUpdateTimestamp).toBeGreaterThan(0);
+      // Not settled yet: the provider has not executed the payout.
+      expect(after.settlementType).toBe("none");
+      expect(after.paidOut).toBe(false);
+    });
+
+    it("reports a policy as paid out after the payout executes", async () => {
+      await (
+        await insuranceProvider.executePolicyPayout(triggeredAddress)
+      ).wait();
+
+      const policy = await readPolicy(triggeredAddress);
+
+      expect(policy.status).toBe("paid_out");
+      expect(policy.paidOut).toBe(true);
+      expect(policy.settlementType).toBe("payout");
+      expect(policy.settledAt).toBeGreaterThan(0);
+      // The insured is an externally owned account here, so the transfer
+      // succeeded and nothing is left to claim. The deferred-claim path needs a
+      // recipient that rejects ETH, which is covered by the contract tests.
+      expect(policy.pendingPayoutWei).toBe("0");
+    });
+
+    it("reports a policy as expired after its window closes", async () => {
+      await advanceChain(DURATION_DAYS * 86_400 + 60);
+
+      await (await insuranceProvider.expirePolicy(expiringAddress)).wait();
+
+      const policy = await readPolicy(expiringAddress);
+
+      expect(policy.status).toBe("expired");
+      expect(policy.settlementType).toBe("expiry");
+      expect(policy.settledAt).toBeGreaterThan(0);
+      expect(policy.paidOut).toBe(false);
+      expect(policy.conditionMet).toBe(false);
+    });
+
+    it("keeps settled policies visible in listings", async () => {
+      // Settlement must not remove a policy from the provider's index; the
+      // record has to stay auditable after the money has moved.
+      const res = await request(app.getHttpServer())
+        .get("/policies")
+        .query({ insured: signerAddress, offset: 0, limit: 50 });
+
+      expect(res.status).toBe(200);
+      const statuses = new Set(
+        res.body.data.map((p: { status: string }) => p.status),
+      );
+      expect(statuses.has("paid_out")).toBe(true);
+      expect(statuses.has("expired")).toBe(true);
     });
   });
 });

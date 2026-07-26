@@ -84,6 +84,16 @@ deployed ones (`SWAGGER_ENABLED`). A committed OpenAPI snapshot lives at
   RPC fan-out per request. Responses report the *applied* limit, which may be
   lower than the one requested — paginate with `meta.limit`, not your own value,
   or you will skip records.
+- **The default start comes from chain time, not server time.** The contract
+  validates it against `block.timestamp`, so a start derived from a server clock
+  running ahead of the chain would land in the chain's past and revert.
+
+> **Read cost.** A page of 25 policies costs roughly 325 RPC calls, because each
+> policy is assembled from about a dozen individual reads. Measured on a local
+> node, 40 concurrent list readers see multi-second latency. It holds up — the
+> batching and the limiter do their job — but this is the weak point of reading
+> normalized state straight from chain, and the structural fix is the off-chain
+> read model in Stage 11. Run `npm run load:check` to measure it yourself.
 
 ### Stage boundaries
 
@@ -180,6 +190,7 @@ npm test               # unit tests
 npm run test:e2e       # end-to-end tests (no chain required)
 npm run test:e2e:chain # end-to-end against a live chain (requires a node)
 npm run test:cov       # unit + both e2e suites, with coverage thresholds
+npm run load:check     # concurrency + load harness (needs a running chain)
 npm run audit:check    # blocking dependency audit (critical severity)
 npm run start:check    # boot + probe /health, /health/ready, /blockchain/deployment
 npm run api:export     # write docs/api/backend-openapi.json

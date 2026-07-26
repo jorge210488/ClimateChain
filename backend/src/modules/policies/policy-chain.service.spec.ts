@@ -1,9 +1,8 @@
-import {
+﻿import {
   BadRequestException,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { Interface } from "ethers";
 
 import { AppConfigService } from "../../config/app-config.service";
 import { ChainProviderService } from "../blockchain/chain-provider.service";
@@ -41,6 +40,38 @@ interface Harness {
   policies: PoliciesService;
   readPolicyCalls: string[];
   concurrentPeak: { value: number };
+  /** Positional arguments passed to each contract write, in call order. */
+  sentArgs: unknown[][];
+}
+
+/**
+ * Receipt shape the service reads after a successful write.
+ *
+ * Carries one log because the service takes the created address from the
+ * `PolicyCreated` event rather than predicting it, and refuses a receipt that
+ * lacks the event.
+ */
+function receiptStub(): Record<string, unknown> {
+  return {
+    hash: `0x${"ab".repeat(32)}`,
+    blockNumber: 5,
+    gasUsed: 1_541_309n,
+    status: 1,
+    logs: [{ topics: [`0x${"cd".repeat(32)}`], data: "0x" }],
+  };
+}
+
+/** Interface stub exposing only what the service asks of it. */
+function interfaceStub(): unknown {
+  return {
+    parseLog: () => ({
+      name: "PolicyCreated",
+      args: { policyAddress: POLICY_ADDRESS },
+    }),
+    // No revert data is decodable in these tests; failures fall through to the
+    // transient/unknown branches, which is what the error specs cover.
+    parseError: () => null,
+  };
 }
 
 function buildHarness(
@@ -52,6 +83,8 @@ function buildHarness(
     pageAddresses?: string[];
     total?: bigint;
     pageError?: unknown;
+    chainTimestamp?: number;
+    blockError?: boolean;
   } = {},
 ): Harness {
   const {
@@ -62,11 +95,26 @@ function buildHarness(
     pageAddresses = [POLICY_ADDRESS],
     total = 1n,
     pageError,
+    chainTimestamp = Math.floor(Date.now() / 1000),
+    blockError = false,
   } = options;
 
   const readPolicyCalls: string[] = [];
+  const sentArgs: unknown[][] = [];
   const concurrentPeak = { value: 0 };
   let inFlight = 0;
+
+  /** Stands in for a contract write method plus its staticCall dry run. */
+  const writeMethod = Object.assign(
+    async (...args: unknown[]) => {
+      sentArgs.push(args);
+      return {
+        hash: `0x${"ab".repeat(32)}`,
+        wait: async () => receiptStub(),
+      };
+    },
+    { staticCall: async () => POLICY_ADDRESS },
+  );
 
   const providerReader = {
     isPolicyCreated: async () => knownPolicy,
@@ -81,6 +129,8 @@ function buildHarness(
       total,
     ],
     getPolicySettlementInfo: async () => [0n, 0n],
+    createPolicy: writeMethod,
+    createPolicyWithMetadata: writeMethod,
   };
 
   const contracts = {
@@ -100,13 +150,23 @@ function buildHarness(
         },
       });
     },
-    getInterface: () => new Interface([]),
+    getInterface: () => interfaceStub(),
   } as unknown as ContractFactoryService;
 
   const chain = {
     isEnabled: () => enabled,
     hasSigner: () => hasSigner,
     getSignerAddress: () => SIGNER,
+    getProvider: () => ({
+      getBlock: async () => {
+        if (blockError) {
+          throw Object.assign(new Error("node unreachable"), {
+            code: "NETWORK_ERROR",
+          });
+        }
+        return { timestamp: chainTimestamp };
+      },
+    }),
     call: <T>(_label: string, operation: () => Promise<T>) => operation(),
     submitTransaction: <T>(send: () => Promise<T>) => send(),
   } as unknown as ChainProviderService;
@@ -122,6 +182,7 @@ function buildHarness(
     policies: new PoliciesService(service),
     readPolicyCalls,
     concurrentPeak,
+    sentArgs,
   };
 }
 
@@ -280,6 +341,62 @@ describe("PolicyChainService", () => {
       await expect(service.listPolicies(0, 10)).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+  });
+
+  describe("default start timestamp", () => {
+    it("derives the default start from chain time, not server time", async () => {
+      // The contract validates the start against block.timestamp. Deriving it
+      // from server time fails on any chain whose clock runs behind the server:
+      // the computed start lands in the chain's past and reverts.
+      const chainNow = Math.floor(Date.now() / 1000) + 100_000;
+      const { service, sentArgs } = buildHarness({ chainTimestamp: chainNow });
+
+      await service.createPolicy({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "Valencia",
+      });
+
+      // params: [coverage, threshold, duration, regionCode, requestedStart]
+      const requestedStart = Number(sentArgs.at(-1)?.[4]);
+      expect(requestedStart).toBeGreaterThan(chainNow);
+      expect(requestedStart).toBeLessThanOrEqual(chainNow + 600);
+    });
+
+    it("honors an explicit start instead of deriving one", async () => {
+      const explicitStart = Math.floor(Date.now() / 1000) + 7_200;
+      const { service, sentArgs } = buildHarness();
+
+      await service.createPolicy({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "Valencia",
+        requestedStartTimestamp: explicitStart,
+      });
+
+      expect(Number(sentArgs.at(-1)?.[4])).toBe(explicitStart);
+    });
+
+    it("falls back to server time when the block cannot be read", async () => {
+      // A transient RPC hiccup must not fail a request the contract would
+      // accept; the fallback is an approximation, not a correctness guarantee.
+      const { service, sentArgs } = buildHarness({ blockError: true });
+
+      await service.createPolicy({
+        coverageEth: "1.0",
+        premiumEth: "0.05",
+        rainfallThresholdMm: 50,
+        durationDays: 30,
+        region: "Valencia",
+      });
+
+      const requestedStart = Number(sentArgs.at(-1)?.[4]);
+      expect(requestedStart).toBeGreaterThan(Math.floor(Date.now() / 1000));
     });
   });
 

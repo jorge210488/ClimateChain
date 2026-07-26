@@ -196,6 +196,71 @@ Gate after the audit: 200 unit, 33 no-chain e2e, 12 live-chain e2e, 245 in the
 combined coverage run at 97.06% statements and 89.48% branches (up from 95.26%
 and 86.78%).
 
+## Verification round 2: lifecycle and load
+
+A follow-up pass asked which of the deferred verifications could be completed
+without starting Stage 07. Two could, and both found something.
+
+### Lifecycle reads were untested
+
+Every earlier chain test observed a freshly created policy, so the suite only
+ever exercised `active` / `settlementType: none` / `pendingPayoutWei: 0`. The
+status and settlement mappings exist precisely for the *other* states, and
+nothing verified them against real on-chain state — a mapping error would have
+surfaced the first time a policy actually paid out, in production.
+
+The live suite now drives a policy through its full lifecycle and asserts what
+the **API** reports at each step:
+
+| Transition | Driven by | API reports |
+| --- | --- | --- |
+| Oracle reports rainfall ≥ threshold | `MockWeatherOracle.pushWeatherData` | `status: triggered`, `conditionMet: true`, `latestRainfallMm`, `lastOracleUpdateTimestamp` |
+| Provider executes payout | `executePolicyPayout` | `status: paid_out`, `paidOut: true`, `settlementType: payout`, `settledAt` |
+| Window closes, provider expires | `expirePolicy` | `status: expired`, `settlementType: expiry`, `settledAt` |
+
+The transitions are owner-only contract operations the backend does not drive
+until Stage 10, so the harness performs them directly against the contracts.
+This tests the read path, not a backend capability that does not exist yet.
+
+The deferred-claim path (`pendingPayoutWei > 0`) is not reachable here: it needs
+an insured that rejects ETH, and the insured is always the backend's own
+account. The contract tests cover it.
+
+### A clock assumption, found by the load run
+
+The load harness failed on its first run with every creation rejected. The cause
+was real: the default start timestamp was derived from **server** time, while
+the contract validates it against **`block.timestamp`**. On any chain whose
+clock has drifted from the server's, the computed start lands in the chain's
+past and the transaction reverts. The service now reads the latest block
+timestamp, falling back to server time if that read fails.
+
+Wall-clock and chain time agree within seconds on a healthy network, so this was
+invisible locally until a test moved the chain clock — exactly the kind of
+assumption that survives until the environment stops cooperating.
+
+### Load results
+
+`npm run load:check` (new, opt-in, not in the gate) asserts behavior under
+concurrency and reports timings. On a local node, 10 concurrent writes and 40
+concurrent reads at page size 25:
+
+- All creations succeed with distinct addresses and transaction hashes — the
+  nonce path holds under real concurrency.
+- All list reads succeed — the bounded fan-out holds.
+- The read limiter sheds traffic once its window is exhausted.
+- **Latency: creation p50 ~1.5s; list reads p50 ~6.4s.**
+
+The read number is the honest weak point. A 25-policy page costs roughly 325 RPC
+calls because each policy is assembled from about a dozen reads. Nothing breaks,
+but multi-second reads are not production numbers for a public endpoint. This is
+the inherent cost of reading normalized state directly from chain, and the
+structural answer is the off-chain read model in Stage 11 — not a cache bolted
+on here.
+
+Gate after this round: 203 unit, 33 no-chain e2e, 16 live-chain e2e, 252 in the
+combined coverage run at 97.08% statements and 89.96% branches.
+
 ## Risks or pending items
 
 - **The contract assigns the insured from `msg.sender`.** A policy created
@@ -225,7 +290,17 @@ and 86.78%).
   would report a policy as created that no longer exists.
 - Integration is validated against a real node over real RPC, but that node is
   local. Validation against a public testnet needs operator-provided credentials
-  (see Credentials status) and is the natural first task of Stage 16.
+  and is the natural first task of Stage 16. Everything for it is parameterized
+  and the checklist is in `docs/runbooks/local-stack.md`; note that the lifecycle
+  tests advance the chain clock with `evm_increaseTime`, which no public network
+  supports, so those transitions must be driven by real elapsed time there.
+- List read latency is multi-second under concurrent load (measured, see above).
+  Acceptable for now, structurally addressed by Stage 11.
+- The DTO validates a caller-supplied start against server time while the
+  contract validates against chain time. The default start now uses chain time,
+  but an explicit one supplied by a caller is still pre-checked against the
+  server clock. On a healthy network these agree; when they do not, the contract
+  is authoritative and its revert is mapped to an actionable 400.
 - No write path exists yet for the owner-only operations (`requestPolicyWeatherData`,
   `executePolicyPayout`, `expirePolicy`); those belong to the Stage 10 oracle and
   automation flow.

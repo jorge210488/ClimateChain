@@ -376,7 +376,7 @@ export class PolicyChainService {
 
     try {
       const provider = this.contracts.getProviderWriter();
-      const args = this.buildCreateArgs(dto, coverageWei);
+      const args = await this.buildCreateArgs(dto, coverageWei);
 
       await this.chain.call("createPolicy.staticCall", () =>
         (
@@ -437,10 +437,10 @@ export class PolicyChainService {
    * `LEGACY_REGION_CODE`. The DTO already refuses a start without a region, so
    * the two branches here cover exactly the combinations that can execute.
    */
-  private buildCreateArgs(
+  private async buildCreateArgs(
     dto: CreatePolicyDto,
     coverageWei: bigint,
-  ): { method: string; params: unknown[] } {
+  ): Promise<{ method: string; params: unknown[] }> {
     if (dto.region === undefined) {
       return {
         method: "createPolicy",
@@ -450,7 +450,7 @@ export class PolicyChainService {
 
     const requestedStart =
       dto.requestedStartTimestamp ??
-      Math.floor(Date.now() / 1000) + DEFAULT_START_LEAD_SECONDS;
+      (await this.chainNow()) + DEFAULT_START_LEAD_SECONDS;
 
     return {
       method: "createPolicyWithMetadata",
@@ -462,6 +462,31 @@ export class PolicyChainService {
         requestedStart,
       ],
     };
+  }
+
+  /**
+   * Current time according to the chain, not the server.
+   *
+   * The contract validates the requested start against `block.timestamp`, so
+   * that is the clock the default has to be derived from. Server time is only
+   * an approximation of it — the two drift on any chain whose clock is
+   * manipulated or simply out of step, and a start computed from a server clock
+   * running ahead of the chain lands in the chain's past and reverts.
+   *
+   * Falls back to server time if the block cannot be read, which keeps a
+   * transient RPC hiccup from failing a request the contract would accept.
+   */
+  private async chainNow(): Promise<number> {
+    const serverNow = Math.floor(Date.now() / 1000);
+
+    try {
+      const block = await this.chain.call("getBlock(latest)", () =>
+        this.chain.getProvider().getBlock("latest"),
+      );
+      return block ? Number(block.timestamp) : serverNow;
+    } catch {
+      return serverNow;
+    }
   }
 
   /**
