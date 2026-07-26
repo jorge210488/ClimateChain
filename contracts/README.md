@@ -2,7 +2,7 @@
 
 On-chain logic for policy creation, weather-trigger checks, and payouts.
 
-## Current Scope (Stage 04)
+## Current Scope (Stage 04, consumed by Stage 06)
 
 - `contracts/InsuranceProvider.sol`
 - `contracts/InsurancePolicy.sol`
@@ -29,11 +29,32 @@ On-chain logic for policy creation, weather-trigger checks, and payouts.
 - Deploy to ephemeral hardhat network: `npm run deploy:hardhat`
 - Deploy to localhost: `npm run deploy:localhost`
 - Deploy to Sepolia: `npm run deploy:sepolia`
+- Fund the provider coverage reserve on localhost: `npm run reserve:fund:localhost`
+- Fund the provider coverage reserve on Sepolia: `npm run reserve:fund:sepolia`
 - Run local burst-creation stress harness on ephemeral hardhat: `npm run stress:policies:local`
 - Run local burst-creation stress harness on localhost node: `npm run stress:policies:localhost`
 - Run deterministic local stress smoke (Stage 03/04 gate): `npm run stress:policies:local:smoke`
 - Run consolidated Stage 03 gate (quality + baseline + stress smoke + ABI sync): `npm run stage3:check`
 - Run consolidated Stage 04 gate (compile + tests + quality + baseline + stress smoke + ABI sync): `npm run stage4:check`
+
+### Coverage reserve (required after every deploy)
+
+A freshly deployed provider holds no coverage reserve, so **every**
+`createPolicy` call reverts with `InsufficientCoverageReserve` until an owner
+funds it. `fundCoverageReserve` is owner-only, so this cannot be done by the
+backend — it is an operational step between deploying and any policy flow
+working:
+
+```bash
+npm run deploy:localhost
+npm run reserve:fund:localhost      # 10 ETH by default
+COVERAGE_RESERVE_ETH=25 npm run reserve:fund:localhost
+```
+
+The script resolves the provider from `deployments/<network>.json`, verifies the
+configured signer is the contract owner before submitting, and prints the
+reserve before and after. Consumers see the unfunded state as HTTP `503` from
+the backend, naming the shortfall.
 
 Stress harness environment knobs (optional):
 
@@ -81,6 +102,13 @@ Deployment behavior by network:
 
 - `hardhat` and `localhost`: deploys `MockWeatherOracle` automatically.
 - Non-local networks: requires `EXTERNAL_WEATHER_ORACLE_ADDRESS` and does not deploy a mock.
+
+> **Use `localhost`, not `hardhat`, for anything the backend connects to.**
+> `hardhat` is an in-process chain that exists only for the lifetime of the
+> command that created it, so the addresses in `deployments/hardhat.json` are not
+> reachable over RPC. The backend verifies bytecode at those addresses on boot
+> and refuses to start against a stale manifest. Full procedure:
+> [`docs/runbooks/local-stack.md`](../docs/runbooks/local-stack.md).
 
 ## Standards
 

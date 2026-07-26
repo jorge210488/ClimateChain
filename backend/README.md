@@ -9,51 +9,91 @@ pricing, and on-chain integration. Built with NestJS 11 and TypeScript.
 src/
   main.ts                 # Bootstrap (pino logger, Swagger, shutdown hooks)
   app.module.ts           # Root module + global pipe/filter/guards
-  app-setup.ts            # Shared runtime + Swagger configuration
+  app-setup.ts            # Shared runtime, security headers, Swagger, body limits
   config/                 # Typed config, Joi env validation, AppConfigService
   logging/                # Structured pino logging (request-id, redaction)
-  common/                 # Exception filter, response contracts, pipes, decorators
+  common/                 # Exception filter, response contracts, pipes, validators
+    throttling/           # Named rate limiters (auth, policy reads)
+    utils/                # EVM address, ETH amount, bytes32 region codecs
   modules/
-    blockchain/           # Contract registry: loads shared ABIs + deployment manifest
-    health/               # Liveness + readiness probes (terminus)
+    blockchain/           # Everything between the backend and the chain
+      contract-registry   #   Shared ABIs + deployment manifest (Stage 05)
+      chain-provider      #   RPC connection, signer, timeouts, retry, nonce queue
+      contract-factory    #   Contract instances built from the registry's ABIs
+      chain-bootstrap     #   Boot-time chain verification (fatal on mismatch)
+      chain-error.mapper  #   Revert decoding -> explicit HTTP error contracts
+      chain-retry.util    #   Transient vs deterministic failure classification
+    health/               # Liveness + readiness probes (config, metadata, chain)
     auth/                 # JWT auth, roles, admin token issuance
-    policies/             # Policy lifecycle DTOs + endpoints
+    policies/             # Policy DTOs, endpoints, and domain chain access
     pricing/              # Premium quote DTOs + endpoints
 ```
+
+Nothing outside `blockchain/` constructs a provider, a signer, or a contract
+instance: contracts are built from the ABIs the registry validated at boot and
+the addresses in the deployment manifest, so there is no second copy of either
+anywhere in the backend.
 
 ## Endpoints
 
 | Method | Path                     | Auth   | Notes                                            |
 | ------ | ------------------------ | ------ | ------------------------------------------------ |
 | GET    | `/health`                | public | Liveness probe                                   |
-| GET    | `/health/ready`          | public | Readiness (config + on-chain metadata)           |
+| GET    | `/health/ready`          | public | Readiness (config + on-chain metadata + live chain) |
 | GET    | `/blockchain/deployment` | public | Loaded network, addresses, contract ABIs         |
 | POST   | `/auth/token`            | public | Exchange `ADMIN_API_KEY` for a JWT (when enabled); rate limited |
 | GET    | `/auth/me`               | admin  | Authenticated principal                          |
-| POST   | `/policies`              | bearer | Create policy (live execution: Stage 06 → 501)   |
-| GET    | `/policies`              | public | List policies (live reads: Stage 06 → 501)       |
-| GET    | `/policies/:address`     | public | Get policy (live reads: Stage 06 → 501)          |
+| POST   | `/policies`              | bearer | Submits the creation transaction; returns once mined |
+| GET    | `/policies`              | public | Lists policies from chain; rate limited          |
+| GET    | `/policies/:address`     | public | Reads one policy from chain; rate limited        |
 | POST   | `/pricing/quote`         | public | Premium quote (live ML: Stage 09 → 501)          |
 
 Reads are public because on-chain state is world-readable; creation requires a
-bearer token because, from Stage 06, it submits a transaction and draws on the
-provider's coverage reserve. Which identities may create a policy, and on whose
-behalf, is refined in Stage 06 and Stage 11.
+bearer token because it submits a transaction signed with the backend's key and
+draws on the provider's coverage reserve.
+
+> **The contract assigns the insured from `msg.sender`.** A policy created
+> through this API is therefore beneficiary-bound to the backend's signer, not to
+> an end user, and a payout would go to the backend. The response returns
+> `insured` explicitly so this is visible rather than assumed. Resolving it needs
+> either an `insured` parameter on `InsuranceProvider` or a user-signed flow —
+> a domain decision, not a backend fix, and a blocker for real-user deployment.
 
 Interactive API docs are served at `/docs` on local profiles and are opt-in on
 deployed ones (`SWAGGER_ENABLED`). A committed OpenAPI snapshot lives at
 `docs/api/backend-openapi.json` (regenerate with `npm run api:export`).
 
+### Chain behavior
+
+- **Creation is dry-run first.** `staticCall` executes the transaction against
+  current state without spending gas, so a request that would revert fails
+  immediately with a decoded reason instead of costing gas and surfacing as a
+  mined-but-failed transaction.
+- **Reads are retried; writes never are.** A retry after an ambiguous write
+  timeout could submit the same policy twice and spend the reserve again. Only
+  idempotent reads go through the retry policy.
+- **Transaction ordering is managed locally.** Nonces are tracked in-process and
+  submissions are queued, because asking the node per transaction returns a
+  stale value under concurrency. Each running instance needs its own signing
+  account.
+- **Reverts are mapped by who can act on them**: `400` the caller can fix the
+  request, `404` unknown subject, `409` conflicts with current on-chain state,
+  `503` the operator must act (fund the reserve, fund the signer, fix config).
+  Messages carry the decoded on-chain arguments.
+- **Pagination is delegated to the contract**, and `CHAIN_MAX_PAGE_SIZE` caps
+  RPC fan-out per request. Responses report the *applied* limit, which may be
+  lower than the one requested — paginate with `meta.limit`, not your own value,
+  or you will skip records.
+
 ### Stage boundaries
 
-Stage 05 delivers the foundation: modules, validation, structured logging,
-configuration, and real loading of the Stage 04 artifacts (shared ABIs +
-deployment manifest). Operations that require a live chain or ML connection
-respond with HTTP `501` until their integration stage, instead of returning mock
-data (per the no-runtime-mocks policy):
+Policy creation and reads execute on chain (Stage 06). Premium quoting still
+responds with HTTP `501` until Stage 09, rather than returning mock data, per
+the no-runtime-mocks policy.
 
-- Policy creation/reads → Stage 06 (Backend to Blockchain Integration)
-- Premium quoting → Stage 09 (Backend to ML Integration)
+Without `RPC_URL` the service still boots — readiness reports `chain: down` and
+policy endpoints return `503` naming the missing variable. That is a supported
+local state, not a failure mode.
 
 ## Standards
 
@@ -83,17 +123,32 @@ Deployed profiles (staging/testnet/production) fail to boot unless they supply:
 Credential-shaped values are format-checked wherever a malformed value would
 otherwise fail later, on the first transaction instead of at startup:
 
-- `PRIVATE_KEY` — must be a `0x`-prefixed 32-byte hex string when set. Whether a
-  backend-held signer is required at all is a Stage 06 decision.
+- `PRIVATE_KEY` — must be a `0x`-prefixed 32-byte hex string when set. Required
+  for policy creation; reads work without it. Give each running instance its own
+  account: nonces are tracked per process, so two instances sharing one signer
+  collide.
 - `ADMIN_API_KEY` — optional (unset disables `POST /auth/token`), but minimum 32
   characters when set: it is the only credential guarding JWT issuance. That
   endpoint is additionally rate limited per client address via
   `AUTH_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_TTL_SECONDS`.
 
-> **Operational note:** the rate limiter keys on the client address reported by
-> Express. Behind a reverse proxy or load balancer, enable `trust proxy` so it
-> keys on the real client rather than the proxy, otherwise all traffic shares one
-> bucket. Deferred to Stage 12/13, when the deployment topology is defined.
+### Chain client tuning
+
+| Variable | Default | Why it matters |
+| --- | --- | --- |
+| `CHAIN_CONFIRMATIONS` | `1` | Correct for a local node. Raise it on public networks: a single confirmation can still be reorganized away, which would report a policy that no longer exists. |
+| `CHAIN_RPC_TIMEOUT_MS` | `10000` | Converts a hung socket into a prompt, retryable failure instead of an HTTP request held open. |
+| `CHAIN_TX_TIMEOUT_MS` | `120000` | Bounds waiting for a transaction that may never be mined. |
+| `CHAIN_RETRY_ATTEMPTS` | `3` | Reads only. Writes are never retried. |
+| `CHAIN_RETRY_BASE_DELAY_MS` | `250` | Backoff grows exponentially with jitter, so concurrent retries do not hit a recovering node in lockstep. |
+| `CHAIN_MAX_PAGE_SIZE` | `50` | Each policy costs about a dozen RPC calls; this bounds fan-out per request. |
+| `CHAIN_READ_RATE_LIMIT_MAX` / `_TTL_SECONDS` | `60` / `60` | The read endpoints are anonymous and amplify each request into many RPC calls; this protects the node and the RPC bill. |
+
+> **Operational note:** both rate limiters key on the client address reported by
+> Express, and their state is per process. Behind a reverse proxy or load
+> balancer, enable `trust proxy` or the limiter meters the proxy; across several
+> instances the effective budget multiplies by instance count. Deferred to
+> Stage 12/13, when the deployment topology is defined.
 
 ### Working-directory convention (operational)
 
@@ -122,27 +177,42 @@ npm run build          # compile to dist/
 npm run lint           # ESLint (max-warnings 0)
 npm run format:check   # Prettier check
 npm test               # unit tests
-npm run test:e2e       # end-to-end tests
-npm run test:cov       # unit + e2e together, with coverage thresholds
+npm run test:e2e       # end-to-end tests (no chain required)
+npm run test:e2e:chain # end-to-end against a live chain (requires a node)
+npm run test:cov       # unit + both e2e suites, with coverage thresholds
 npm run audit:check    # blocking dependency audit (critical severity)
 npm run start:check    # boot + probe /health, /health/ready, /blockchain/deployment
 npm run api:export     # write docs/api/backend-openapi.json
-npm run stage5:check   # full Stage 05 gate
+npm run stage5:check   # chain-free gate
+npm run stage6:check   # full gate: the above plus live-chain e2e and coverage
 ```
 
 ## Stage gate
 
-`npm run stage5:check` is the canonical local gate and the CI gate
+`npm run stage6:check` is the canonical local gate and the CI gate
 (`.github/workflows/backend-quality-gates.yml`). It runs, in order: build, lint,
-format check, dependency audit, unit tests, e2e tests, combined coverage
-thresholds, the startup smoke check, and the OpenAPI drift check.
+format check, dependency audit, unit tests, no-chain e2e, the startup smoke
+check, the OpenAPI drift check, the live-chain e2e suite, and combined coverage
+thresholds.
+
+The split exists because the two halves have different requirements:
+
+- `stage5:check` needs no infrastructure and is the fast local loop.
+- `stage6:check` needs a running node with the contracts deployed and the
+  coverage reserve funded. The integration it validates cannot be proven without
+  one — a mocked chain adapter would validate nothing under the no-runtime-mocks
+  policy. See [`docs/runbooks/local-stack.md`](../docs/runbooks/local-stack.md).
+
+CI starts a real Hardhat node, deploys, and funds the reserve before running it.
 
 ### Coverage
 
-Coverage is measured over the unit **and** e2e suites together
-(`jest.coverage.json`). Measuring units alone would understate reality, since
-controllers, guards, and health indicators are exercised end to end; it would
-also push toward writing redundant unit tests purely to move the number.
+Coverage is measured over the unit **and** both e2e suites together
+(`jest.coverage.js`). Measuring units alone would understate reality, since
+controllers, guards, health indicators, and the entire chain client are
+exercised end to end; it would also push toward writing redundant unit tests
+purely to move the number. Because the chain suite is part of the measurement,
+the thresholds are only reachable with a node running.
 
 The run uses the `v8` coverage provider rather than the istanbul default. With
 swc's decorator-metadata emit, istanbul charges the generated `__decorate`
