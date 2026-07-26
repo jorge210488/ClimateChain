@@ -3,17 +3,20 @@ name: Backend Quality Gates
 on:
   pull_request:
     paths:
+      # `contracts/**` in full, not just deployments: the chain integration job
+      # compiles and deploys the real contracts, so any contract change can
+      # break this gate.
       - "backend/**"
+      - "contracts/**"
       - "shared/abi/**"
-      - "contracts/deployments/**"
       - ".github/workflows/backend-quality-gates.yml"
   push:
     branches:
       - main
     paths:
       - "backend/**"
+      - "contracts/**"
       - "shared/abi/**"
-      - "contracts/deployments/**"
       - ".github/workflows/backend-quality-gates.yml"
 
 # Least privilege: this workflow only reads the repository.
@@ -27,10 +30,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend-stage5-gates:
-    name: backend-stage5-gates
+  backend-stage6-gates:
+    name: backend-stage6-gates
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     defaults:
       run:
@@ -50,11 +53,52 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Stage 05 full gate
-        # Includes build, lint, format, a blocking critical-severity audit,
-        # unit + e2e tests, combined coverage thresholds, startup smoke, and the
-        # OpenAPI drift check, so the local and CI gates are equivalent.
+      - name: Chain-free gate
+        # Build, lint, format, blocking critical-severity audit, unit tests,
+        # no-chain e2e, startup smoke, and the OpenAPI drift check.
         run: npm run stage5:check
+
+      # Stage 06 integration is only proven by exercising it: the no-runtime-
+      # mocks policy means a mocked chain adapter would validate nothing. CI
+      # therefore runs a real node with the real contracts deployed.
+      - name: Install contract dependencies
+        working-directory: contracts
+        run: npm ci
+
+      - name: Start local chain
+        working-directory: contracts
+        run: |
+          npx hardhat node > "${RUNNER_TEMP}/hardhat-node.log" 2>&1 &
+          for _ in $(seq 1 40); do
+            if curl -sf -X POST http://127.0.0.1:8545 \
+                 -H 'content-type: application/json' \
+                 -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' >/dev/null; then
+              echo "Chain is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Chain did not start"; cat "${RUNNER_TEMP}/hardhat-node.log"; exit 1
+
+      - name: Deploy contracts and fund the coverage reserve
+        working-directory: contracts
+        # A freshly deployed provider holds no reserve, so every createPolicy
+        # would revert with InsufficientCoverageReserve without this step.
+        run: |
+          npm run deploy:localhost
+          npm run reserve:fund:localhost
+
+      - name: Stage 06 chain integration and coverage
+        run: |
+          npm run test:e2e:chain
+          npm run test:cov
+
+      - name: Upload chain log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardhat-node-log
+          path: ${{ runner.temp }}/hardhat-node.log
+          if-no-files-found: ignore
 
       # Reported, not blocking. Every current high advisory is transitive
       # through NestJS 11's own dependencies (multer, js-yaml, form-data) with

@@ -26,6 +26,13 @@ describe("ClimateChain backend (e2e)", () => {
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
     process.env.LOG_LEVEL = "silent";
+    // This suite asserts the no-chain contract, so it must not inherit chain
+    // configuration from a suite that ran earlier in the same process. Without
+    // this, results depend on file ordering rather than on the code.
+    delete process.env.RPC_URL;
+    delete process.env.PRIVATE_KEY;
+    delete process.env.CHAIN_ID;
+    delete process.env.BLOCKCHAIN_NETWORK;
     process.env.ADMIN_API_KEY = ADMIN_API_KEY;
     process.env.AUTH_RATE_LIMIT_MAX = String(AUTH_RATE_LIMIT_MAX);
     process.env.JWT_SECRET = "e2e-test-jwt-secret-0123456789";
@@ -54,12 +61,16 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.body.status).toBe("ok");
     });
 
-    it("GET /health/ready -> 200 with config and registry up", async () => {
+    it("GET /health/ready -> 503 while no chain is configured", async () => {
+      // This suite runs without RPC_URL on purpose, which is the degraded
+      // state readiness must report honestly: config and metadata are fine,
+      // but the service cannot serve policy traffic without a chain.
       const res = await request(app.getHttpServer()).get("/health/ready");
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe("ok");
-      expect(res.body.details["contract-registry"].status).toBe("up");
-      expect(res.body.details.config.status).toBe("up");
+      expect(res.status).toBe(503);
+      expect(res.body.info["contract-registry"].status).toBe("up");
+      expect(res.body.info.config.status).toBe("up");
+      expect(res.body.error.chain.status).toBe("down");
+      expect(res.body.error.chain.reason).toContain("RPC_URL");
     });
   });
 
@@ -134,15 +145,15 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("keeps reads public", async () => {
       // On-chain state is world-readable, so gating reads adds friction
-      // without adding confidentiality. 501 (not 401) proves it reached the
-      // handler rather than being rejected by the auth guard.
+      // without adding confidentiality. 503 (not 401) proves the request
+      // reached the handler rather than being rejected by the auth guard.
       const list = await request(app.getHttpServer()).get("/policies");
-      expect(list.status).toBe(501);
+      expect(list.status).toBe(503);
 
       const byAddress = await request(app.getHttpServer()).get(
         `/policies/${VALID_ADDRESS}`,
       );
-      expect(byAddress.status).toBe(501);
+      expect(byAddress.status).toBe(503);
     });
 
     it("accepts a checksummed insured filter regardless of casing", async () => {
@@ -150,8 +161,8 @@ describe("ClimateChain backend (e2e)", () => {
       const res = await request(app.getHttpServer())
         .get("/policies")
         .query({ insured: mixedCase });
-      // Reaches the handler (501) rather than failing validation (400).
-      expect(res.status).toBe(501);
+      // Reaches the handler (503) rather than failing validation (400).
+      expect(res.status).toBe(503);
     });
 
     it("rejects a malformed insured filter with 400", async () => {
@@ -203,7 +214,7 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 501 for a valid create (live integration arrives in Stage 06)", async () => {
+    it("reports 503 for a valid create while the chain is unreachable", async () => {
       const res = await createPolicy().send({
         coverageEth: "1.0",
         premiumEth: "0.05",
@@ -211,8 +222,8 @@ describe("ClimateChain backend (e2e)", () => {
         durationDays: 30,
         region: "Valencia",
       });
-      expect(res.status).toBe(501);
-      expect(res.body.message).toContain("Stage 06");
+      expect(res.status).toBe(503);
+      expect(res.body.message).toContain("RPC_URL");
     });
 
     it("rejects a premium below the on-chain minimum (1% of coverage)", async () => {
@@ -253,7 +264,7 @@ describe("ClimateChain backend (e2e)", () => {
       );
     });
 
-    it("accepts a requestedStartTimestamp with region beyond the lead-time window (-> 501)", async () => {
+    it("accepts a requestedStartTimestamp with region beyond the lead-time window (-> 503)", async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
       const res = await createPolicy().send({
         coverageEth: "1.0",
@@ -263,7 +274,7 @@ describe("ClimateChain backend (e2e)", () => {
         region: "Valencia",
         requestedStartTimestamp: future,
       });
-      expect(res.status).toBe(501);
+      expect(res.status).toBe(503);
     });
 
     it("rejects a requestedStartTimestamp without a region", async () => {
@@ -300,11 +311,11 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 501 for a valid policy address lookup", async () => {
+    it("reports 503 for a valid policy address lookup without a chain", async () => {
       const res = await request(app.getHttpServer()).get(
         `/policies/${VALID_ADDRESS}`,
       );
-      expect(res.status).toBe(501);
+      expect(res.status).toBe(503);
     });
   });
 
@@ -360,6 +371,8 @@ describe("ClimateChain backend (e2e)", () => {
           coverageEth: "1.0",
           rainfallThresholdMm: 50,
         });
+      // Pricing is still Stage 09: unlike the policy paths, this is a
+      // not-yet-implemented capability, not a degraded dependency.
       expect(res.status).toBe(501);
       expect(res.body.message).toContain("Stage 09");
     });

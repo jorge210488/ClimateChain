@@ -3,6 +3,7 @@ import {
   BadRequestException,
   HttpStatus,
   NotImplementedException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 
 import { AllExceptionsFilter } from "./all-exceptions.filter";
@@ -132,6 +133,46 @@ describe("AllExceptionsFilter", () => {
     );
 
     expect(captured.body?.path).toBe("/fallback");
+  });
+
+  it("passes a structured payload through untouched", () => {
+    // How a failing health check reports itself: the exception body *is* the
+    // diagnostic report. Reshaping it into the generic contract would strip the
+    // per-dependency detail the readiness probe exists to deliver.
+    const healthReport = {
+      status: "error",
+      info: { config: { status: "up" } },
+      error: { chain: { status: "down", reason: "no RPC_URL configured" } },
+      details: {
+        config: { status: "up" },
+        chain: { status: "down", reason: "no RPC_URL configured" },
+      },
+    };
+
+    const captured: Partial<CapturedResponse> = {};
+    filter.catch(
+      new ServiceUnavailableException(healthReport),
+      buildHost(captured),
+    );
+
+    expect(captured.status).toBe(503);
+    expect(captured.body).toEqual(healthReport);
+  });
+
+  it("still applies the canonical contract to a plain 503", () => {
+    // Only payloads without a `message` are treated as deliberately structured;
+    // an ordinary exception must not escape the error contract.
+    const captured: Partial<CapturedResponse> = {};
+    filter.catch(
+      new ServiceUnavailableException("chain unreachable"),
+      buildHost(captured),
+    );
+
+    expect(captured.body).toMatchObject({
+      statusCode: 503,
+      message: "chain unreachable",
+      path: "/policies",
+    });
   });
 
   it("omits requestId when the request carries none", () => {

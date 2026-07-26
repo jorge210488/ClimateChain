@@ -85,6 +85,40 @@ export const envValidationSchema = Joi.object({
   SHARED_ABI_DIR: Joi.string().optional().allow(""),
   CONTRACTS_DEPLOYMENTS_DIR: Joi.string().optional().allow(""),
 
+  // Chain client tuning (Stage 06).
+  CHAIN_CONFIRMATIONS: Joi.number()
+    .integer()
+    .min(1)
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainConfirmations),
+  CHAIN_RPC_TIMEOUT_MS: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainRpcTimeoutMs),
+  CHAIN_TX_TIMEOUT_MS: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainTxTimeoutMs),
+  CHAIN_RETRY_ATTEMPTS: Joi.number()
+    .integer()
+    .min(1)
+    .max(10)
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainRetryAttempts),
+  CHAIN_RETRY_BASE_DELAY_MS: Joi.number()
+    .integer()
+    .positive()
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainRetryBaseDelayMs),
+  CHAIN_MAX_PAGE_SIZE: Joi.number()
+    .integer()
+    .min(1)
+    .max(200)
+    .empty("")
+    .default(CONFIG_DEFAULTS.chainMaxPageSize),
+
   // ML pricing service integration (live calls wired in Stage 09).
   ML_SERVICE_BASE_URL: Joi.string()
     .uri()

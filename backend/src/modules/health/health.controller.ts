@@ -7,6 +7,7 @@ import {
 } from "@nestjs/terminus";
 
 import { Public } from "../../common/decorators/public.decorator";
+import { ChainHealthIndicator } from "./indicators/chain.health";
 import { ConfigHealthIndicator } from "./indicators/config.health";
 import { ContractRegistryHealthIndicator } from "./indicators/contract-registry.health";
 
@@ -17,6 +18,7 @@ export class HealthController {
     private readonly health: HealthCheckService,
     private readonly registryIndicator: ContractRegistryHealthIndicator,
     private readonly configIndicator: ConfigHealthIndicator,
+    private readonly chainIndicator: ChainHealthIndicator,
   ) {}
 
   @Public()
@@ -36,14 +38,16 @@ export class HealthController {
   @ApiOperation({
     summary: "Readiness probe",
     description:
-      "Verifies the runtime dependencies expected at this stage: validated " +
-      "configuration and loaded on-chain integration metadata. Returns 503 " +
-      "with diagnostics when a dependency is unhealthy.",
+      "Verifies the runtime dependencies this service needs to serve traffic: " +
+      "validated configuration, loaded on-chain integration metadata, and a " +
+      "reachable chain. Returns 503 with diagnostics when a dependency is " +
+      "unhealthy.",
   })
   readiness(): Promise<HealthCheckResult> {
     return this.health.check([
       () => this.configIndicator.isHealthy("config"),
       () => this.registryIndicator.isHealthy("contract-registry"),
+      () => this.chainIndicator.isHealthy("chain"),
     ]);
   }
 }

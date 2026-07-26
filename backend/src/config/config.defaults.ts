@@ -42,6 +42,28 @@ export const CONFIG_DEFAULTS = {
    * vector. Express defaults to 100kb; this makes the intent explicit.
    */
   maxRequestBodySize: "64kb",
+
+  // --- Chain client (Stage 06) ---
+  /**
+   * Confirmations awaited before a write is reported as mined. One is correct
+   * for a local node; public networks should raise it, since a single
+   * confirmation can still be reorganized away.
+   */
+  chainConfirmations: 1,
+  /** Per-RPC-call timeout. Beyond this the call is treated as transient. */
+  chainRpcTimeoutMs: 10_000,
+  /** How long to wait for a submitted transaction to be mined. */
+  chainTxTimeoutMs: 120_000,
+  /** Attempts for a transient RPC failure, including the first try. */
+  chainRetryAttempts: 3,
+  /** Base backoff between retries; grows exponentially with jitter. */
+  chainRetryBaseDelayMs: 250,
+  /**
+   * Cap on how many policies one paginated read may pull from chain. Each item
+   * costs several RPC calls, so an unbounded page would turn a single request
+   * into a burst against the node.
+   */
+  chainMaxPageSize: 50,
   /** Relative directory (from the backend working dir) holding shared ABIs. */
   sharedAbiDir: "../shared/abi",
   /** Relative directory (from the backend working dir) holding deployment manifests. */

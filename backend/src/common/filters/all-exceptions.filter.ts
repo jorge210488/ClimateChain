@@ -51,9 +51,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<RequestWithId>();
 
-    const normalized = this.normalize(exception);
     const path = request.originalUrl ?? request.url;
     const requestId = request.id !== undefined ? String(request.id) : undefined;
+
+    // Some failures carry a deliberately shaped payload rather than a message —
+    // the health module signals a failed check by throwing an exception whose
+    // body *is* the diagnostic report. Reshaping that into the generic contract
+    // would discard exactly the information the probe exists to deliver, so
+    // structured payloads are passed through untouched.
+    const structured = this.extractStructuredPayload(exception);
+    if (structured) {
+      const status = (exception as HttpException).getStatus();
+      this.logger.warn(`${request.method} ${path} -> ${status}`);
+      response.status(status).json(structured);
+      return;
+    }
+
+    const normalized = this.normalize(exception);
 
     const body: ApiErrorResponse = {
       statusCode: normalized.statusCode,
@@ -72,8 +86,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (normalized.statusCode < HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.warn(logContext);
     } else if (exception instanceof HttpException) {
-      // Deliberate server-side statuses (501/503) carry no useful stack.
-      this.logger.warn(logContext);
+      // A deliberate 5xx that wraps a cause is a mapped internal failure: the
+      // response is intentionally generic, so the cause is the only record of
+      // what actually went wrong and must reach the logs.
+      const cause = (exception as { cause?: unknown }).cause;
+      if (cause instanceof Error) {
+        this.logger.error(logContext, cause.stack ?? cause.message);
+      } else {
+        // Deliberate server-side statuses (501/503) carry no useful stack.
+        this.logger.warn(logContext);
+      }
     } else {
       this.logger.error(
         logContext,
@@ -82,6 +104,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     response.status(normalized.statusCode).json(body);
+  }
+
+  /**
+   * Returns the payload of an exception that carries its own structured body.
+   *
+   * The discriminator is the absence of `message`: every Nest-standard error
+   * payload has one, so an object without it was shaped deliberately by the
+   * thrower and reshaping it would destroy information. Health reports are the
+   * case that exists today.
+   */
+  private extractStructuredPayload(
+    exception: unknown,
+  ): Record<string, unknown> | undefined {
+    if (!(exception instanceof HttpException)) {
+      return undefined;
+    }
+
+    const payload = exception.getResponse();
+    if (typeof payload !== "object" || payload === null) {
+      return undefined;
+    }
+
+    const record = payload as Record<string, unknown>;
+    return "message" in record ? undefined : record;
   }
 
   private normalize(exception: unknown): NormalizedError {

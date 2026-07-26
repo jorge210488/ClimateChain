@@ -196,7 +196,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Verifies the runtime dependencies expected at this stage: validated configuration and loaded on-chain integration metadata. Returns 503 with diagnostics when a dependency is unhealthy.",
+        "description": "Verifies the runtime dependencies this service needs to serve traffic: validated configuration, loaded on-chain integration metadata, and a reachable chain. Returns 503 with diagnostics when a dependency is unhealthy.",
         "operationId": "HealthController_readiness",
         "parameters": [],
         "responses": {
@@ -436,7 +436,7 @@
     },
     "/policies": {
       "post": {
-        "description": "Requires an authenticated principal: creation consumes the provider's coverage reserve and is submitted on-chain from Stage 06 onward.",
+        "description": "Submits the creation transaction on chain and returns once it is mined. Requires an authenticated principal: creation consumes the provider's coverage reserve. The contract assigns the insured from the transaction sender, so the returned `insured` is the backend's signer.",
         "operationId": "PoliciesController_create",
         "parameters": [],
         "requestBody": {
@@ -460,6 +460,16 @@
               }
             }
           },
+          "400": {
+            "description": "Payload failed validation, or the contract rejected it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or invalid bearer token.",
             "content": {
@@ -470,8 +480,8 @@
               }
             }
           },
-          "501": {
-            "description": "Live on-chain execution is wired in Stage 06.",
+          "503": {
+            "description": "Chain unreachable, no signer configured, or the coverage reserve cannot back the policy.",
             "content": {
               "application/json": {
                 "schema": {
@@ -492,6 +502,7 @@
         ]
       },
       "get": {
+        "description": "Reads directly from the provider's on-chain index. Pagination is delegated to the contract; `limit` is additionally capped by CHAIN_MAX_PAGE_SIZE to bound RPC fan-out per request.",
         "operationId": "PoliciesController_list",
         "parameters": [
           {
@@ -539,8 +550,8 @@
               }
             }
           },
-          "501": {
-            "description": "Live on-chain reads are wired in Stage 06.",
+          "503": {
+            "description": "Chain unreachable or not configured.",
             "content": {
               "application/json": {
                 "schema": {
@@ -558,6 +569,7 @@
     },
     "/policies/{address}": {
       "get": {
+        "description": "Returns 404 when the provider did not create a policy at that address.",
         "operationId": "PoliciesController_getByAddress",
         "parameters": [
           {
@@ -580,8 +592,28 @@
               }
             }
           },
-          "501": {
-            "description": "Live on-chain reads are wired in Stage 06.",
+          "400": {
+            "description": "Address is not a valid EVM address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No policy created by this provider exists at that address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The contract rejected the read given current policy state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -923,12 +955,29 @@
                 "$ref": "#/components/schemas/PolicyStatus"
               }
             ]
+          },
+          "blockNumber": {
+            "type": "number",
+            "description": "Block the creation transaction was mined in.",
+            "example": 42
+          },
+          "gasUsed": {
+            "type": "string",
+            "description": "Gas consumed by the transaction.",
+            "example": "1517685"
+          },
+          "insured": {
+            "type": "string",
+            "description": "Account the contract records as insured. The provider assigns this from the transaction sender, so it is the backend's signer address."
           }
         },
         "required": [
           "address",
           "transactionHash",
-          "status"
+          "status",
+          "blockNumber",
+          "gasUsed",
+          "insured"
         ]
       },
       "PolicySettlementType": {
@@ -998,8 +1047,14 @@
           },
           "regionCode": {
             "type": "string",
-            "description": "Region code as a bytes32 hex string.",
-            "example": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            "description": "Region code as stored on chain, as a bytes32 hex string.",
+            "example": "0x56616c656e636961000000000000000000000000000000000000000000000000"
+          },
+          "region": {
+            "type": "string",
+            "nullable": true,
+            "example": "Valencia",
+            "description": "Region code decoded back to text. Absent when the on-chain value is not decodable UTF-8 — policies created through the legacy entry point store a keccak hash rather than a readable code."
           },
           "startTimestamp": {
             "type": "number",

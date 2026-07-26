@@ -31,6 +31,18 @@ export interface BlockchainConfig {
   sharedAbiDir: string;
   /** Absolute directory containing per-network deployment manifests. */
   deploymentsDir: string;
+  /** Confirmations awaited before a write is reported as mined. */
+  confirmations: number;
+  /** Per-RPC-call timeout in milliseconds. */
+  rpcTimeoutMs: number;
+  /** Milliseconds to wait for a submitted transaction to be mined. */
+  txTimeoutMs: number;
+  /** Attempts for a transient RPC failure, including the first try. */
+  retryAttempts: number;
+  /** Base backoff in milliseconds between retries. */
+  retryBaseDelayMs: number;
+  /** Maximum policies one paginated chain read may pull. */
+  maxPageSize: number;
 }
 
 export interface MlServiceConfig {

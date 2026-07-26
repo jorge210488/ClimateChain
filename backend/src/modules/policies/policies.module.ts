@@ -1,17 +1,21 @@
 import { Module } from "@nestjs/common";
 
+import { BlockchainModule } from "../blockchain/blockchain.module";
 import { PoliciesController } from "./policies.controller";
 import { PoliciesService } from "./policies.service";
+import { PolicyChainService } from "./policy-chain.service";
 
 /**
  * Policy lifecycle module.
  *
- * Stage 05 owns the request/response contracts and validation. Stage 06 imports
- * the blockchain client here to execute creation and reads against the deployed
- * `InsuranceProvider`/`InsurancePolicy` contracts.
+ * Owns the request/response contracts, validation, and the domain-level chain
+ * access that executes creation and reads against the deployed
+ * `InsuranceProvider` / `InsurancePolicy` contracts.
  */
 @Module({
+  imports: [BlockchainModule],
   controllers: [PoliciesController],
-  providers: [PoliciesService],
+  providers: [PoliciesService, PolicyChainService],
+  exports: [PolicyChainService],
 })
 export class PoliciesModule {}

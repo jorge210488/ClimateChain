@@ -69,11 +69,22 @@ export class PolicyResponseDto {
   oracle!: string;
 
   @ApiProperty({
-    description: "Region code as a bytes32 hex string.",
+    description: "Region code as stored on chain, as a bytes32 hex string.",
     example:
-      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x56616c656e636961000000000000000000000000000000000000000000000000",
   })
   regionCode!: string;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    example: "Valencia",
+    description:
+      "Region code decoded back to text. Absent when the on-chain value is " +
+      "not decodable UTF-8 — policies created through the legacy entry point " +
+      "store a keccak hash rather than a readable code.",
+  })
+  region?: string;
 
   @ApiProperty({
     description: "Coverage start as a Unix timestamp (seconds).",
@@ -129,4 +140,23 @@ export class CreatePolicyResponseDto {
 
   @ApiProperty({ enum: PolicyStatus, enumName: "PolicyStatus" })
   status!: PolicyStatus;
+
+  @ApiProperty({
+    description: "Block the creation transaction was mined in.",
+    example: 42,
+  })
+  blockNumber!: number;
+
+  @ApiProperty({
+    description: "Gas consumed by the transaction.",
+    example: "1517685",
+  })
+  gasUsed!: string;
+
+  @ApiProperty({
+    description:
+      "Account the contract records as insured. The provider assigns this " +
+      "from the transaction sender, so it is the backend's signer address.",
+  })
+  insured!: string;
 }

@@ -36,7 +36,8 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 - Stage 03 (On-Chain Domain Logic) completed.
 - Stage 04 (Contract Hardening & Invariant Matrix) completed.
 - Stage 05 (Backend Foundation) completed.
-- Stage 06 (Backend to Blockchain Integration) next.
+- Stage 06 (Backend to Blockchain Integration) completed.
+- Stage 07 (ML Service Foundation) next.
 
 ## Quick Start (Foundation)
 
@@ -60,9 +61,10 @@ Full procedure with expected output and failure modes:
 **[`docs/runbooks/local-stack.md`](docs/runbooks/local-stack.md)**. Short version:
 
 ```bash
-cd contracts && npx hardhat node          # terminal 1: chain on 127.0.0.1:8545
-cd contracts && npm run deploy:localhost  # terminal 2: writes deployments/localhost.json
-cd backend   && npm run start:dev         # terminal 2: API on http://localhost:3000
+cd contracts && npx hardhat node             # terminal 1: chain on 127.0.0.1:8545
+cd contracts && npm run deploy:localhost     # terminal 2: writes deployments/localhost.json
+cd contracts && npm run reserve:fund:localhost  # required before any policy can be created
+cd backend   && npm run start:dev            # terminal 2: API on http://localhost:3000
 ```
 
 Point the backend at that chain with `BLOCKCHAIN_NETWORK=localhost` and
@@ -83,8 +85,13 @@ Each module has one canonical gate, run locally and in CI:
 
 ```bash
 cd contracts && npm run stage4:check   # compile, tests, solhint, slither, size/gas baseline, stress, ABI sync
-cd backend   && npm run stage5:check   # build, lint, audit, unit + e2e, coverage, startup, OpenAPI drift
+cd backend   && npm run stage5:check   # chain-free: build, lint, audit, unit + e2e, startup, OpenAPI drift
+cd backend   && npm run stage6:check   # the above plus live-chain e2e and coverage thresholds
 ```
+
+`stage6:check` needs a running local chain with the contracts deployed and the
+reserve funded (steps above); the integration it validates cannot be proven
+without one.
 
 ## Credentials Guidance
 

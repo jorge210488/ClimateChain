@@ -94,6 +94,24 @@ export function configuration(): Record<string, RootConfig> {
         env.CONTRACTS_DEPLOYMENTS_DIR,
         CONFIG_DEFAULTS.contractsDeploymentsDir,
       ),
+      confirmations:
+        optionalNumber(env.CHAIN_CONFIRMATIONS) ??
+        CONFIG_DEFAULTS.chainConfirmations,
+      rpcTimeoutMs:
+        optionalNumber(env.CHAIN_RPC_TIMEOUT_MS) ??
+        CONFIG_DEFAULTS.chainRpcTimeoutMs,
+      txTimeoutMs:
+        optionalNumber(env.CHAIN_TX_TIMEOUT_MS) ??
+        CONFIG_DEFAULTS.chainTxTimeoutMs,
+      retryAttempts:
+        optionalNumber(env.CHAIN_RETRY_ATTEMPTS) ??
+        CONFIG_DEFAULTS.chainRetryAttempts,
+      retryBaseDelayMs:
+        optionalNumber(env.CHAIN_RETRY_BASE_DELAY_MS) ??
+        CONFIG_DEFAULTS.chainRetryBaseDelayMs,
+      maxPageSize:
+        optionalNumber(env.CHAIN_MAX_PAGE_SIZE) ??
+        CONFIG_DEFAULTS.chainMaxPageSize,
     },
     mlService: {
       baseUrl:

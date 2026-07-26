@@ -41,7 +41,13 @@ curl -s -X POST http://127.0.0.1:8545 \
 ```bash
 cd contracts
 npm run deploy:localhost
+npm run reserve:fund:localhost   # required before any policy can be created
 ```
+
+`fundCoverageReserve` is owner-only and a fresh provider holds nothing, so
+without the second command every creation reverts with
+`InsufficientCoverageReserve` (the API reports this as HTTP 503 naming the
+shortfall). Amount defaults to 10 ETH; override with `COVERAGE_RESERVE_ETH`.
 
 Expected:
 
@@ -89,7 +95,13 @@ NODE_ENV=development
 BLOCKCHAIN_NETWORK=localhost
 RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
+# Hardhat's first default account. Development-only by design; never reuse a
+# key that holds real funds. Required for policy creation; reads work without it.
+PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
+
+Give each running instance its own signing account: two instances sharing one
+signer collide on transaction nonces.
 
 `CHAIN_ID` is optional but recommended: when set, boot fails if it disagrees
 with the manifest, which catches "pointing at the wrong chain" immediately.
@@ -110,7 +122,34 @@ curl -s http://localhost:3000/blockchain/deployment
 #  "providerAddressSource":"manifest"}
 ```
 
-Policy and pricing operations return HTTP 501 until Stage 06 and Stage 09.
+Readiness aggregates configuration, on-chain metadata, and live chain
+reachability. Without `RPC_URL` it reports **503 with `chain: down`** — accurate,
+not broken: the service cannot serve policy traffic without a chain.
+
+Exercise the full path:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/token \
+  -H 'content-type: application/json' -d '{"apiKey":"<your ADMIN_API_KEY>"}' \
+  | sed -E 's/.*"accessToken":"([^"]+)".*/\1/')
+
+curl -s -X POST http://localhost:3000/policies -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"coverageEth":"1.0","premiumEth":"0.05","rainfallThresholdMm":50,"durationDays":30,"region":"Valencia"}'
+# {"address":"0x…","transactionHash":"0x…","status":"active","blockNumber":5,
+#  "gasUsed":"1541309","insured":"0x…"}
+
+curl -s http://localhost:3000/policies/<address>
+curl -s "http://localhost:3000/policies?offset=0&limit=5"
+```
+
+Premium quoting still returns HTTP 501 until Stage 09.
+
+> **The contract assigns the insured from `msg.sender`**, so a policy created
+> through this API is beneficiary-bound to the backend's signer, not to an end
+> user. The response returns `insured` explicitly so this is visible rather than
+> assumed. Changing it needs either an `insured` parameter on the contract or a
+> user-signed flow — a domain decision, not a backend fix.
 
 ## Failure modes
 
@@ -121,7 +160,13 @@ Policy and pricing operations return HTTP 501 until Stage 06 and Stage 09.
 | Boot aborts: "RPC_URL is required for …" | Deployed profile without an endpoint | Set `RPC_URL` (deployed profiles refuse to start without it) |
 | Boot aborts: "CORS_ORIGINS is required for …" | Deployed profile without an origin allowlist | Set `CORS_ORIGINS` |
 | `eth_getCode` returns `0x` | Node restarted; state is not persisted | Redeploy (step 2) |
-| `/health/ready` 200 but chain calls fail in Stage 06 | Manifest is well-formed but stale | Redeploy; Stage 06 adds the automatic liveness check |
+| Boot aborts: "No contract code found at 0x…" | Manifest points at a chain where nothing is deployed | Redeploy (step 2) |
+| Boot aborts: "The node reports chainId=… but the manifest declares…" | `RPC_URL` points at a different chain | Fix `RPC_URL` or redeploy |
+| Boot aborts: "Deployed contract constants do not match POLICY_DOMAIN" | Node runs an older contract build than the backend validates against | Redeploy current contracts |
+| `/health/ready` 503 with `chain: down` | No `RPC_URL`, or the node stopped | Start the node, set `RPC_URL` |
+| Policy creation returns 503 "coverage reserve" | Reserve empty or too small | `npm run reserve:fund:localhost` |
+| Policy creation returns 503 "insufficient balance" | Signer has no ETH for gas | Fund the signing account |
+| Policy creation returns 409 "nonce" | Two processes share one signer | Give each instance its own account |
 | `/docs` returns 404 | Expected on staging/testnet/production | Set `SWAGGER_ENABLED=true` if docs are genuinely wanted there |
 
 ## Teardown

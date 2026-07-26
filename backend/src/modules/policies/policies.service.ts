@@ -1,4 +1,4 @@
-import { Injectable, NotImplementedException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { CreatePolicyDto } from "./dto/create-policy.dto";
 import { ListPoliciesQueryDto } from "./dto/list-policies-query.dto";
@@ -7,38 +7,67 @@ import {
   PolicyListResponseDto,
   PolicyResponseDto,
 } from "./dto/policy-response.dto";
+import { PolicyChainService } from "./policy-chain.service";
+import { toPolicyResponse } from "./policy.mapper";
 
 /**
- * Orchestrates policy lifecycle requests.
+ * Orchestrates policy lifecycle requests against the chain.
  *
- * Stage 05 establishes the request/response contracts and validation. Live
- * on-chain execution (creation, reads, normalization) is wired in Stage 06 via
- * the blockchain client built from the contract registry. Until then these
- * operations fail explicitly with HTTP 501 rather than returning mock data,
- * honoring the no-runtime-mocks policy.
+ * Deliberately thin: validation belongs to the DTOs, chain access and error
+ * translation to {@link PolicyChainService}, and wire shaping to the mapper.
+ * What is left here is the decision a service should own — what "not found"
+ * means, and how a page is assembled.
  */
 @Injectable()
 export class PoliciesService {
-  private static readonly PENDING_INTEGRATION_MESSAGE =
-    "Policy on-chain operations are delivered in Stage 06 (Backend to " +
-    "Blockchain Integration). The request contract and validation are stable; " +
-    "live execution is not yet wired.";
+  constructor(private readonly chain: PolicyChainService) {}
 
-  async create(_dto: CreatePolicyDto): Promise<CreatePolicyResponseDto> {
-    throw new NotImplementedException(
-      PoliciesService.PENDING_INTEGRATION_MESSAGE,
-    );
+  async create(
+    dto: CreatePolicyDto,
+    requestId?: string,
+  ): Promise<CreatePolicyResponseDto> {
+    const result = await this.chain.createPolicy(dto, requestId);
+
+    return {
+      address: result.address,
+      transactionHash: result.transactionHash,
+      status: result.status,
+      blockNumber: result.blockNumber,
+      gasUsed: result.gasUsed,
+      insured: result.insured,
+    };
   }
 
-  async list(_query: ListPoliciesQueryDto): Promise<PolicyListResponseDto> {
-    throw new NotImplementedException(
-      PoliciesService.PENDING_INTEGRATION_MESSAGE,
+  async list(query: ListPoliciesQueryDto): Promise<PolicyListResponseDto> {
+    const { items, total } = await this.chain.listPolicies(
+      query.offset,
+      query.limit,
+      query.insured,
     );
+
+    return {
+      data: items.map(toPolicyResponse),
+      meta: {
+        total,
+        offset: query.offset,
+        limit: query.limit,
+        count: items.length,
+      },
+    };
   }
 
-  async getByAddress(_address: string): Promise<PolicyResponseDto> {
-    throw new NotImplementedException(
-      PoliciesService.PENDING_INTEGRATION_MESSAGE,
-    );
+  async getByAddress(address: string): Promise<PolicyResponseDto> {
+    const policy = await this.chain.getPolicy(address);
+
+    // The provider does not recognize the address. Distinguishing this from a
+    // read failure matters: a 404 tells the caller the address is wrong, while
+    // a 5xx would suggest retrying something that can never succeed.
+    if (!policy) {
+      throw new NotFoundException(
+        `No policy created by this provider exists at address ${address}`,
+      );
+    }
+
+    return toPolicyResponse(policy);
   }
 }
