@@ -1,4 +1,9 @@
-import { decodeBytes32String, encodeBytes32String } from "ethers";
+import {
+  decodeBytes32String,
+  encodeBytes32String,
+  keccak256,
+  toUtf8Bytes,
+} from "ethers";
 
 import { POLICY_DOMAIN } from "../../modules/policies/policy.constants";
 
@@ -13,6 +18,16 @@ import { POLICY_DOMAIN } from "../../modules/policies/policy.constants";
 
 /** The all-zero `bytes32`, which `InsuranceProvider` treats as invalid. */
 export const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+
+/**
+ * Region code the contract stores when the caller supplies none.
+ *
+ * Mirrors `InsuranceProvider.LEGACY_REGION_CODE`. Having it here lets the
+ * backend always take the beneficiary-aware entry point — the legacy one cannot
+ * name an insured — even for a request that omits a region. Boot verification
+ * compares this against the deployed constant, so the mirror cannot drift.
+ */
+export const LEGACY_REGION_CODE = keccak256(toUtf8Bytes("LEGACY_UNSPECIFIED"));
 
 /** Encodes a region string to `bytes32`, throwing when it cannot be represented. */
 export function encodeRegionCode(region: string): string {

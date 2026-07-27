@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
 
+import { LEGACY_REGION_CODE } from "../../common/utils/region-code.util";
 import { AppConfigService } from "../../config/app-config.service";
 import { POLICY_DOMAIN } from "../policies/policy.constants";
 import { ChainProviderService } from "./chain-provider.service";
@@ -114,6 +115,7 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
       : undefined;
 
     await this.assertConstantsMatch();
+    await this.assertLegacyRegionCodeMatches();
 
     const reader = this.contracts.getProviderReader();
     const [blockNumber, coverageReserveWei, premiumBalanceWei] =
@@ -227,6 +229,31 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
           `validation would disagree with what the chain enforces: ` +
           `${mismatches.join("; ")}. Redeploy the current contracts or update ` +
           `POLICY_DOMAIN to match the deployed build.`,
+      );
+    }
+  }
+
+  /**
+   * Confirms the placeholder region the backend sends matches the contract's.
+   *
+   * A request without a region still goes through the beneficiary-aware entry
+   * point, which requires a non-zero region code, so the backend substitutes
+   * the contract's own `LEGACY_REGION_CODE`. If the two ever diverged those
+   * policies would be filed under a code nothing else recognizes — readable,
+   * but invisible to any consumer filtering on the real one.
+   */
+  private async assertLegacyRegionCodeMatches(): Promise<void> {
+    const reader = this.contracts.getProviderReader();
+    const onChain = await this.chain.call(
+      "LEGACY_REGION_CODE",
+      () => reader.LEGACY_REGION_CODE() as Promise<string>,
+    );
+
+    if (onChain.toLowerCase() !== LEGACY_REGION_CODE.toLowerCase()) {
+      throw new Error(
+        `Deployed LEGACY_REGION_CODE is ${onChain} but the backend mirrors ` +
+          `${LEGACY_REGION_CODE}. Policies created without an explicit region ` +
+          `would be filed under a code the contract does not use.`,
       );
     }
   }

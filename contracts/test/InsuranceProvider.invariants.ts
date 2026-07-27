@@ -118,6 +118,7 @@ describe("InsuranceProvider invariants", function () {
         spec.durationDays,
         regionCode,
         requestedStartTimestamp,
+        insured.address,
         { value: premiumWei },
       );
 

@@ -9,6 +9,8 @@ import { AppModule } from "../src/app.module";
 import { configureApp, HTTP_APP_OPTIONS, setupSwagger } from "../src/app-setup";
 
 const VALID_ADDRESS = "0x1111111111111111111111111111111111111111";
+/** Beneficiary named on every create; the contract records it as the insured. */
+const BENEFICIARY = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
 /** Must satisfy the 32-character ADMIN_API_KEY minimum enforced at boot. */
 const ADMIN_API_KEY = "e2e-admin-api-key-0123456789abcdef";
 /**
@@ -135,6 +137,7 @@ describe("ClimateChain backend (e2e)", () => {
       // Creation draws on the provider's coverage reserve from Stage 06, so it
       // must never be reachable without an authenticated principal.
       const res = await request(app.getHttpServer()).post("/policies").send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -152,6 +155,7 @@ describe("ClimateChain backend (e2e)", () => {
         .post("/policies")
         .set("Authorization", bearer)
         .send({
+          insured: BENEFICIARY,
           coverageEth: "1.0",
           premiumEth: "0.05",
           rainfallThresholdMm: 50,
@@ -168,6 +172,7 @@ describe("ClimateChain backend (e2e)", () => {
         .post("/policies")
         .set("Authorization", "Bearer not-a-real-token")
         .send({
+          insured: BENEFICIARY,
           coverageEth: "1.0",
           premiumEth: "0.05",
           rainfallThresholdMm: 50,
@@ -209,6 +214,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects an oversized request body", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -220,6 +226,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects an invalid create body with 400 and the error contract", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "0",
         premiumEth: "abc",
         rainfallThresholdMm: 0,
@@ -239,6 +246,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects unknown properties via the whitelist", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -250,6 +258,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("reports 503 for a valid create while the chain is unreachable", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -262,6 +271,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects a premium below the on-chain minimum (1% of coverage)", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.005", // 0.5% < 1% minimum
         rainfallThresholdMm: 50,
@@ -273,6 +283,7 @@ describe("ClimateChain backend (e2e)", () => {
 
     it("rejects a region exceeding 31 UTF-8 bytes (multibyte)", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -286,6 +297,7 @@ describe("ClimateChain backend (e2e)", () => {
     it("rejects a requestedStartTimestamp inside the lead-time window", async () => {
       const tooSoon = Math.floor(Date.now() / 1000) + 5; // < 60s lead time
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -301,6 +313,7 @@ describe("ClimateChain backend (e2e)", () => {
     it("accepts a requestedStartTimestamp with region beyond the lead-time window (-> 503)", async () => {
       const future = Math.floor(Date.now() / 1000) + 3600;
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -311,23 +324,26 @@ describe("ClimateChain backend (e2e)", () => {
       expect(res.status).toBe(503);
     });
 
-    it("rejects a requestedStartTimestamp without a region", async () => {
+    it("honors an explicit start without a region", async () => {
+      // Previously rejected, because only the metadata entry point honored an
+      // explicit start and it required a region. Now that every create names a
+      // beneficiary, that path is always taken and the coupling is gone.
       const future = Math.floor(Date.now() / 1000) + 3600;
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
         durationDays: 30,
         requestedStartTimestamp: future,
       });
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body.message)).toContain(
-        "requestedStartTimestamp",
-      );
+      // Reaches the chain layer rather than failing validation.
+      expect(res.status).toBe(503);
     });
 
     it("rejects an empty region string", async () => {
       const res = await createPolicy().send({
+        insured: BENEFICIARY,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,

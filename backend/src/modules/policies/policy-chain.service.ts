@@ -14,6 +14,7 @@ import {
 import { AppConfigService } from "../../config/app-config.service";
 import { normalizeEvmAddress } from "../../common/utils/evm-address.util";
 import {
+  LEGACY_REGION_CODE,
   decodeRegionCode,
   encodeRegionCode,
 } from "../../common/utils/region-code.util";
@@ -383,10 +384,10 @@ export class PolicyChainService {
   /**
    * Creates a policy on chain and returns its transaction metadata.
    *
-   * The contract makes `msg.sender` the insured, so the policy is beneficiary-
-   * bound to whoever signs. With a backend-held signer that is the backend
-   * itself; the resulting insured address is returned explicitly rather than
-   * being implied, so callers can see who the chain considers the beneficiary.
+   * The beneficiary comes from the request and is recorded on chain as the
+   * insured, so a payout reaches the end user rather than the account that
+   * signed and paid for the transaction. This service is the payer; it is not
+   * the beneficiary.
    *
    * A dry run precedes submission: `staticCall` executes the same transaction
    * against current state without spending gas, so a request that would revert
@@ -465,7 +466,9 @@ export class PolicyChainService {
         transactionHash: receipt.hash,
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed.toString(),
-        insured: normalizeEvmAddress(this.chain.getSignerAddress() as string),
+        // The beneficiary from the request, which is what the contract now
+        // records — not the account that signed and paid for the transaction.
+        insured: dto.insured,
         // A freshly created policy is activated in the same transaction.
         status: PolicyStatus.Active,
       };
@@ -486,52 +489,41 @@ export class PolicyChainService {
     dto: CreatePolicyDto,
     coverageWei: bigint,
   ): Promise<{ method: string; params: unknown[] }> {
-    if (dto.region === undefined) {
-      return {
-        method: "createPolicy",
-        params: [coverageWei, dto.rainfallThresholdMm, dto.durationDays],
-      };
-    }
-
     const requestedStart =
       dto.requestedStartTimestamp ??
-      (await this.chainNow()) + DEFAULT_START_LEAD_SECONDS;
+      (await this.startBaseline()) + DEFAULT_START_LEAD_SECONDS;
 
+    // Always the beneficiary-aware entry point. The legacy `createPolicy` has
+    // no insured parameter and would silently make this service's own signer
+    // the beneficiary, which is exactly what this API must never do. A request
+    // without a region gets the contract's own placeholder rather than falling
+    // back to that path.
     return {
       method: "createPolicyWithMetadata",
       params: [
         coverageWei,
         dto.rainfallThresholdMm,
         dto.durationDays,
-        this.encodeRegion(dto.region),
+        dto.region === undefined
+          ? LEGACY_REGION_CODE
+          : this.encodeRegion(dto.region),
         requestedStart,
+        dto.insured,
       ],
     };
   }
 
   /**
-   * Current time according to the chain, not the server.
+   * Baseline the default start is measured from.
    *
-   * The contract validates the requested start against `block.timestamp`, so
-   * that is the clock the default has to be derived from. Server time is only
-   * an approximation of it — the two drift on any chain whose clock is
-   * manipulated or simply out of step, and a start computed from a server clock
-   * running ahead of the chain lands in the chain's past and reverts.
-   *
-   * Falls back to server time if the block cannot be read, which keeps a
-   * transient RPC hiccup from failing a request the contract would accept.
+   * The contract checks the requested start against `block.timestamp` at
+   * *mining* time, so the baseline has to be the timestamp of the block this
+   * transaction will land in — not the previous one, and not this server's
+   * clock. {@link ChainProviderService.getNextBlockTimestamp} explains why the
+   * obvious alternatives are wrong.
    */
-  private async chainNow(): Promise<number> {
-    const serverNow = Math.floor(Date.now() / 1000);
-
-    try {
-      const block = await this.chain.call("getBlock(latest)", () =>
-        this.chain.getProvider().getBlock("latest"),
-      );
-      return block ? Number(block.timestamp) : serverNow;
-    } catch {
-      return serverNow;
-    }
+  private async startBaseline(): Promise<number> {
+    return this.chain.getNextBlockTimestamp();
   }
 
   /**

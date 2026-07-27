@@ -66,6 +66,7 @@ describe("InsuranceProvider fuzz", function () {
           durationDays,
           regionCode,
           requestedStartTimestamp,
+          insuredSigner.address,
           { value: premiumWei },
         );
 

@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 
+import { LEGACY_REGION_CODE } from "../../common/utils/region-code.util";
 import { AppConfigService } from "../../config/app-config.service";
 import { POLICY_DOMAIN } from "../policies/policy.constants";
 import { ChainBootstrapService } from "./chain-bootstrap.service";
@@ -36,6 +37,7 @@ function buildHarness(
     signerAddress?: string;
     signerBalance?: bigint;
     coverageReserve?: bigint;
+    legacyRegionCode?: string;
   } = {},
 ): Harness {
   const {
@@ -49,6 +51,7 @@ function buildHarness(
     constantValues = {},
     signerBalance = 10n ** 18n,
     coverageReserve = 10n ** 19n,
+    legacyRegionCode = LEGACY_REGION_CODE,
   } = overrides;
 
   // Read through `in` rather than a destructuring default: an explicitly
@@ -115,6 +118,7 @@ function buildHarness(
     ...constants,
     coverageReserveWei: jest.fn(async () => coverageReserve),
     premiumBalanceWei: jest.fn(async () => 0n),
+    LEGACY_REGION_CODE: jest.fn(async () => legacyRegionCode),
   };
 
   const chain = {
@@ -291,6 +295,20 @@ describe("ChainBootstrapService", () => {
         );
       },
     );
+
+    it("aborts when the deployed LEGACY_REGION_CODE differs", async () => {
+      // Requests without a region are filed under this placeholder. If the
+      // mirror drifted, those policies would carry a code nothing else
+      // recognizes — readable, but invisible to consumers filtering on the
+      // real one.
+      const { service } = buildHarness({
+        legacyRegionCode: `0x${"11".repeat(32)}`,
+      });
+
+      await expect(service.onApplicationBootstrap()).rejects.toThrow(
+        /LEGACY_REGION_CODE/,
+      );
+    });
 
     it("reports every mismatched constant at once", async () => {
       const { service } = buildHarness({

@@ -58,6 +58,11 @@
           "internalType": "uint64",
           "name": "requestedStartTimestamp",
           "type": "uint64"
+        },
+        {
+          "internalType": "address",
+          "name": "insuredAddress",
+          "type": "address"
         }
       ],
       "name": "createPolicyWithMetadata",

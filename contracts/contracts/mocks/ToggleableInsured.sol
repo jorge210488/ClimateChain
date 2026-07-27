@@ -56,7 +56,7 @@ contract ToggleableInsured {
   /// @param durationDays Policy duration in days.
   /// @param regionCode Region/risk-bucket code used by downstream consumers.
   /// @param requestedStartTimestamp Requested policy start timestamp.
-  /// @return policyAddress Newly created policy address.
+  /// @return policyAddress Newly created policy address, insured by this contract.
   function createPolicyWithMetadata(
     address providerAddress,
     uint256 coverageAmountWei,
@@ -71,7 +71,11 @@ contract ToggleableInsured {
         rainfallThresholdMm,
         durationDays,
         regionCode,
-        requestedStartTimestamp
+        requestedStartTimestamp,
+        // This contract names itself: these mocks exist to exercise a policy
+        // whose beneficiary cannot receive ETH, which only works if the
+        // beneficiary is the mock rather than the account driving the test.
+        address(this)
       );
   }
 

@@ -178,6 +178,7 @@ contract InsuranceProvider is
   error InvalidPolicyWindowComputation(uint64 requestedStartTimestamp, uint32 durationDays);
   error InvalidRainfallThreshold();
   error InvalidRegionCode();
+  error InvalidInsuredAddress();
   error InvalidRequestedStartTimestamp(uint64 minimumAllowed, uint64 providedStart);
   error PremiumMustBePositive();
   error PremiumBelowMinimum(uint256 minimumWei, uint256 providedWei);
@@ -305,23 +306,29 @@ contract InsuranceProvider is
         rainfallThresholdMm,
         durationDays,
         LEGACY_REGION_CODE,
-        requestedStartTimestamp
+        requestedStartTimestamp,
+        msg.sender
       );
   }
 
-  /// @notice Creates and activates a new policy with explicit region and requested-start metadata.
+  /// @notice Creates and activates a new policy with explicit region, requested-start metadata, and beneficiary.
+  /// @dev The beneficiary is explicit so a relayer can fund a policy on behalf of an end user.
+  ///      Naming another account only ever gives coverage away: the caller still pays the premium,
+  ///      so there is no way to have someone else fund a policy that pays out to you.
   /// @param coverageAmountWei Coverage amount in wei.
   /// @param rainfallThresholdMm Trigger threshold in millimeters.
   /// @param durationDays Policy duration in days.
   /// @param regionCode Region/risk-bucket code used by downstream consumers.
   /// @param requestedStartTimestamp Requested start timestamp for policy window.
+  /// @param insuredAddress Account that receives payout and owns the policy in provider indexes.
   /// @return Address of newly deployed policy contract.
   function createPolicyWithMetadata(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
     uint32 durationDays,
     bytes32 regionCode,
-    uint64 requestedStartTimestamp
+    uint64 requestedStartTimestamp,
+    address insuredAddress
   ) external payable nonReentrant returns (address) {
     return
       _createPolicy(
@@ -329,7 +336,8 @@ contract InsuranceProvider is
         rainfallThresholdMm,
         durationDays,
         regionCode,
-        requestedStartTimestamp
+        requestedStartTimestamp,
+        insuredAddress
       );
   }
 
@@ -526,13 +534,15 @@ contract InsuranceProvider is
   /// @param durationDays Policy duration in days.
   /// @param regionCode Region/risk-bucket code used by downstream consumers.
   /// @param requestedStartTimestamp Requested policy start timestamp.
+  /// @param insuredAddress Beneficiary recorded on the policy and in provider indexes.
   /// @return policyAddress Newly created policy address.
   function _createPolicy(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
     uint32 durationDays,
     bytes32 regionCode,
-    uint64 requestedStartTimestamp
+    uint64 requestedStartTimestamp,
+    address insuredAddress
   ) private returns (address policyAddress) {
     _validatePolicyCreationInputs(
       coverageAmountWei,
@@ -540,7 +550,8 @@ contract InsuranceProvider is
       durationDays,
       msg.value,
       regionCode,
-      requestedStartTimestamp
+      requestedStartTimestamp,
+      insuredAddress
     );
     _assertNoTrackedBalanceDeficitExcludingIncomingValue(msg.value);
 
@@ -557,7 +568,8 @@ contract InsuranceProvider is
       regionCode,
       requestedStartTimestamp,
       startTimestamp,
-      endTimestamp
+      endTimestamp,
+      insuredAddress
     );
 
     // Policy activation remains an external call, but provider indexing is already registered.
@@ -570,7 +582,8 @@ contract InsuranceProvider is
       regionCode,
       requestedStartTimestamp,
       startTimestamp,
-      endTimestamp
+      endTimestamp,
+      insuredAddress
     );
   }
 
@@ -582,6 +595,7 @@ contract InsuranceProvider is
   /// @param requestedStartTimestamp Requested policy start timestamp.
   /// @param startTimestamp Computed policy weather-window start timestamp.
   /// @param endTimestamp Computed policy weather-window end timestamp.
+  /// @param insuredAddress Beneficiary recorded on the policy and in provider indexes.
   /// @return policyAddress Newly deployed policy address.
   function _deployAndRegisterPolicy(
     uint256 coverageAmountWei,
@@ -589,12 +603,13 @@ contract InsuranceProvider is
     bytes32 regionCode,
     uint64 requestedStartTimestamp,
     uint64 startTimestamp,
-    uint64 endTimestamp
+    uint64 endTimestamp,
+    address insuredAddress
   ) private returns (address policyAddress) {
     // CREATE deployment is unavoidable before indexing; full pre-call indexing requires CREATE2 precomputation.
     InsurancePolicy policy = new InsurancePolicy{value: coverageAmountWei}(
       address(this),
-      payable(msg.sender),
+      payable(insuredAddress),
       address(weatherOracle),
       msg.value,
       coverageAmountWei,
@@ -606,7 +621,9 @@ contract InsuranceProvider is
     policyAddress = address(policy);
 
     allPolicies.push(policyAddress);
-    policiesByInsured[msg.sender].push(policyAddress);
+    // Indexed under the beneficiary, not the payer: a relayer funding policies
+    // for many users must not accumulate them all under its own account.
+    policiesByInsured[insuredAddress].push(policyAddress);
     isPolicyCreated[policyAddress] = true;
     policyFinancialsByPolicy[policyAddress] = PolicyFinancials({
       coverageWei: coverageAmountWei,
@@ -628,6 +645,7 @@ contract InsuranceProvider is
   /// @param requestedStartTimestamp Requested policy start timestamp.
   /// @param startTimestamp Computed policy weather-window start timestamp.
   /// @param endTimestamp Computed policy weather-window end timestamp.
+  /// @param insuredAddress Beneficiary recorded on the policy.
   function _emitPolicyCreationEvents(
     address policyAddress,
     uint256 coverageAmountWei,
@@ -635,10 +653,11 @@ contract InsuranceProvider is
     bytes32 regionCode,
     uint64 requestedStartTimestamp,
     uint64 startTimestamp,
-    uint64 endTimestamp
+    uint64 endTimestamp,
+    address insuredAddress
   ) private {
     emit PolicyCreated(
-      msg.sender,
+      insuredAddress,
       policyAddress,
       msg.value,
       coverageAmountWei,
@@ -656,14 +675,19 @@ contract InsuranceProvider is
   /// @param premiumWei Premium payment sent by insured.
   /// @param regionCode Requested region/risk-bucket code.
   /// @param requestedStartTimestamp Requested start timestamp for policy window.
+  /// @param insuredAddress Requested beneficiary.
   function _validatePolicyCreationInputs(
     uint256 coverageAmountWei,
     uint256 rainfallThresholdMm,
     uint32 durationDays,
     uint256 premiumWei,
     bytes32 regionCode,
-    uint64 requestedStartTimestamp
+    uint64 requestedStartTimestamp,
+    address insuredAddress
   ) private view {
+    // Rejected here rather than in the policy constructor so the reserve is
+    // never touched for a policy that cannot pay anyone.
+    if (insuredAddress == address(0)) revert InvalidInsuredAddress();
     if (coverageAmountWei == 0) revert InvalidCoverageAmount();
     if (rainfallThresholdMm == 0) revert InvalidRainfallThreshold();
     if (durationDays == 0) revert InvalidDurationDays();

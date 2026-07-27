@@ -39,6 +39,14 @@ const NETWORK = process.env.CHAIN_E2E_NETWORK ?? "localhost";
 const CHAIN_ID = process.env.CHAIN_E2E_CHAIN_ID ?? "31337";
 
 const ADMIN_API_KEY = "chain-e2e-admin-api-key-0123456789";
+/**
+ * Hardhat's second default account, used as the beneficiary.
+ *
+ * Deliberately *not* the signer: the whole point of the explicit insured
+ * parameter is that the payer and the beneficiary can differ, so the tests
+ * would prove nothing if they were the same account.
+ */
+const BENEFICIARY = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
 const describeChain = RPC_URL ? describe : describe.skip;
 
 /**
@@ -146,6 +154,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         .set("Authorization", bearer)
         .set("Idempotency-Key", "create-metadata")
         .send({
+          insured: BENEFICIARY,
           coverageEth: "0.5",
           premiumEth: "0.02",
           rainfallThresholdMm: 40,
@@ -158,9 +167,10 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.body.transactionHash).toMatch(/^0x[0-9a-f]{64}$/);
       expect(res.body.blockNumber).toBeGreaterThan(0);
       expect(Number(res.body.gasUsed)).toBeGreaterThan(0);
-      // The contract assigns the insured from msg.sender, so it must be the
-      // backend's own signer. Asserting it keeps that consequence visible.
-      expect(res.body.insured).toBe(signerAddress);
+      // The beneficiary from the request, not the account that signed and paid.
+      // This assertion is the whole point of the explicit insured parameter.
+      expect(res.body.insured).toBe(BENEFICIARY);
+      expect(res.body.insured).not.toBe(signerAddress);
       expect(res.body.status).toBe("active");
 
       createdAddress = res.body.address;
@@ -178,6 +188,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
           // Distinct keys: these are three different logical requests.
           .set("Idempotency-Key", `concurrent-${threshold}`)
           .send({
+            insured: BENEFICIARY,
             coverageEth: "0.05",
             premiumEth: "0.002",
             rainfallThresholdMm: threshold,
@@ -201,6 +212,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       // timeout would otherwise create a second policy and draw the coverage
       // reserve down twice.
       const body = {
+        insured: BENEFICIARY,
         coverageEth: "0.03",
         premiumEth: "0.001",
         rainfallThresholdMm: 33,
@@ -230,6 +242,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         .set("Authorization", bearer)
         .set("Idempotency-Key", "chain-e2e-key-1")
         .send({
+          insured: BENEFICIARY,
           coverageEth: "0.09",
           premiumEth: "0.003",
           rainfallThresholdMm: 44,
@@ -247,6 +260,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         .set("Authorization", bearer)
         .set("Idempotency-Key", "create-legacy")
         .send({
+          insured: BENEFICIARY,
           coverageEth: "0.1",
           premiumEth: "0.005",
           rainfallThresholdMm: 25,
@@ -275,7 +289,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
         address: createdAddress,
-        insured: signerAddress,
+        insured: BENEFICIARY,
         status: "active",
         coverageWei: "500000000000000000",
         premiumWei: "20000000000000000",
@@ -304,7 +318,9 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
     });
 
     it("filters by insured account, case-insensitively", async () => {
-      const mixedCase = signerAddress.replace("0x", "0X").toUpperCase();
+      // Filters on the beneficiary, so a relayer's own address must not appear
+      // as the owner of policies it merely paid for.
+      const mixedCase = BENEFICIARY.replace("0x", "0X").toUpperCase();
       const res = await request(app.getHttpServer())
         .get("/policies")
         .query({ insured: `0x${mixedCase.slice(2)}` });
@@ -312,8 +328,19 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.status).toBe(200);
       expect(res.body.meta.total).toBeGreaterThanOrEqual(2);
       for (const policy of res.body.data) {
-        expect(policy.insured).toBe(signerAddress);
+        expect(policy.insured).toBe(BENEFICIARY);
       }
+    });
+
+    it("does not index policies under the paying signer", async () => {
+      // The relayer funds every policy in this suite; none should be filed as
+      // belonging to it.
+      const res = await request(app.getHttpServer())
+        .get("/policies")
+        .query({ insured: signerAddress });
+
+      expect(res.status).toBe(200);
+      expect(res.body.meta.total).toBe(0);
     });
 
     it("returns an empty page for an account with no policies", async () => {
@@ -357,6 +384,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         .set("Authorization", bearer)
         .set("Idempotency-Key", "over-reserve")
         .send({
+          insured: BENEFICIARY,
           coverageEth: "1000000",
           premiumEth: "10000",
           rainfallThresholdMm: 50,
@@ -373,6 +401,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
 
     it("rejects an unauthenticated creation before touching the chain", async () => {
       const res = await request(app.getHttpServer()).post("/policies").send({
+        insured: BENEFICIARY,
         coverageEth: "0.1",
         premiumEth: "0.005",
         rainfallThresholdMm: 25,
@@ -439,6 +468,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         .set("Authorization", bearer)
         .set("Idempotency-Key", `lifecycle-${region}`)
         .send({
+          insured: BENEFICIARY,
           coverageEth: "0.05",
           premiumEth: "0.002",
           rainfallThresholdMm: THRESHOLD_MM,

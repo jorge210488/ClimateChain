@@ -139,7 +139,8 @@ TOKEN=$(curl -s -X POST http://localhost:3000/auth/token \
 
 curl -s -X POST http://localhost:3000/policies -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"coverageEth":"1.0","premiumEth":"0.05","rainfallThresholdMm":50,"durationDays":30,"region":"Valencia"}'
+  -H 'idempotency-key: demo-1' \
+  -d '{"insured":"0x70997970C51812dc3A010C7d01b50e0d17dc79C8","coverageEth":"1.0","premiumEth":"0.05","rainfallThresholdMm":50,"durationDays":30,"region":"Valencia"}'
 # {"address":"0x…","transactionHash":"0x…","status":"active","blockNumber":5,
 #  "gasUsed":"1541309","insured":"0x…"}
 
@@ -149,11 +150,10 @@ curl -s "http://localhost:3000/policies?offset=0&limit=5"
 
 Premium quoting still returns HTTP 501 until Stage 09.
 
-> **The contract assigns the insured from `msg.sender`**, so a policy created
-> through this API is beneficiary-bound to the backend's signer, not to an end
-> user. The response returns `insured` explicitly so this is visible rather than
-> assumed. Changing it needs either an `insured` parameter on the contract or a
-> user-signed flow — a domain decision, not a backend fix.
+> **`insured` is required and is the beneficiary.** The contract records it, so
+> the payout reaches that account while the backend's signer only pays the
+> premium and the gas. Policies are indexed under the beneficiary, so
+> `GET /policies?insured=…` returns a user's own policies, not the relayer's.
 
 ## Failure modes
 

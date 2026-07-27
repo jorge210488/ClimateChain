@@ -467,6 +467,7 @@ async function main(): Promise<void> {
             options.durationDays,
             regionCodeBytes32,
             requestedStartTimestamp,
+            insuredSigner.address,
             {
               value: premiumWei,
             },

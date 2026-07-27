@@ -381,25 +381,63 @@ unilaterally, because each alters on-chain behavior and reopens Stage 03/04.
   and later that none existed. The pending-items entry now states the real
   limitation.
 
+## Resolved: the insured is now an explicit beneficiary
+
+The headline blocker of this stage is fixed, by the route the product owner
+chose: an explicit beneficiary on the contract rather than user-signed
+transactions. This reopened Stage 03/04 deliberately.
+
+**Contract.** `createPolicyWithMetadata` takes an `insuredAddress`. The policy is
+constructed with it, indexed under it in `policiesByInsured`, and `PolicyCreated`
+is emitted for it. A zero address is rejected in
+`_validatePolicyCreationInputs`, before the reserve is touched, so no coverage is
+ever locked for a policy that could not pay anyone. The legacy `createPolicy`
+still insures its caller and is unchanged.
+
+Naming another account is safe by construction: the caller still pays the
+premium, so the parameter can only ever give coverage away, never let someone
+else fund a policy that pays out to you.
+
+**Backend.** `insured` is required on `POST /policies`. The service always takes
+the beneficiary-aware entry point — the legacy one cannot name an insured, so
+routing to it would silently make the operator's signer the owner of the policy.
+A request without a region gets the contract's own `LEGACY_REGION_CODE`, which
+the backend mirrors and boot verification compares against the deployed
+constant, so the mirror cannot drift.
+
+Two consequences worth stating: the response's `insured` is now the requested
+beneficiary rather than the signer, and `GET /policies?insured=…` returns a
+user's own policies rather than everything the relayer paid for.
+
+This also removed the `RequiresRegion` validator. It existed because only the
+metadata path honored an explicit start; now that path is always used, so the
+coupling it enforced no longer exists and keeping it would have rejected valid
+requests.
+
+**What this does not solve.** The operator still funds premiums from its own
+account, so collecting from the user is an off-chain concern this stage does not
+address, and the backend can name any beneficiary — authorization for *who may
+be named* belongs with the user model in Stage 11.
+
+Gate after the change: contracts 109 tests with Slither clean and size within
+tolerance; backend 235 unit, 34 no-chain e2e, 19 live-chain e2e, 288 in the
+combined coverage run at 97.31% statements and 90.52% branches.
+
 ### Recorded, not changed
 
 These three change on-chain behavior. Implementing any of them means editing a
 contract, redeploying, and re-running the Stage 04 gates — a scope decision that
 belongs to the product owner, not to a review pass.
 
-- **The insured is `msg.sender`.** Already the headline blocker in this report.
-  The reviewer independently reached the same conclusion: the policy and any
-  payout belong to the backend's signer, not to the client, and the choice is
-  between user-signed transactions and a contract that accepts a beneficiary
-  plus an authorization/collection flow.
 - **A deferred payout can lock coverage permanently.** `executePayout` parks the
   amount in `pendingPayoutWei` when the transfer to the insured fails, and only
   `claimPendingPayout` — insured-only — can release it. An insured that never
-  accepts ETH leaves the coverage stranded with no recovery path. Unreachable
-  today because the insured is always an externally owned account, but it goes
-  live the moment the insured model changes, so it is coupled to the decision
-  above. Options: an authorized alternate recipient, signature-based escrow, or
-  governed recovery after a timeout.
+  accepts ETH leaves the coverage stranded with no recovery path. **This is now
+  reachable**: with an explicit beneficiary the API can name a contract address,
+  by mistake or otherwise, whereas previously the insured was always the
+  backend's own externally owned account. It is the most important remaining
+  contract-level item. Options: an authorized alternate recipient,
+  signature-based escrow, or governed recovery after a timeout.
 - **The weather-request lifecycle is ambiguous for an asynchronous oracle.**
   `activate()` opens and emits a request before the weather window can be open,
   and retries reuse the request id while emitting a fresh timestamp. An external

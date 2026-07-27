@@ -914,6 +914,11 @@
       "CreatePolicyDto": {
         "type": "object",
         "properties": {
+          "insured": {
+            "type": "string",
+            "example": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "description": "Account that receives the payout. Required: the contract records this as the insured, so omitting it would silently make the backend's own signer the beneficiary. Case-insensitive; normalized before use."
+          },
           "coverageEth": {
             "type": "string",
             "example": "1.0",
@@ -941,15 +946,16 @@
             "type": "string",
             "example": "Valencia",
             "maxLength": 31,
-            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided; must be non-empty (an empty code maps to the on-chain zero region)."
+            "description": "Human-readable region code. Encoded to bytes32 on-chain when provided; must be non-empty (an empty code maps to the on-chain zero region). When omitted the contract's LEGACY_REGION_CODE is stored instead."
           },
           "requestedStartTimestamp": {
             "type": "number",
             "example": 1767225600,
-            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start on-chain when omitted. Requires `region` to be set, since an explicit start is only honored on the on-chain metadata path. Must be at least 180 seconds ahead so it still satisfies the on-chain lead time once the transaction is mined."
+            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start when omitted. Must be at least 180 seconds ahead so it still satisfies the on-chain lead time once the transaction is mined."
           }
         },
         "required": [
+          "insured",
           "coverageEth",
           "premiumEth",
           "rainfallThresholdMm",

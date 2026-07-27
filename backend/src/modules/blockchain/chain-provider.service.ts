@@ -143,6 +143,54 @@ export class ChainProviderService implements OnModuleDestroy {
     return Number(BigInt(raw));
   }
 
+  /**
+   * Timestamp the node will stamp on the next block it mines.
+   *
+   * This is the value the contract compares a requested policy start against,
+   * so it is the only clock worth deriving a default start from. Neither
+   * obvious alternative works:
+   *
+   * - The `latest` block is the *previous* one, and it ages while the chain is
+   *   idle — a node mines only when there is work. Measured 604 seconds behind
+   *   the block that was actually mined next, on a quiet node, against 0 for
+   *   `pending`.
+   * - Server time is unrelated to a chain whose clock has drifted or been
+   *   advanced.
+   *
+   * Falls back to `latest` and then to server time, taking whichever is later,
+   * because a node that does not serve a pending block leaves no better
+   * estimate and underestimating is what causes the revert.
+   */
+  async getNextBlockTimestamp(): Promise<number> {
+    const serverNow = Math.floor(Date.now() / 1000);
+
+    const readBlockTimestamp = async (
+      tag: "pending" | "latest",
+    ): Promise<number | undefined> => {
+      const block = (await this.call(`eth_getBlockByNumber(${tag})`, () =>
+        this.getProvider().send("eth_getBlockByNumber", [tag, false]),
+      )) as { timestamp?: string } | null;
+
+      return block?.timestamp === undefined
+        ? undefined
+        : Number(BigInt(block.timestamp));
+    };
+
+    try {
+      const pending = await readBlockTimestamp("pending");
+      if (pending !== undefined) {
+        return pending;
+      }
+
+      const latest = await readBlockTimestamp("latest");
+      return latest === undefined ? serverNow : Math.max(latest, serverNow);
+    } catch {
+      // A transient failure must not reject a request the contract would
+      // accept; server time is the best remaining approximation.
+      return serverNow;
+    }
+  }
+
   /** Address transactions are sent from, or undefined when unsigned. */
   getSignerAddress(): string | undefined {
     if (!this.hasSigner()) {

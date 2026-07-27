@@ -52,12 +52,11 @@ Reads are public because on-chain state is world-readable; creation requires a
 bearer token because it submits a transaction signed with the backend's key and
 draws on the provider's coverage reserve.
 
-> **The contract assigns the insured from `msg.sender`.** A policy created
-> through this API is therefore beneficiary-bound to the backend's signer, not to
-> an end user, and a payout would go to the backend. The response returns
-> `insured` explicitly so this is visible rather than assumed. Resolving it needs
-> either an `insured` parameter on `InsuranceProvider` or a user-signed flow —
-> a domain decision, not a backend fix, and a blocker for real-user deployment.
+`POST /policies` requires an `insured` address: the contract records it as the
+beneficiary, so the payout reaches the end user while this service pays the
+premium and the gas. The signer is the payer, never the beneficiary — the
+request is refused rather than defaulting to the signer, because a silent
+default there would quietly make the operator the owner of every policy.
 
 Interactive API docs are served at `/docs` on local profiles and are opt-in on
 deployed ones (`SWAGGER_ENABLED`). A committed OpenAPI snapshot lives at

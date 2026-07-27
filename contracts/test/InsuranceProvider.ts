@@ -116,6 +116,7 @@ describe("InsuranceProvider", function () {
         durationDays,
         regionCode,
         requestedStartTimestamp,
+        insured.address,
         { value: premium },
       );
 
@@ -178,6 +179,7 @@ describe("InsuranceProvider", function () {
           durationDays,
           regionCode,
           requestedStartTimestamp,
+          insured.address,
           { value: premium },
         ),
     )
@@ -213,9 +215,163 @@ describe("InsuranceProvider", function () {
           10,
           ethers.ZeroHash,
           requestedStartTimestamp,
+          insured.address,
           { value: ethers.parseEther("0.10") },
         ),
     ).to.be.revertedWithCustomError(provider, "InvalidRegionCode");
+  });
+
+  describe("explicit beneficiary", function () {
+    /** Requested start that clears the lead-time minimum with margin. */
+    async function futureStart(provider: Awaited<ReturnType<typeof deployFixture>>["provider"]) {
+      const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+      return BigInt(await time.latest()) + leadTimeSeconds + 120n;
+    }
+
+    it("records the named beneficiary rather than the payer", async function () {
+      // The point of the parameter: a relayer funds coverage on behalf of an
+      // end user, and the payout has to reach the user, not the relayer.
+      const { insured, outsider, provider } = await loadFixture(deployFixture);
+      const coverage = ethers.parseEther("1.0");
+
+      await provider
+        .connect(outsider)
+        .createPolicyWithMetadata(
+          coverage,
+          30,
+          14,
+          DEFAULT_REGION_CODE,
+          await futureStart(provider),
+          insured.address,
+          { value: ethers.parseEther("0.10") },
+        );
+
+      const policies = await provider.getPoliciesByInsured(insured.address);
+      expect(policies.length).to.equal(1);
+
+      const policy = await ethers.getContractAt("InsurancePolicy", policies[0]);
+      expect(await policy.insured()).to.equal(insured.address);
+    });
+
+    it("does not index the policy under the payer", async function () {
+      // A relayer paying for many users must not accumulate their policies
+      // under its own account.
+      const { insured, outsider, provider } = await loadFixture(deployFixture);
+
+      await provider
+        .connect(outsider)
+        .createPolicyWithMetadata(
+          ethers.parseEther("1.0"),
+          30,
+          14,
+          DEFAULT_REGION_CODE,
+          await futureStart(provider),
+          insured.address,
+          { value: ethers.parseEther("0.10") },
+        );
+
+      expect(await provider.getPoliciesByInsured(outsider.address)).to.deep.equal([]);
+    });
+
+    it("emits PolicyCreated for the beneficiary", async function () {
+      // Indexers key off this event; emitting the payer would make every
+      // relayed policy look like it belonged to the relayer.
+      const { insured, outsider, provider } = await loadFixture(deployFixture);
+
+      await expect(
+        provider
+          .connect(outsider)
+          .createPolicyWithMetadata(
+            ethers.parseEther("1.0"),
+            30,
+            14,
+            DEFAULT_REGION_CODE,
+            await futureStart(provider),
+            insured.address,
+            { value: ethers.parseEther("0.10") },
+          ),
+      )
+        .to.emit(provider, "PolicyCreated")
+        .withArgs(
+          insured.address,
+          anyValue,
+          ethers.parseEther("0.10"),
+          ethers.parseEther("1.0"),
+          30,
+          anyValue,
+          anyValue,
+        );
+    });
+
+    it("pays the beneficiary, not the payer", async function () {
+      const { owner, insured, outsider, oracle, provider } = await loadFixture(deployFixture);
+      const coverage = ethers.parseEther("1.0");
+
+      await provider
+        .connect(outsider)
+        .createPolicyWithMetadata(
+          coverage,
+          30,
+          14,
+          DEFAULT_REGION_CODE,
+          await futureStart(provider),
+          insured.address,
+          { value: ethers.parseEther("0.10") },
+        );
+
+      const policies = await provider.getPoliciesByInsured(insured.address);
+      const policy = await ethers.getContractAt("InsurancePolicy", policies[0]);
+      await time.increaseTo(Number(await policy.startTimestamp()) + 1);
+
+      await oracle
+        .connect(owner)
+        ["pushWeatherData(address,uint256)"](await policy.getAddress(), 50);
+
+      // The coverage lands on the beneficiary's balance, which is the whole
+      // reason the parameter exists.
+      await expect(
+        provider.connect(owner).executePolicyPayout(await policy.getAddress()),
+      ).to.changeEtherBalance(insured, coverage);
+    });
+
+    it("rejects the zero address as beneficiary", async function () {
+      // Caught before the reserve is touched, so no coverage is locked for a
+      // policy that could never pay anyone.
+      const { outsider, provider } = await loadFixture(deployFixture);
+      const reserveBefore = await provider.coverageReserveWei();
+
+      await expect(
+        provider
+          .connect(outsider)
+          .createPolicyWithMetadata(
+            ethers.parseEther("1.0"),
+            30,
+            14,
+            DEFAULT_REGION_CODE,
+            await futureStart(provider),
+            ethers.ZeroAddress,
+            { value: ethers.parseEther("0.10") },
+          ),
+      ).to.be.revertedWithCustomError(provider, "InvalidInsuredAddress");
+
+      expect(await provider.coverageReserveWei()).to.equal(reserveBefore);
+    });
+
+    it("keeps the legacy entry point insuring its caller", async function () {
+      // createPolicy has no beneficiary parameter and must keep behaving as it
+      // always did, so existing integrations are unaffected.
+      const { insured, provider } = await loadFixture(deployFixture);
+
+      await provider.connect(insured).createPolicy(ethers.parseEther("1.0"), 30, 14, {
+        value: ethers.parseEther("0.10"),
+      });
+
+      const policies = await provider.getPoliciesByInsured(insured.address);
+      expect(policies.length).to.equal(1);
+
+      const policy = await ethers.getContractAt("InsurancePolicy", policies[0]);
+      expect(await policy.insured()).to.equal(insured.address);
+    });
   });
 
   it("rejects metadata-aware policy creation when requested start is below lead-time minimum", async function () {
@@ -234,6 +390,7 @@ describe("InsuranceProvider", function () {
           10,
           DEFAULT_REGION_CODE,
           invalidRequestedStartTimestamp,
+          insured.address,
           { value: ethers.parseEther("0.10") },
         ),
     ).to.be.revertedWithCustomError(provider, "InvalidRequestedStartTimestamp");

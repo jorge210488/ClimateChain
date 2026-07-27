@@ -166,16 +166,9 @@ function buildHarness(
     hasSigner: () => hasSigner,
     getSignerAddress: () => SIGNER,
     getBlockNumberFromNode: async () => PINNED_BLOCK,
-    getProvider: () => ({
-      getBlock: async () => {
-        if (blockError) {
-          throw Object.assign(new Error("node unreachable"), {
-            code: "NETWORK_ERROR",
-          });
-        }
-        return { timestamp: chainTimestamp };
-      },
-    }),
+    getNextBlockTimestamp: async () =>
+      blockError ? Math.floor(Date.now() / 1000) : chainTimestamp,
+    getProvider: () => ({}),
     call: <T>(_label: string, operation: () => Promise<T>) => operation(),
     submitTransaction: <T>(send: () => Promise<T>) => send(),
   } as unknown as ChainProviderService;
@@ -215,6 +208,7 @@ describe("PolicyChainService", () => {
 
       await expect(
         service.createPolicy({
+          insured: SIGNER,
           coverageEth: "1.0",
           premiumEth: "0.05",
           rainfallThresholdMm: 50,
@@ -370,14 +364,15 @@ describe("PolicyChainService", () => {
   });
 
   describe("default start timestamp", () => {
-    it("derives the default start from chain time, not server time", async () => {
+    it("uses chain time when the chain runs ahead of the server", async () => {
       // The contract validates the start against block.timestamp. Deriving it
-      // from server time fails on any chain whose clock runs behind the server:
-      // the computed start lands in the chain's past and reverts.
+      // from server time fails on any chain whose clock runs ahead: the
+      // computed start lands in the chain's past and reverts.
       const chainNow = Math.floor(Date.now() / 1000) + 100_000;
       const { service, sentArgs } = buildHarness({ chainTimestamp: chainNow });
 
       await service.createPolicy({
+        insured: SIGNER,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -396,6 +391,7 @@ describe("PolicyChainService", () => {
       const { service, sentArgs } = buildHarness();
 
       await service.createPolicy({
+        insured: SIGNER,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -407,12 +403,13 @@ describe("PolicyChainService", () => {
       expect(Number(sentArgs.at(-1)?.[4])).toBe(explicitStart);
     });
 
-    it("falls back to server time when the block cannot be read", async () => {
+    it("falls back to server time when the node cannot be read", async () => {
       // A transient RPC hiccup must not fail a request the contract would
       // accept; the fallback is an approximation, not a correctness guarantee.
       const { service, sentArgs } = buildHarness({ blockError: true });
 
       await service.createPolicy({
+        insured: SIGNER,
         coverageEth: "1.0",
         premiumEth: "0.05",
         rainfallThresholdMm: 50,
@@ -431,6 +428,7 @@ describe("PolicyChainService", () => {
 
       await expect(
         service.createPolicy({
+          insured: SIGNER,
           coverageEth: "1.0",
           premiumEth: "0.05",
           rainfallThresholdMm: 50,
