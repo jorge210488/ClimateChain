@@ -566,6 +566,31 @@
         {
           "indexed": true,
           "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newReserveWei",
+          "type": "uint256"
+        }
+      ],
+      "name": "UnclaimedPayoutReturnedToReserve",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "recipient",
           "type": "address"
         },
@@ -1061,6 +1086,25 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "policyAddress",
+          "type": "address"
+        }
+      ],
+      "name": "recoverUnclaimedPolicyPayout",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "recoveredWei",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {

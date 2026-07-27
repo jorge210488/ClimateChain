@@ -100,6 +100,15 @@ contract InsuranceProvider is
     uint256 amountWei,
     uint256 remainingUntrackedWei
   );
+  /// @notice Emitted when unclaimed coverage from a settled policy returns to the reserve.
+  /// @param policyAddress Policy the coverage was recovered from.
+  /// @param amountWei Amount credited back to the coverage reserve.
+  /// @param newReserveWei Updated reserve balance.
+  event UnclaimedPayoutReturnedToReserve(
+    address indexed policyAddress,
+    uint256 amountWei,
+    uint256 newReserveWei
+  );
   /// @notice Emitted when provider oracle address is updated for future policies.
   /// @param previousOracle Oracle used before update.
   /// @param newOracle Oracle used after update.
@@ -414,6 +423,23 @@ contract InsuranceProvider is
       coverageRecoveredWei,
       premiumRecoveredWei
     );
+  }
+
+  /// @notice Returns an unclaimed deferred payout from a policy to the coverage reserve.
+  /// @dev Only reachable after the policy's own claim window has elapsed; the policy enforces
+  ///      that. The amount is credited back to the reserve rather than withdrawn, so unclaimed
+  ///      coverage returns to the pool it was funded from instead of to any individual.
+  /// @param policyAddress Target policy address.
+  /// @return recoveredWei Amount returned to the coverage reserve.
+  function recoverUnclaimedPolicyPayout(
+    address policyAddress
+  ) external onlyOwner nonReentrant returns (uint256 recoveredWei) {
+    _assertKnownPolicy(policyAddress);
+
+    recoveredWei = IInsurancePolicy(policyAddress).recoverUnclaimedPayout();
+    coverageReserveWei += recoveredWei;
+
+    emit UnclaimedPayoutReturnedToReserve(policyAddress, recoveredWei, coverageReserveWei);
   }
 
   /// @notice Returns all policy addresses created by one insured account.

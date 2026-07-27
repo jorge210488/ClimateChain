@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24 <0.9.0;
 
+import {IInsurancePolicy} from "../interfaces/IInsurancePolicy.sol";
 import {IInsuranceProviderCreatePolicy} from "../interfaces/IInsuranceProviderCreatePolicy.sol";
 
 /// @title NonPayableInsured
@@ -55,5 +56,14 @@ contract NonPayableInsured {
         // beneficiary is the mock rather than the account driving the test.
         address(this)
       );
+  }
+
+  /// @notice Routes this contract's deferred payout to an address that can receive ETH.
+  /// @dev This is the escape hatch under test: the beneficiary can call, but not receive,
+  ///      so nominating a recipient is the only way it can ever collect.
+  /// @param policyAddress Policy holding the deferred payout.
+  /// @param recipient Address that should receive the claimed amount.
+  function claimPendingPayoutTo(address policyAddress, address payable recipient) external {
+    IInsurancePolicy(policyAddress).claimPendingPayoutTo(recipient);
   }
 }

@@ -151,6 +151,31 @@
       "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
+          "internalType": "address",
+          "name": "insured",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "recoveredAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "UnclaimedPayoutRecovered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
           "indexed": false,
           "internalType": "uint256",
           "name": "rainfallMm",
@@ -239,6 +264,19 @@
     {
       "inputs": [],
       "name": "claimPendingPayout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address payable",
+          "name": "recipient",
+          "type": "address"
+        }
+      ],
+      "name": "claimPendingPayoutTo",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -446,6 +484,19 @@
     },
     {
       "inputs": [],
+      "name": "pendingPayoutSince",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "pendingPayoutWei",
       "outputs": [
         {
@@ -507,6 +558,19 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "recoverUnclaimedPayout",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "recoveredWei",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {

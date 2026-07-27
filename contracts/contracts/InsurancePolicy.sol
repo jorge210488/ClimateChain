@@ -29,6 +29,13 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     uint64 nonce;
   }
 
+  /// @notice How long a deferred payout stays exclusively claimable by the insured.
+  /// @dev After this window an unclaimed amount can be returned to the provider's coverage
+  ///      reserve. Deliberately long: without a recovery path coverage is stranded forever
+  ///      when the insured cannot receive ETH, and with a short one an operator could reclaim
+  ///      funds a beneficiary is still trying to collect.
+  uint64 public constant PENDING_PAYOUT_CLAIM_WINDOW_SECONDS = 365 days;
+
   /// @notice Address that receives coverage payout when policy is triggered.
   address payable public insured;
   /// @notice Authorized oracle address that can fulfill weather data.
@@ -51,6 +58,8 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   uint256 public latestRainfallMm;
   /// @notice Deferred payout amount claimable by insured when immediate transfer fails.
   uint256 public pendingPayoutWei;
+  /// @notice Timestamp when the deferred payout was recorded, or zero when none is pending.
+  uint64 public pendingPayoutSince;
   /// @notice True when rainfall threshold has been met.
   bool public conditionMet;
   /// @notice Current policy status.
@@ -74,6 +83,8 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   error PolicyNotActivated();
   error PolicyAlreadySettled();
   error PendingPayoutNotAvailable();
+  error PendingPayoutStillClaimable(uint64 claimableUntil, uint64 currentTimestamp);
+  error InvalidRecipientAddress();
   error InsuredOnly(address caller);
   error PolicyNotEnded(uint64 currentTimestamp, uint64 endTimestamp);
   error PolicyOutsideWeatherWindow(
@@ -179,6 +190,9 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
       emit PayoutExecuted(insured, coverageWei, uint64(block.timestamp));
     } else {
       pendingPayoutWei = coverageWei;
+      // Recorded so the recovery window has a start; a deferred payout with no
+      // timestamp could never be distinguished from one created just now.
+      pendingPayoutSince = uint64(block.timestamp);
       emit PayoutClaimCreated(insured, coverageWei, uint64(block.timestamp));
     }
 
@@ -188,17 +202,46 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   /// @notice Claims deferred payout when immediate payout transfer failed.
   function claimPendingPayout() external nonReentrant {
     if (msg.sender != insured) revert InsuredOnly(msg.sender);
+
+    _releasePendingPayoutTo(insured);
+  }
+
+  /// @notice Claims deferred payout to an address chosen by the insured.
+  /// @dev The reason a deferred payout exists is that the insured could not receive ETH.
+  ///      Paying only back to that same address would leave a contract beneficiary — one that
+  ///      can call but not receive — permanently unable to collect. Nominating a recipient is
+  ///      the insured's own decision, so it carries no custodial risk.
+  /// @param recipient Address that receives the claimed amount.
+  function claimPendingPayoutTo(address payable recipient) external nonReentrant {
+    if (msg.sender != insured) revert InsuredOnly(msg.sender);
+    if (recipient == address(0)) revert InvalidRecipientAddress();
+
+    _releasePendingPayoutTo(recipient);
+  }
+
+  /// @notice Returns an unclaimed deferred payout to the provider after the claim window.
+  /// @dev Owner-only and time-locked. Without it, coverage is stranded in this contract forever
+  ///      whenever the beneficiary can neither receive ETH nor call to redirect it. The provider
+  ///      credits the amount back to its coverage reserve rather than to any individual.
+  /// @return recoveredWei Amount returned to the provider.
+  function recoverUnclaimedPayout() external onlyOwner nonReentrant returns (uint256 recoveredWei) {
     _requireStatus(PolicyStatus.PaidOut);
 
-    uint256 claimAmountWei = pendingPayoutWei;
-    if (claimAmountWei == 0) revert PendingPayoutNotAvailable();
+    recoveredWei = pendingPayoutWei;
+    if (recoveredWei == 0) revert PendingPayoutNotAvailable();
+
+    uint64 claimableUntil = pendingPayoutSince + PENDING_PAYOUT_CLAIM_WINDOW_SECONDS;
+    if (uint64(block.timestamp) < claimableUntil) {
+      revert PendingPayoutStillClaimable(claimableUntil, uint64(block.timestamp));
+    }
 
     pendingPayoutWei = 0;
-    (bool success, ) = insured.call{value: claimAmountWei}("");
+    pendingPayoutSince = 0;
+
+    (bool success, ) = owner().call{value: recoveredWei}("");
     if (!success) revert EthTransferFailed();
 
-    emit PayoutClaimed(insured, claimAmountWei, uint64(block.timestamp));
-    _forwardBalanceToOwnerExcludingLockedAmount(0);
+    emit UnclaimedPayoutRecovered(insured, recoveredWei, uint64(block.timestamp));
   }
 
   /// @notice Expires policy after end timestamp and forwards all remaining funds to provider.
@@ -257,6 +300,23 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
   /// @return True when current timestamp is inside inclusive-start and exclusive-end window.
   function isWeatherWindowOpen() external view returns (bool) {
     return status == PolicyStatus.Active && _isWeatherWindowOpenAt(uint64(block.timestamp));
+  }
+
+  /// @notice Releases the deferred payout to one recipient and settles remaining balance.
+  /// @param recipient Address receiving the deferred amount.
+  function _releasePendingPayoutTo(address payable recipient) private {
+    _requireStatus(PolicyStatus.PaidOut);
+
+    uint256 claimAmountWei = pendingPayoutWei;
+    if (claimAmountWei == 0) revert PendingPayoutNotAvailable();
+
+    pendingPayoutWei = 0;
+    pendingPayoutSince = 0;
+    (bool success, ) = recipient.call{value: claimAmountWei}("");
+    if (!success) revert EthTransferFailed();
+
+    emit PayoutClaimed(recipient, claimAmountWei, uint64(block.timestamp));
+    _forwardBalanceToOwnerExcludingLockedAmount(0);
   }
 
   /// @notice Stores one weather update and applies policy state transition when threshold is met.

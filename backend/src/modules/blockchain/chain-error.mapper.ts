@@ -140,6 +140,11 @@ const REVERT_MAPPINGS: Record<string, RevertMapping> = {
     status: "conflict",
     message: "No pending payout is available to claim",
   },
+  PendingPayoutStillClaimable: {
+    status: "conflict",
+    message:
+      "The insured can still claim this payout; recovery is not available yet",
+  },
   NoPendingWeatherRequest: {
     status: "conflict",
     message: "No weather request is currently pending for this policy",

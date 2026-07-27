@@ -1698,6 +1698,133 @@ describe("InsuranceProvider", function () {
     expect(await expiryPolicy.getStatus()).to.be.lte(4n);
   });
 
+  describe("stranded payout recovery", function () {
+    /**
+     * Builds a settled policy whose beneficiary cannot receive ETH, leaving the
+     * coverage parked as a deferred claim. That is the state where funds could
+     * previously be lost for good.
+     */
+    async function deferredPayoutFixture() {
+      const { owner, oracle, provider } = await loadFixture(deployFixture);
+
+      const holderFactory = await ethers.getContractFactory("NonPayableInsured");
+      const holder = await holderFactory.deploy();
+      await holder.waitForDeployment();
+
+      const coverage = ethers.parseEther("1.0");
+      const premium = ethers.parseEther("0.10");
+      const leadTimeSeconds = await provider.MIN_POLICY_START_LEAD_TIME_SECONDS();
+      const requestedStartTimestamp = BigInt(await time.latest()) + leadTimeSeconds + 120n;
+
+      await holder.createPolicyWithMetadata(
+        await provider.getAddress(),
+        coverage,
+        30,
+        14,
+        DEFAULT_REGION_CODE,
+        requestedStartTimestamp,
+        { value: premium },
+      );
+
+      const policies = await provider.getPoliciesByInsured(await holder.getAddress());
+      const policy = await ethers.getContractAt("InsurancePolicy", policies[policies.length - 1]);
+
+      await time.increaseTo(Number(await policy.startTimestamp()) + 1);
+      await oracle.pushWeatherData(await policy.getAddress(), 31);
+      await provider.connect(owner).executePolicyPayout(await policy.getAddress());
+
+      expect(await policy.pendingPayoutWei()).to.equal(coverage);
+
+      return { owner, provider, policy, holder, coverage };
+    }
+
+    it("lets the insured route the claim to an address that can receive", async function () {
+      // The reason a deferred payout exists is that the insured could not
+      // receive ETH. Paying only back to that same address would leave the
+      // beneficiary permanently unable to collect.
+      const { policy, holder, coverage } = await deferredPayoutFixture();
+      const [, , recipient] = await ethers.getSigners();
+
+      await expect(
+        holder.claimPendingPayoutTo(await policy.getAddress(), recipient.address),
+      ).to.changeEtherBalance(recipient, coverage);
+
+      expect(await policy.pendingPayoutWei()).to.equal(0);
+      expect(await policy.pendingPayoutSince()).to.equal(0);
+    });
+
+    it("rejects a claim routed to the zero address", async function () {
+      const { policy, holder } = await deferredPayoutFixture();
+
+      await expect(
+        holder.claimPendingPayoutTo(await policy.getAddress(), ethers.ZeroAddress),
+      ).to.be.revertedWithCustomError(policy, "InvalidRecipientAddress");
+    });
+
+    it("only lets the insured nominate a recipient", async function () {
+      const { policy } = await deferredPayoutFixture();
+      const [, , outsider] = await ethers.getSigners();
+
+      await expect(
+        policy.connect(outsider).claimPendingPayoutTo(outsider.address),
+      ).to.be.revertedWithCustomError(policy, "InsuredOnly");
+    });
+
+    it("refuses recovery while the claim window is open", async function () {
+      // The window is what keeps this from being an operator able to reclaim
+      // funds a beneficiary is still trying to collect.
+      const { owner, provider, policy } = await deferredPayoutFixture();
+
+      await expect(
+        provider.connect(owner).recoverUnclaimedPolicyPayout(await policy.getAddress()),
+      ).to.be.revertedWithCustomError(policy, "PendingPayoutStillClaimable");
+    });
+
+    it("returns unclaimed coverage to the reserve after the window", async function () {
+      // Without this the coverage sits in the policy forever whenever the
+      // beneficiary can neither receive ETH nor call to redirect it.
+      const { owner, provider, policy, coverage } = await deferredPayoutFixture();
+      const reserveBefore = await provider.coverageReserveWei();
+
+      await time.increase(Number(await policy.PENDING_PAYOUT_CLAIM_WINDOW_SECONDS()) + 1);
+
+      await expect(provider.connect(owner).recoverUnclaimedPolicyPayout(await policy.getAddress()))
+        .to.emit(provider, "UnclaimedPayoutReturnedToReserve")
+        .and.to.emit(policy, "UnclaimedPayoutRecovered");
+
+      // Credited back to the pool it was funded from, not withdrawn to anyone.
+      expect(await provider.coverageReserveWei()).to.equal(reserveBefore + coverage);
+      expect(await policy.pendingPayoutWei()).to.equal(0);
+    });
+
+    it("cannot recover the same payout twice", async function () {
+      const { owner, provider, policy } = await deferredPayoutFixture();
+      await time.increase(Number(await policy.PENDING_PAYOUT_CLAIM_WINDOW_SECONDS()) + 1);
+      await provider.connect(owner).recoverUnclaimedPolicyPayout(await policy.getAddress());
+
+      await expect(
+        provider.connect(owner).recoverUnclaimedPolicyPayout(await policy.getAddress()),
+      ).to.be.revertedWithCustomError(policy, "PendingPayoutNotAvailable");
+    });
+
+    it("rejects recovery from a non-owner", async function () {
+      const { provider, policy } = await deferredPayoutFixture();
+      const [, , outsider] = await ethers.getSigners();
+
+      await expect(
+        provider.connect(outsider).recoverUnclaimedPolicyPayout(await policy.getAddress()),
+      ).to.be.revertedWithCustomError(provider, "OwnableUnauthorizedAccount");
+    });
+
+    it("rejects recovery for an unknown policy address", async function () {
+      const { owner, provider } = await deferredPayoutFixture();
+
+      await expect(
+        provider.connect(owner).recoverUnclaimedPolicyPayout(owner.address),
+      ).to.be.revertedWithCustomError(provider, "UnknownPolicyAddress");
+    });
+  });
+
   it("marks payout as deferred claim when direct insured transfer fails", async function () {
     const [owner] = await ethers.getSigners();
 

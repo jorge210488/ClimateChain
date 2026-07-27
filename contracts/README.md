@@ -84,6 +84,7 @@ Stress harness environment knobs (optional):
 - Provider weather request flow emits canonical request-id tracking events for oracle fulfill provenance.
 - Policy weather flow tracks one pending request id and validates fulfill callbacks against that id.
 - Policy payout flow supports deferred claims (`claimPendingPayout`) when immediate insured transfer fails.
+- Deferred claims cannot strand coverage: the insured may route them to any recipient (`claimPendingPayoutTo`), and the owner may return an unclaimed amount to the coverage reserve (`recoverUnclaimedPolicyPayout`) only after a 365-day claim window.
 - Weather oracle adapter and mock support explicit request-id push overloads.
 - Mock oracle supports optional strict policy-registry mode to prevent accidental provenance disablement.
 - Stage-04 quality gates run lint, format, static analysis, baseline checks, stress smoke, and ABI sync through one command.

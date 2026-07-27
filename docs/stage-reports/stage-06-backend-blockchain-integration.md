@@ -419,25 +419,50 @@ account, so collecting from the user is an off-chain concern this stage does not
 address, and the backend can name any beneficiary — authorization for *who may
 be named* belongs with the user model in Stage 11.
 
-Gate after the change: contracts 109 tests with Slither clean and size within
-tolerance; backend 235 unit, 34 no-chain e2e, 19 live-chain e2e, 288 in the
-combined coverage run at 97.31% statements and 90.52% branches.
+### Stranded deferred payouts
+
+The explicit beneficiary made a previously theoretical defect reachable, so it
+was fixed in the same pass rather than recorded. `executePayout` parks coverage
+in `pendingPayoutWei` when the transfer to the insured fails, and until now only
+`claimPendingPayout` — insured-only, paying only the insured — could release it.
+A beneficiary that can neither receive ETH nor call the contract left the
+coverage stranded forever. Before this stage the insured was always the backend's
+own externally owned account, so it could not happen; now the API can name a
+contract address, by mistake or otherwise.
+
+Two exits, deliberately asymmetric:
+
+- `claimPendingPayoutTo(recipient)` — the insured nominates who receives the
+  funds. This is the normal escape and it needs no privileged party: a contract
+  beneficiary that can call but not receive still collects, and the operator
+  never takes custody. A zero recipient is rejected.
+- `recoverUnclaimedPayout()` — owner-only and time-locked at
+  `PENDING_PAYOUT_CLAIM_WINDOW_SECONDS` (365 days) from `pendingPayoutSince`.
+  Before the window closes it reverts with `PendingPayoutStillClaimable`,
+  carrying the timestamp at which recovery becomes possible.
+
+Recovery credits `coverageReserveWei`, not any individual. The provider's
+`recoverUnclaimedPolicyPayout` asserts the policy is one it created, calls the
+policy, and books the amount back into the reserve, so recovered coverage can
+only ever back future policies — it cannot be routed to the owner as profit
+without going through the existing, separately-audited reserve withdrawal.
+
+The ordering matters: the insured has a full year during which the owner cannot
+touch the money, and the insured's own exit has no time limit at all.
+
+Gate after both changes: contracts 117 tests with Slither clean (47 contracts,
+55 detectors, 0 findings) and both contracts far inside the 24 KB limit
+(`InsurancePolicy` 5,755 bytes, `InsuranceProvider` 16,311); backend 235 unit,
+34 no-chain e2e, 19 live-chain e2e, 288 in the combined coverage run at 97.19%
+statements and 90.09% branches. The size baseline was re-recorded for the
+intentional 880-byte growth.
 
 ### Recorded, not changed
 
-These three change on-chain behavior. Implementing any of them means editing a
-contract, redeploying, and re-running the Stage 04 gates — a scope decision that
-belongs to the product owner, not to a review pass.
+This one changes on-chain behavior. Implementing it means editing a contract,
+redeploying, and re-running the Stage 04 gates — a scope decision that belongs
+to the product owner, not to a review pass.
 
-- **A deferred payout can lock coverage permanently.** `executePayout` parks the
-  amount in `pendingPayoutWei` when the transfer to the insured fails, and only
-  `claimPendingPayout` — insured-only — can release it. An insured that never
-  accepts ETH leaves the coverage stranded with no recovery path. **This is now
-  reachable**: with an explicit beneficiary the API can name a contract address,
-  by mistake or otherwise, whereas previously the insured was always the
-  backend's own externally owned account. It is the most important remaining
-  contract-level item. Options: an authorized alternate recipient,
-  signature-based escrow, or governed recovery after a timeout.
 - **The weather-request lifecycle is ambiguous for an asynchronous oracle.**
   `activate()` opens and emits a request before the weather window can be open,
   and retries reuse the request id while emitting a fresh timestamp. An external
@@ -448,13 +473,10 @@ belongs to the product owner, not to a review pass.
 
 ## Risks or pending items
 
-- **The contract assigns the insured from `msg.sender`.** A policy created
-  through this API is therefore beneficiary-bound to the backend's signer, not
-  to an end user, and a payout would go to the backend. The response returns
-  `insured` explicitly so this is visible rather than assumed, but it is a
-  product-level gap: resolving it needs either an `insured` parameter on
-  `InsuranceProvider` or a user-signed transaction flow. **This blocks any
-  real-user deployment** and is the most important open item.
+- **Premiums are paid by the operator's signer.** The beneficiary is now
+  explicit, but the ETH still leaves the backend's own account, so collecting
+  from the user is an off-chain concern. Whoever may be named as beneficiary is
+  likewise unconstrained until there is a user model. Both belong to Stage 11.
 - Nonce tracking is per process. Running several instances against one signer
   reintroduces the race, because each process would track its own counter for
   the same account; give each instance its own signing account, or add external

@@ -60,6 +60,12 @@ interface IInsurancePolicy {
   /// @param claimedAt Timestamp when claim was executed.
   event PayoutClaimed(address indexed insured, uint256 amountWei, uint64 claimedAt);
 
+  /// @notice Emitted when an unclaimed deferred payout is returned to the provider.
+  /// @param insured Insured account that did not claim within the window.
+  /// @param amountWei Amount returned to the provider's coverage reserve.
+  /// @param recoveredAt Timestamp when recovery was executed.
+  event UnclaimedPayoutRecovered(address indexed insured, uint256 amountWei, uint64 recoveredAt);
+
   /// @notice Emitted when policy expires without payout.
   /// @param insured Insured account linked to expired policy.
   /// @param expiredAt Timestamp when policy status became expired.
@@ -87,6 +93,14 @@ interface IInsurancePolicy {
   /// @notice Claims deferred payout when immediate insured transfer failed in executePayout.
   function claimPendingPayout() external;
 
+  /// @notice Claims deferred payout to an address nominated by the insured.
+  /// @param recipient Address receiving the claimed amount.
+  function claimPendingPayoutTo(address payable recipient) external;
+
+  /// @notice Returns an unclaimed deferred payout to the provider after the claim window.
+  /// @return recoveredWei Amount returned to the provider.
+  function recoverUnclaimedPayout() external returns (uint256 recoveredWei);
+
   /// @notice Expires policy after policy window end.
   function expirePolicy() external;
 
@@ -109,6 +123,10 @@ interface IInsurancePolicy {
   /// @notice Returns deferred payout amount still claimable by insured.
   /// @return Pending payout amount in wei.
   function pendingPayoutWei() external view returns (uint256);
+
+  /// @notice Returns when the deferred payout was recorded, or zero when none is pending.
+  /// @return Timestamp the deferred payout became claimable.
+  function pendingPayoutSince() external view returns (uint64);
 
   /// @notice Returns whether payout execution is currently allowed.
   /// @return True when policy is in Triggered status.
