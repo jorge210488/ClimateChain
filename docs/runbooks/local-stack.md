@@ -250,6 +250,10 @@ CHAIN_E2E_CHAIN_ID=11155111 \
 npm run test:e2e:chain
 ```
 
+`test:e2e:chain` reads the endpoint from the environment. Use
+`test:e2e:chain:local` for the local node — it is the one that hard-codes
+`127.0.0.1:8545`, and it is what the stage gate and CI run.
+
 Expect it to be far slower than local: the suite waits for real block times, and
 the lifecycle tests will not work as written because they advance the chain clock
 with `evm_increaseTime`, which no public network supports. Those transitions have

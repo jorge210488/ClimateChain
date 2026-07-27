@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
+import { SubmissionHandle } from "../../common/idempotency/idempotency.service";
+
 import { CreatePolicyDto } from "./dto/create-policy.dto";
 import { ListPoliciesQueryDto } from "./dto/list-policies-query.dto";
 import {
@@ -25,8 +27,9 @@ export class PoliciesService {
   async create(
     dto: CreatePolicyDto,
     requestId?: string,
+    onSubmitted?: (handle: SubmissionHandle) => void,
   ): Promise<CreatePolicyResponseDto> {
-    const result = await this.chain.createPolicy(dto, requestId);
+    const result = await this.chain.createPolicy(dto, requestId, onSubmitted);
 
     return {
       address: result.address,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -78,12 +79,15 @@ export class PoliciesController {
   })
   @ApiHeader({
     name: "Idempotency-Key",
-    required: false,
+    required: true,
     description:
-      "Opt-in replay protection. A repeat with the same key returns the " +
-      "original result instead of creating a second policy. Reusing a key with " +
-      "a different body is rejected with 409. The store is in-process and " +
-      "non-durable: it covers a client retry, not a restart or a second instance.",
+      "Required. A unique value per logical request, reused when retrying. A " +
+      "repeat returns the original result instead of creating a second policy. " +
+      "Reusing a key with a different body is a 409. If a transaction was " +
+      "already submitted but its outcome is unconfirmed, a retry is also a 409 " +
+      "carrying the transaction hash to reconcile — never a resubmission. The " +
+      "store is in-process and non-durable, so it does not survive a restart " +
+      "or span instances.",
   })
   @ApiCreatedResponse({ type: CreatePolicyResponseDto })
   @ApiBadRequestResponse({
@@ -110,6 +114,18 @@ export class PoliciesController {
     @Req() request: RequestWithId,
     @Headers("idempotency-key") idempotencyKey?: string,
   ): Promise<CreatePolicyResponseDto> {
+    // Required, not optional. This spends the provider's coverage reserve, and
+    // an ordinary client timeout on a request that already reached the chain is
+    // enough to create a duplicate. Without a key the server has no way to
+    // recognize the retry, so the safe default is to refuse the request rather
+    // than accept one it cannot deduplicate.
+    if (!idempotencyKey || idempotencyKey.trim().length === 0) {
+      throw new BadRequestException(
+        "An Idempotency-Key header is required for policy creation. Send a " +
+          "unique value per logical request and reuse it when retrying.",
+      );
+    }
+
     // Correlates the API request with the submitted transaction in the logs.
     const requestId = request.id !== undefined ? String(request.id) : undefined;
 
@@ -117,8 +133,8 @@ export class PoliciesController {
     // with another's.
     const actor = request.user?.userId ?? "anonymous";
 
-    return this.idempotency.execute(actor, idempotencyKey, dto, () =>
-      this.policiesService.create(dto, requestId),
+    return this.idempotency.execute(actor, idempotencyKey, dto, (context) =>
+      this.policiesService.create(dto, requestId, context.markSubmitted),
     );
   }
 

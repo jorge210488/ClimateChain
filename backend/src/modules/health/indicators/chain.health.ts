@@ -54,11 +54,12 @@ export class ChainHealthIndicator {
       // Both are asked of the node. Reporting the chain id recorded at boot
       // would keep claiming the right chain after RPC_URL was repointed at a
       // different one — precisely the drift this probe should catch.
+      // Both go to the node. `provider.getBlockNumber()` would answer from a
+      // cache refreshed on the polling interval, so a probe could report a
+      // healthy height for an endpoint that had already stopped responding.
       const [chainId, blockNumber] = await Promise.all([
         this.chain.getChainIdFromNode(),
-        this.chain.call("health.getBlockNumber", () =>
-          this.chain.getProvider().getBlockNumber(),
-        ),
+        this.chain.getBlockNumberFromNode(),
       ]);
 
       if (chainId !== verification.chainId) {

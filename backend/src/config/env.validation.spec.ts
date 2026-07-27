@@ -176,6 +176,65 @@ describe("envValidationSchema", () => {
     });
   });
 
+  describe("MAX_REQUEST_BODY_SIZE", () => {
+    it.each(["1kb", "64kb", "1.5mb", "2048"])("accepts %s", (value) => {
+      const { error } = envValidationSchema.validate(
+        { MAX_REQUEST_BODY_SIZE: value },
+        { allowUnknown: true },
+      );
+
+      expect(error).toBeUndefined();
+    });
+
+    it.each(["0", "0b", "0kb", "0.0mb"])(
+      "rejects %s, which would refuse every request",
+      (value) => {
+        // Passes any shape check while producing a limit that rejects all
+        // non-empty bodies — a misconfiguration that looks like an outage.
+        const { error } = envValidationSchema.validate(
+          { MAX_REQUEST_BODY_SIZE: value },
+          { allowUnknown: true },
+        );
+
+        expect(error).toBeDefined();
+        expect(error?.message).toMatch(/reject ordinary requests/);
+      },
+    );
+
+    it("rejects a value below a workable floor", () => {
+      const { error } = envValidationSchema.validate(
+        { MAX_REQUEST_BODY_SIZE: "16b" },
+        { allowUnknown: true },
+      );
+
+      expect(error).toBeDefined();
+    });
+
+    it("rejects a value above the operational ceiling", () => {
+      // More likely a typo (64mb for 64kb) than an intention, and a cheap
+      // memory-pressure lever if accepted.
+      const { error } = envValidationSchema.validate(
+        { MAX_REQUEST_BODY_SIZE: "64mb" },
+        { allowUnknown: true },
+      );
+
+      expect(error).toBeDefined();
+      expect(error?.message).toMatch(/ceiling/);
+    });
+
+    it.each(["lots", "64kbb", "kb", "-5kb"])(
+      "rejects unparseable value %s",
+      (value) => {
+        const { error } = envValidationSchema.validate(
+          { MAX_REQUEST_BODY_SIZE: value },
+          { allowUnknown: true },
+        );
+
+        expect(error).toBeDefined();
+      },
+    );
+  });
+
   it("defaults the auth rate-limit window and budget", () => {
     const { error, value } = envValidationSchema.validate(
       { AUTH_RATE_LIMIT_TTL_SECONDS: "", AUTH_RATE_LIMIT_MAX: "" },

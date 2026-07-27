@@ -144,6 +144,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post("/policies")
         .set("Authorization", bearer)
+        .set("Idempotency-Key", "create-metadata")
         .send({
           coverageEth: "0.5",
           premiumEth: "0.02",
@@ -174,6 +175,8 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         request(app.getHttpServer())
           .post("/policies")
           .set("Authorization", bearer)
+          // Distinct keys: these are three different logical requests.
+          .set("Idempotency-Key", `concurrent-${threshold}`)
           .send({
             coverageEth: "0.05",
             premiumEth: "0.002",
@@ -242,6 +245,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post("/policies")
         .set("Authorization", bearer)
+        .set("Idempotency-Key", "create-legacy")
         .send({
           coverageEth: "0.1",
           premiumEth: "0.005",
@@ -351,6 +355,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post("/policies")
         .set("Authorization", bearer)
+        .set("Idempotency-Key", "over-reserve")
         .send({
           coverageEth: "1000000",
           premiumEth: "10000",
@@ -432,6 +437,7 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post("/policies")
         .set("Authorization", bearer)
+        .set("Idempotency-Key", `lifecycle-${region}`)
         .send({
           coverageEth: "0.05",
           premiumEth: "0.002",

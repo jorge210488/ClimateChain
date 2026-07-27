@@ -450,8 +450,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Opt-in replay protection. A repeat with the same key returns the original result instead of creating a second policy. Reusing a key with a different body is rejected with 409. The store is in-process and non-durable: it covers a client retry, not a restart or a second instance.",
-            "required": false,
+            "description": "Required. A unique value per logical request, reused when retrying. A repeat returns the original result instead of creating a second policy. Reusing a key with a different body is a 409. If a transaction was already submitted but its outcome is unconfirmed, a retry is also a 409 carrying the transaction hash to reconcile — never a resubmission. The store is in-process and non-durable, so it does not survive a restart or span instances.",
+            "required": true,
             "schema": {
               "type": "string"
             }

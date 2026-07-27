@@ -1,6 +1,12 @@
 import * as Joi from "joi";
 
 import {
+  MAX_REQUEST_BODY_BYTES,
+  MIN_REQUEST_BODY_BYTES,
+  parseByteSize,
+} from "../common/utils/byte-size.util";
+
+import {
   CONFIG_DEFAULTS,
   DEPLOYED_PROFILES,
   RUNTIME_PROFILES,
@@ -8,8 +14,6 @@ import {
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
-/** A byte size the `bytes` package parses unambiguously, e.g. 512, 64kb, 1.5mb. */
-const BYTE_SIZE_PATTERN = /^\d+(\.\d+)?\s?(b|kb|mb|gb)?$/i;
 
 /**
  * Fail-fast environment validation schema.
@@ -48,17 +52,39 @@ export const envValidationSchema = Joi.object({
     }),
   // Defaults to enabled for local profiles and disabled for deployed ones.
   SWAGGER_ENABLED: Joi.boolean().empty("").optional(),
-  // Constrained to what `bytes` actually parses, because both failure modes are
-  // silent and opposite: an unparseable value ("lots") leaves body-parser with
-  // no limit at all, while a near-miss ("64kbb") parses as 64 *bytes* and
-  // rejects every request. Neither surfaces as a configuration error.
+  // Validated by parsed value, not just by shape. Every failure mode here is
+  // silent: an unreadable value leaves the parser with no limit at all, a
+  // near-miss ("64kbb") becomes 64 *bytes* and rejects every request, and a
+  // zero ("0", "0kb") passes any pattern check while doing the same.
   MAX_REQUEST_BODY_SIZE: Joi.string()
-    .pattern(BYTE_SIZE_PATTERN)
-    .message(
-      "MAX_REQUEST_BODY_SIZE must be a byte size such as 512, 64kb, or 1.5mb",
-    )
     .empty("")
-    .default(CONFIG_DEFAULTS.maxRequestBodySize),
+    .default(CONFIG_DEFAULTS.maxRequestBodySize)
+    .custom((value: string, helpers) => {
+      const parsed = parseByteSize(value);
+
+      if (parsed === undefined) {
+        return helpers.message({
+          custom:
+            "MAX_REQUEST_BODY_SIZE must be a byte size such as 512, 64kb, or 1.5mb",
+        });
+      }
+      if (parsed < MIN_REQUEST_BODY_BYTES) {
+        return helpers.message({
+          custom:
+            `MAX_REQUEST_BODY_SIZE resolves to ${parsed} bytes, which would ` +
+            `reject ordinary requests; use at least ${MIN_REQUEST_BODY_BYTES} bytes`,
+        });
+      }
+      if (parsed > MAX_REQUEST_BODY_BYTES) {
+        return helpers.message({
+          custom:
+            `MAX_REQUEST_BODY_SIZE resolves to ${parsed} bytes, above the ` +
+            `${MAX_REQUEST_BODY_BYTES}-byte ceiling for this API`,
+        });
+      }
+
+      return value;
+    }),
 
   // Blockchain integration metadata (consumed by the contract registry).
   BLOCKCHAIN_NETWORK: Joi.string()

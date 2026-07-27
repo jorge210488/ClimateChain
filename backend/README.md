@@ -98,15 +98,40 @@ deployed ones (`SWAGGER_ENABLED`). A committed OpenAPI snapshot lives at
 
 ### Idempotent creation
 
-`POST /policies` accepts an optional `Idempotency-Key` header. A repeat with the
-same key returns the original result instead of creating a second policy;
-reusing a key with a different body is a `409`. Failures are not recorded, so the
-same key stays usable after an error.
+`POST /policies` **requires** an `Idempotency-Key` header — a unique value per
+logical request, reused when retrying. It is mandatory rather than optional
+because an ordinary client timeout on a request that already reached the chain is
+indistinguishable from a new request, and refusing beats accepting one the server
+cannot deduplicate.
 
-> **The store is in-process and non-durable.** It covers the case that actually
-> happens — a client retrying seconds after a timeout — and does not survive a
-> restart or span instances. Durable idempotency needs the datastore that arrives
-> with Stage 11; until then this is a strong mitigation, not a guarantee.
+The record moves through three states, and the middle one carries the weight:
+
+```
+  in-flight  ──submitted to chain──▶  submitted  ──▶  completed
+      │                                   │
+  released on failure               kept on failure
+  (nothing happened)                (it may have happened)
+```
+
+| Situation | Response |
+| --- | --- |
+| First request | Executes normally |
+| Repeat after success | `201` replaying the original result |
+| Repeat while still running | `409` — retry once it completes |
+| Repeat after a transaction was submitted but not confirmed | `409` naming the transaction hash to reconcile — **never** a resubmission |
+| Same key, different body | `409` |
+| Failure before submission | Key released; retry freely |
+
+That fourth row is the expensive case. Once a node accepts a transaction, waiting
+for its receipt can time out while the transaction still confirms minutes later.
+Treating that as a plain failure and releasing the key would let a retry submit a
+second transaction, and both could be mined — locking the coverage reserve twice.
+
+> **The store is in-process and non-durable.** A restart loses it and two
+> instances do not share it, so neither protects against a duplicate on its own.
+> Durable idempotency, shared nonce coordination, and mutual exclusion are
+> **prerequisites for running more than one instance**, not optimizations. The
+> datastore arrives with Stage 11.
 
 > **Read cost.** A page of 25 policies costs roughly 325 RPC calls, because each
 > policy is assembled from about a dozen individual reads. Measured on a local

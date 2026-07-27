@@ -18,6 +18,7 @@ import {
   encodeRegionCode,
 } from "../../common/utils/region-code.util";
 import { parseEthToWei } from "../../common/utils/eth-amount.util";
+import { SubmissionHandle } from "../../common/idempotency/idempotency.service";
 import { toHttpException } from "../blockchain/chain-error.mapper";
 import { ChainProviderService } from "../blockchain/chain-provider.service";
 import {
@@ -395,6 +396,7 @@ export class PolicyChainService {
   async createPolicy(
     dto: CreatePolicyDto,
     requestId?: string,
+    onSubmitted?: (handle: SubmissionHandle) => void,
   ): Promise<ChainWriteResult> {
     this.assertEnabled();
 
@@ -431,6 +433,15 @@ export class PolicyChainService {
           ) => Promise<TransactionResponse>
         )(...args.params, { value: premiumWei }),
       );
+
+      // The point of no return: the node has accepted this transaction, so it
+      // may be mined even if everything after here fails. Reporting it before
+      // waiting is what lets a retry reconcile instead of submitting again.
+      onSubmitted?.({
+        transactionHash: tx.hash,
+        chainId: this.config.blockchain.chainId?.toString(),
+        nonce: tx.nonce,
+      });
 
       this.logger.log(
         `Policy creation submitted: txHash=${tx.hash} ` +

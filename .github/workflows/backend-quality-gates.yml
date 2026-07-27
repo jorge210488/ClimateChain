@@ -89,7 +89,7 @@ jobs:
 
       - name: Stage 06 chain integration and coverage
         run: |
-          npm run test:e2e:chain
+          npm run test:e2e:chain:local
           npm run test:cov
 
       - name: Upload chain log on failure

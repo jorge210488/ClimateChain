@@ -132,6 +132,88 @@ describe("IdempotencyService", () => {
     expect(operation).toHaveBeenCalledTimes(2);
   });
 
+  describe("after a transaction has been submitted", () => {
+    /** Fails the way a receipt timeout does: after the node accepted the tx. */
+    const failAfterSubmitting =
+      (hash: string) =>
+      async (context: {
+        markSubmitted: (h: { transactionHash: string }) => void;
+      }) => {
+        context.markSubmitted({ transactionHash: hash });
+        throw new Error("not mined within the timeout");
+      };
+
+    it("does not let a retry submit a second transaction", async () => {
+      // The duplicate this prevents is the expensive one: the first transaction
+      // may confirm minutes later, so resubmitting can mine two policies and
+      // lock the coverage reserve twice.
+      const submissions: string[] = [];
+      const operation = async (context: {
+        markSubmitted: (h: { transactionHash: string }) => void;
+      }) => {
+        submissions.push("sent");
+        context.markSubmitted({ transactionHash: "0xabc" });
+        throw new Error("not mined within the timeout");
+      };
+
+      await expect(
+        service.execute("admin", "key-1", PAYLOAD, operation),
+      ).rejects.toThrow("not mined");
+
+      await expect(
+        service.execute("admin", "key-1", PAYLOAD, operation),
+      ).rejects.toThrow(ConflictException);
+
+      expect(submissions).toHaveLength(1);
+    });
+
+    it("hands the caller the hash to reconcile", async () => {
+      await service
+        .execute("admin", "key-1", PAYLOAD, failAfterSubmitting("0xdeadbeef"))
+        .catch(() => undefined);
+
+      await expect(
+        service.execute(
+          "admin",
+          "key-1",
+          PAYLOAD,
+          failAfterSubmitting("0xnew"),
+        ),
+      ).rejects.toThrow(/0xdeadbeef/);
+    });
+
+    it("still surfaces the original failure to the first caller", async () => {
+      // The first caller must learn its request did not complete; only the
+      // retry is refused.
+      await expect(
+        service.execute(
+          "admin",
+          "key-1",
+          PAYLOAD,
+          failAfterSubmitting("0xabc"),
+        ),
+      ).rejects.toThrow("not mined within the timeout");
+    });
+
+    it("keeps the submitted record even as the completed TTL passes", async () => {
+      jest.useFakeTimers();
+      try {
+        await service
+          .execute("admin", "key-1", PAYLOAD, failAfterSubmitting("0xabc"))
+          .catch(() => undefined);
+
+        // Well within retention: the record must still block a resubmission.
+        jest.advanceTimersByTime(12 * 60 * 60 * 1000);
+
+        await expect(
+          service.execute("admin", "key-1", PAYLOAD, async () => "resent"),
+        ).rejects.toThrow(/already submitted/);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   it("propagates the original error rather than masking it", async () => {
     const operation = jest
       .fn()
@@ -142,8 +224,12 @@ describe("IdempotencyService", () => {
     ).rejects.toThrow("reserve empty");
   });
 
-  it("releases an abandoned in-flight record after its timeout", async () => {
-    // An operation whose process died mid-flight must not lock the key forever.
+  it("never releases an in-flight record on a timer", async () => {
+    // The previous behavior — and the previous test — released any in-flight
+    // record after five minutes without knowing whether the operation was still
+    // running, which let a retry start a second one. A clock cannot tell a slow
+    // operation from an abandoned one; this store lives in the process running
+    // it, so a record that is still in-flight means the work is still alive.
     jest.useFakeTimers();
     try {
       const stuck = service.execute(
@@ -154,11 +240,11 @@ describe("IdempotencyService", () => {
       );
       void stuck;
 
-      jest.advanceTimersByTime(6 * 60 * 1000);
+      jest.advanceTimersByTime(24 * 60 * 60 * 1000);
 
       await expect(
-        service.execute("admin", "key-1", PAYLOAD, async () => "retried"),
-      ).resolves.toBe("retried");
+        service.execute("admin", "key-1", PAYLOAD, async () => "second"),
+      ).rejects.toThrow(/still in progress/);
     } finally {
       jest.useRealTimers();
     }

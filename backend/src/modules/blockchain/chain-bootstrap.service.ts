@@ -118,7 +118,9 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
     const reader = this.contracts.getProviderReader();
     const [blockNumber, coverageReserveWei, premiumBalanceWei] =
       await Promise.all([
-        this.chain.call("getBlockNumber", () => provider.getBlockNumber()),
+        // Asked of the node, not read from the provider's polling cache, so the
+        // recorded height reflects the chain this actually verified against.
+        this.chain.getBlockNumberFromNode(),
         this.chain.call(
           "coverageReserveWei",
           () => reader.coverageReserveWei() as Promise<bigint>,

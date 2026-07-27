@@ -26,9 +26,16 @@ describe("ClimateChain backend (e2e)", () => {
   let jwtService: JwtService;
   let bearer: string;
 
-  /** POST /policies requires an authenticated principal. */
+  /**
+   * POST /policies requires an authenticated principal and an Idempotency-Key.
+   * A fresh key per call keeps these cases independent of one another.
+   */
+  let keyCounter = 0;
   const createPolicy = () =>
-    request(app.getHttpServer()).post("/policies").set("Authorization", bearer);
+    request(app.getHttpServer())
+      .post("/policies")
+      .set("Authorization", bearer)
+      .set("Idempotency-Key", `e2e-key-${(keyCounter += 1)}`);
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
@@ -135,6 +142,25 @@ describe("ClimateChain backend (e2e)", () => {
         region: "Valencia",
       });
       expect(res.status).toBe(401);
+    });
+
+    it("rejects a create without an Idempotency-Key", async () => {
+      // Refusing beats accepting a request the server cannot deduplicate: an
+      // ordinary client timeout on a call that already reached the chain would
+      // otherwise be indistinguishable from a new request.
+      const res = await request(app.getHttpServer())
+        .post("/policies")
+        .set("Authorization", bearer)
+        .send({
+          coverageEth: "1.0",
+          premiumEth: "0.05",
+          rainfallThresholdMm: 50,
+          durationDays: 30,
+          region: "Valencia",
+        });
+
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toContain("Idempotency-Key");
     });
 
     it("rejects a create with a malformed bearer token", async () => {

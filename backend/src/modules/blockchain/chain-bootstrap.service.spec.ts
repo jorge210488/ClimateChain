@@ -123,9 +123,10 @@ function buildHarness(
     getProvider: () => provider,
     getSignerAddress: () => signerAddress,
     call: <T>(_label: string, operation: () => Promise<T>) => operation(),
-    // Mirrors the real implementation: a raw request, parsed from hex.
+    // Mirror the real implementations: raw requests, parsed from hex.
     getChainIdFromNode: async () =>
       BigInt((await send("eth_chainId")) as string).toString(),
+    getBlockNumberFromNode: async () => 42,
   } as unknown as ChainProviderService;
 
   const contracts = {

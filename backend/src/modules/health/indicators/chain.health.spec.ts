@@ -61,7 +61,7 @@ function buildIndicator(options: {
     hasSigner: () => true,
     getProvider: () => ({}),
     getChainIdFromNode: async () => nodeChainId,
-    call: async () => {
+    getBlockNumberFromNode: async () => {
       if (blockNumber instanceof Error) {
         throw blockNumber;
       }

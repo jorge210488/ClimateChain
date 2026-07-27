@@ -283,13 +283,15 @@ unilaterally, because each alters on-chain behavior and reopens Stage 03/04.
   stubs at the raw-RPC level, plus an assertion that the request is actually
   issued.
 
-- **R2 (high): no idempotency on creation.** `POST /policies` now honors an
-  `Idempotency-Key` header: a repeat with the same key replays the original
-  result, and reusing a key with a different body is a 409. Keys are scoped per
-  actor and bound to a payload hash; failures are not recorded so a key stays
-  usable after an error. The store is in-process and non-durable, which is
-  stated in the API description and the README — it covers a client retry, not a
-  restart or a second instance. Durable idempotency needs Stage 11.
+- **R2 (high): no idempotency on creation.** `POST /policies` now **requires** an
+  `Idempotency-Key`. A repeat replays the original result, reusing a key with a
+  different body is a 409, and keys are scoped per actor and bound to a payload
+  hash. The header is mandatory rather than optional because an ordinary client
+  timeout on a request that already reached the chain is indistinguishable from a
+  new request; refusing beats accepting one the server cannot deduplicate.
+
+  A follow-up review found the first implementation still admitted the expensive
+  duplicate, and it was right — see R8 below.
 
 - **R3 (medium): DTOs accepted integers JavaScript cannot represent.**
   `Number("9007199254740993")` silently becomes `9007199254740992`, satisfies
@@ -328,6 +330,56 @@ unilaterally, because each alters on-chain behavior and reopens Stage 03/04.
 - **R7 (documentation):** the runbook still said the backend does not verify
   bytecode and that the check belonged to Stage 06, which Stage 06 implemented.
   Corrected.
+
+### Second review round
+
+- **R8 (critical): the first idempotency implementation still allowed the
+  duplicate it existed to prevent.** It deleted the record on any failure, on the
+  reasoning that a failed operation had no effect. That reasoning is wrong for
+  exactly the case that matters: `createPolicy` receives a `TransactionResponse`,
+  meaning the node has already accepted the transaction, and only then waits for
+  a receipt. When that wait times out the transaction can still confirm minutes
+  later — the error message even says so. Deleting the record there let a retry
+  submit a *second* transaction, and both could be mined, locking the reserve
+  twice.
+
+  The record now moves through `in-flight → submitted → completed`. Reaching
+  submission is reported by the operation itself (`markSubmitted`, carrying the
+  transaction hash, chain id, and nonce), and from that point a failure **keeps**
+  the record. A retry receives a 409 naming the hash to reconcile, never a
+  resubmission. Failures before submission still release the key, because
+  nothing happened.
+
+- **R9 (high): the in-flight record could be released while the work was still
+  running.** A five-minute timer evicted any in-flight entry without checking
+  whether the operation was alive, so a retry could start a second one — and the
+  test asserted that behavior with a promise that never resolved, encoding the
+  bug as intent. In-flight records are no longer evicted on a timer at all: this
+  store lives in the process running the operation, so an in-flight record means
+  the work is still alive, and if the process dies the map dies with it. Only
+  terminal states expire.
+
+- **R10 (medium): the documented testnet command could not use a testnet.**
+  `test:e2e:chain` set `CHAIN_E2E_RPC_URL` through `cross-env`, which overrides
+  the caller's value — verified directly: an operator-provided endpoint was
+  silently replaced by `127.0.0.1:8545`. Split into `test:e2e:chain` (reads the
+  environment) and `test:e2e:chain:local` (pins the local node, used by the gate
+  and CI).
+
+- **R11 (low): `MAX_REQUEST_BODY_SIZE=0`, `0b`, and `0kb` passed validation** and
+  produce a limit that rejects every non-empty body — a misconfiguration that
+  presents as an outage. Validation now parses the value and enforces a workable
+  floor and an operational ceiling, with regressions for each case.
+
+- **R12 (low): health and bootstrap read the block height from the provider's
+  cache** while the health comment claimed both values came from the node.
+  `getBlockNumberFromNode` existed for precisely that reason and is now used in
+  both, so a probe cannot report a healthy height for an endpoint that has
+  stopped responding.
+
+- **R13 (low): this report contradicted itself**, claiming idempotency was added
+  and later that none existed. The pending-items entry now states the real
+  limitation.
 
 ### Recorded, not changed
 
@@ -373,10 +425,14 @@ belongs to the product owner, not to a review pass.
   reports. Behind a load balancer, enable `trust proxy` or the limiter meters
   the proxy; across instances the effective budget multiplies by instance count.
   Both are Stage 12/13 topology decisions.
-- There is no idempotency key on policy creation. A client that retries after a
-  timeout creates a second policy and spends the reserve twice. The dry run and
-  the mined-status check make silent duplicates unlikely, but a caller-supplied
-  idempotency key is the real fix and belongs with the user-facing flow.
+- Idempotency on policy creation is **required but not durable**. The header is
+  mandatory and the record survives an accepted-but-unconfirmed submission, so a
+  retry is refused rather than allowed to submit again. What it cannot do is
+  survive a process restart or span instances, because the store is an in-process
+  map. Two replicas therefore do not deduplicate each other, and a restart loses
+  every record. Durable idempotency, shared nonce coordination, and mutual
+  exclusion are prerequisites for running more than one instance — not
+  optimizations.
 - Reads are uncached and always hit the chain, which is correct for
   consistency and expensive under load. A read-through cache with explicit
   invalidation is worth considering if list traffic grows.
