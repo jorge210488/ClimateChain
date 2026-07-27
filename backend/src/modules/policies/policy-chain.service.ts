@@ -141,15 +141,20 @@ export class PolicyChainService {
       const provider = this.contracts.getProviderReader();
       const normalized = normalizeEvmAddress(address);
 
+      const blockTag = await this.pinBlock();
+
       const known = await this.chain.call(
         "isPolicyCreated",
-        () => provider.isPolicyCreated(normalized) as Promise<boolean>,
+        () =>
+          provider.isPolicyCreated(normalized, {
+            blockTag,
+          }) as Promise<boolean>,
       );
       if (!known) {
         return undefined;
       }
 
-      return await this.readPolicy(normalized, provider);
+      return await this.readPolicy(normalized, provider, blockTag);
     } catch (error) {
       throw toHttpException(
         error,
@@ -178,6 +183,7 @@ export class PolicyChainService {
 
     try {
       const provider = this.contracts.getProviderReader();
+      const blockTag = await this.pinBlock();
 
       const [addresses, total] = insured
         ? await this.chain.call(
@@ -187,19 +193,21 @@ export class PolicyChainService {
                 normalizeEvmAddress(insured),
                 offset,
                 effectiveLimit,
+                { blockTag },
               ) as Promise<[string[], bigint]>,
           )
         : await this.chain.call(
             "getAllPoliciesPage",
             () =>
-              provider.getAllPoliciesPage(offset, effectiveLimit) as Promise<
-                [string[], bigint]
-              >,
+              provider.getAllPoliciesPage(offset, effectiveLimit, {
+                blockTag,
+              }) as Promise<[string[], bigint]>,
           );
 
       const items = await this.readPoliciesBounded(
         addresses.map(normalizeEvmAddress),
         provider,
+        blockTag,
       );
 
       return { items, total: Number(total), appliedLimit: effectiveLimit };
@@ -218,6 +226,7 @@ export class PolicyChainService {
   private async readPoliciesBounded(
     addresses: string[],
     provider: Contract,
+    blockTag: number,
   ): Promise<ChainPolicy[]> {
     const results: ChainPolicy[] = [];
 
@@ -225,7 +234,7 @@ export class PolicyChainService {
       const batch = addresses.slice(i, i + POLICY_READ_CONCURRENCY);
       results.push(
         ...(await Promise.all(
-          batch.map((address) => this.readPolicy(address, provider)),
+          batch.map((address) => this.readPolicy(address, provider, blockTag)),
         )),
       );
     }
@@ -233,12 +242,37 @@ export class PolicyChainService {
     return results;
   }
 
-  /** Reads and normalizes a single known policy. */
+  /**
+   * Resolves the block every read in one response is answered from.
+   *
+   * A policy is assembled from a dozen separate calls. Left unpinned, each
+   * lands on whatever block is current when it arrives, so a settlement mined
+   * midway through produces a response that never existed on chain — `status:
+   * active` beside `settlementType: expiry`, for instance. Pinning one block
+   * makes every field come from the same state.
+   *
+   * The head is read from the node rather than from the provider's cached value,
+   * which lags by up to a polling interval. A stale pin is worse than no pin: it
+   * answers a read that follows a write with the state *before* the write, so a
+   * policy created a moment earlier reads as if it does not exist.
+   */
+  private async pinBlock(): Promise<number> {
+    return this.chain.getBlockNumberFromNode();
+  }
+
+  /**
+   * Reads and normalizes a single known policy at a fixed block.
+   *
+   * Every call carries the same `blockTag`, which is what makes the result a
+   * coherent snapshot rather than a mix of states.
+   */
   private async readPolicy(
     address: string,
     provider: Contract,
+    blockTag: number,
   ): Promise<ChainPolicy> {
     const policy = this.contracts.getPolicyReader(address);
+    const at = { blockTag };
 
     const [
       insured,
@@ -258,60 +292,60 @@ export class PolicyChainService {
     ] = await Promise.all([
       this.chain.call(
         "policy.insured",
-        () => policy.insured() as Promise<string>,
+        () => policy.insured(at) as Promise<string>,
       ),
       this.chain.call(
         "policy.oracle",
-        () => policy.oracle() as Promise<string>,
+        () => policy.oracle(at) as Promise<string>,
       ),
       this.chain.call(
         "policy.getStatus",
-        () => policy.getStatus() as Promise<bigint>,
+        () => policy.getStatus(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.coverageWei",
-        () => policy.coverageWei() as Promise<bigint>,
+        () => policy.coverageWei(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.premiumWei",
-        () => policy.premiumWei() as Promise<bigint>,
+        () => policy.premiumWei(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.rainfallThresholdMm",
-        () => policy.rainfallThresholdMm() as Promise<bigint>,
+        () => policy.rainfallThresholdMm(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.latestRainfallMm",
-        () => policy.latestRainfallMm() as Promise<bigint>,
+        () => policy.latestRainfallMm(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.pendingPayoutWei",
-        () => policy.pendingPayoutWei() as Promise<bigint>,
+        () => policy.pendingPayoutWei(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.conditionMet",
-        () => policy.conditionMet() as Promise<boolean>,
+        () => policy.conditionMet(at) as Promise<boolean>,
       ),
       this.chain.call(
         "policy.regionCode",
-        () => policy.regionCode() as Promise<string>,
+        () => policy.regionCode(at) as Promise<string>,
       ),
       this.chain.call(
         "policy.startTimestamp",
-        () => policy.startTimestamp() as Promise<bigint>,
+        () => policy.startTimestamp(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.endTimestamp",
-        () => policy.endTimestamp() as Promise<bigint>,
+        () => policy.endTimestamp(at) as Promise<bigint>,
       ),
       this.chain.call(
         "policy.lastOracleUpdateTimestamp",
-        () => policy.lastOracleUpdateTimestamp() as Promise<bigint>,
+        () => policy.lastOracleUpdateTimestamp(at) as Promise<bigint>,
       ),
       this.chain.call(
         "provider.getPolicySettlementInfo",
         () =>
-          provider.getPolicySettlementInfo(address) as Promise<
+          provider.getPolicySettlementInfo(address, at) as Promise<
             [bigint, bigint]
           >,
       ),

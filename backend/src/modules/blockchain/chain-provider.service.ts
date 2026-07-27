@@ -38,9 +38,11 @@ export class ChainProviderService implements OnModuleDestroy {
   /**
    * Returns the shared provider, creating it on first use.
    *
-   * The network is pinned via `staticNetwork`: the chain id is already known
-   * from the deployment manifest and verified at boot, so re-detecting it on
-   * every call would add a round trip to each request for no benefit.
+   * `staticNetwork` avoids re-detecting the network on every call, which would
+   * add a round trip per request. The trade-off is that `getNetwork()` then
+   * reports the configured value without contacting the node, so it must never
+   * be used to *verify* anything — see {@link getChainIdFromNode}, which boot
+   * verification and the readiness probe both go through instead.
    */
   getProvider(): JsonRpcProvider {
     if (this.provider) {
@@ -102,6 +104,43 @@ export class ChainProviderService implements OnModuleDestroy {
     this.wallet = new Wallet(privateKey, this.getProvider());
     this.signer = new NonceManager(this.wallet);
     return this.signer;
+  }
+
+  /**
+   * Chain id reported by the node itself, as a decimal string.
+   *
+   * Deliberately a raw `eth_chainId` request rather than `provider.getNetwork()`:
+   * the provider is created with `staticNetwork` when `CHAIN_ID` is configured,
+   * and `getNetwork()` then returns that configured value **without contacting
+   * the node**. Comparing it against configuration would compare configuration
+   * with itself and pass against any chain.
+   */
+  async getChainIdFromNode(): Promise<string> {
+    const raw = await this.call(
+      "eth_chainId",
+      () => this.getProvider().send("eth_chainId", []) as Promise<string>,
+    );
+
+    // Nodes answer with a hex quantity; BigInt parses it without precision loss.
+    return BigInt(raw).toString();
+  }
+
+  /**
+   * Current head block number, asked of the node.
+   *
+   * A raw request rather than `provider.getBlockNumber()`, which answers from a
+   * cache refreshed on the polling interval and can therefore be a block or two
+   * behind. That matters when the number is used to pin reads: a stale pin makes
+   * a read that follows a write observe the state *before* it, so a policy
+   * created a moment earlier reads as not existing.
+   */
+  async getBlockNumberFromNode(): Promise<number> {
+    const raw = await this.call(
+      "eth_blockNumber",
+      () => this.getProvider().send("eth_blockNumber", []) as Promise<string>,
+    );
+
+    return Number(BigInt(raw));
   }
 
   /** Address transactions are sent from, or undefined when unsigned. */

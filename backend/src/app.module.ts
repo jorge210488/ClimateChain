@@ -2,6 +2,7 @@ import { Module, ValidationPipe } from "@nestjs/common";
 import { APP_FILTER, APP_GUARD, APP_PIPE } from "@nestjs/core";
 
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { IdempotencyModule } from "./common/idempotency/idempotency.module";
 import { AppConfigModule } from "./config/config.module";
 import { AppLoggerModule } from "./logging/logger.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -25,6 +26,7 @@ import { PricingModule } from "./modules/pricing/pricing.module";
   imports: [
     AppConfigModule,
     AppLoggerModule,
+    IdempotencyModule,
     BlockchainModule,
     HealthModule,
     AuthModule,

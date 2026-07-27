@@ -87,6 +87,26 @@ deployed ones (`SWAGGER_ENABLED`). A committed OpenAPI snapshot lives at
 - **The default start comes from chain time, not server time.** The contract
   validates it against `block.timestamp`, so a start derived from a server clock
   running ahead of the chain would land in the chain's past and revert.
+- **Reads are answered from one pinned block.** A policy is assembled from a
+  dozen calls; unpinned, a settlement mined midway through would produce a
+  response that never existed on chain — `status: active` beside
+  `settlementType: expiry`.
+- **The chain id is asked of the node, never taken from configuration.**
+  `provider.getNetwork()` returns the configured value without a round trip when
+  `staticNetwork` is active, which would make the check compare configuration
+  with itself and pass against any chain.
+
+### Idempotent creation
+
+`POST /policies` accepts an optional `Idempotency-Key` header. A repeat with the
+same key returns the original result instead of creating a second policy;
+reusing a key with a different body is a `409`. Failures are not recorded, so the
+same key stays usable after an error.
+
+> **The store is in-process and non-durable.** It covers the case that actually
+> happens — a client retrying seconds after a timeout — and does not survive a
+> restart or span instances. Durable idempotency needs the datastore that arrives
+> with Stage 11; until then this is a strong mitigation, not a guarantee.
 
 > **Read cost.** A page of 25 policies costs roughly 325 RPC calls, because each
 > policy is assembled from about a dozen individual reads. Measured on a local
@@ -233,7 +253,25 @@ transform instead of the code.
 
 ### Dependency audit
 
-`audit:check` blocks on `critical`. High-severity advisories are reported
-non-blocking in CI: today every one is transitive through NestJS 11's own
-dependencies with no fixed release available, so a blocking `high` gate would
-sit permanently red. Revisit when NestJS ships updates.
+`audit:check` blocks on **high-severity advisories reachable from production
+dependencies** (`npm audit --omit=dev --audit-level=high`) — the code that
+actually ships. It currently reports zero.
+
+`audit:report` covers the dev toolchain too and runs non-blocking in CI. Those
+advisories reach the build tooling rather than the running service, and they sit
+behind transitive ranges this project does not control (`brace-expansion` via
+`minimatch` via jest and eslint).
+
+There is one `overrides` entry, and it is deliberate:
+
+```json
+"overrides": { "@nestjs/swagger": { "js-yaml": "^5.2.2" } }
+```
+
+`@nestjs/swagger@11.4.6` pins `js-yaml@5.2.1`, and `5.0.0–5.2.1` carry a
+denial-of-service advisory; `5.2.2` is the patch. This was the only advisory
+reachable from production dependencies, so it is worth forcing rather than
+waiting for upstream. The override is **scoped to the swagger path on purpose**:
+eslint and ts-jest depend on `js-yaml` 3.x and 4.x, and a global override would
+hand them a major version they were never written against. Drop it once
+`@nestjs/swagger` ships a patched pin.

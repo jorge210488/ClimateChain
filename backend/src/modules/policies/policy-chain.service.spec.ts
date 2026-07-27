@@ -15,6 +15,8 @@ const SIGNER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 const ORACLE = "0x5fbdb2315678afecb367f032d93f642f64180aa3";
 const REGION_CODE =
   "0x56616c656e636961000000000000000000000000000000000000000000000000";
+/** Block the harness pretends is current, so pinning is observable. */
+const PINNED_BLOCK = 4242;
 
 /** Values one policy contract returns, in the order the service reads them. */
 function policyStub(): Record<string, () => Promise<unknown>> {
@@ -42,6 +44,8 @@ interface Harness {
   concurrentPeak: { value: number };
   /** Positional arguments passed to each contract write, in call order. */
   sentArgs: unknown[][];
+  /** Overrides passed to each policy read, to verify block pinning. */
+  blockTags: unknown[];
 }
 
 /**
@@ -116,6 +120,8 @@ function buildHarness(
     { staticCall: async () => POLICY_ADDRESS },
   );
 
+  const blockTags: unknown[] = [];
+
   const providerReader = {
     isPolicyCreated: async () => knownPolicy,
     getAllPoliciesPage: async (_o: number, limit: number) => {
@@ -141,7 +147,9 @@ function buildHarness(
       const stub = policyStub();
       // Track overlap so the concurrency bound is observable.
       return new Proxy(stub, {
-        get: (target, prop: string) => async () => {
+        get: (target, prop: string) => async (overrides?: unknown) => {
+          // Recorded so a test can assert every field came from one block.
+          blockTags.push(overrides);
           inFlight += 1;
           concurrentPeak.value = Math.max(concurrentPeak.value, inFlight);
           await new Promise((resolve) => setTimeout(resolve, 1));
@@ -157,6 +165,7 @@ function buildHarness(
     isEnabled: () => enabled,
     hasSigner: () => hasSigner,
     getSignerAddress: () => SIGNER,
+    getBlockNumberFromNode: async () => PINNED_BLOCK,
     getProvider: () => ({
       getBlock: async () => {
         if (blockError) {
@@ -183,6 +192,7 @@ function buildHarness(
     readPolicyCalls,
     concurrentPeak,
     sentArgs,
+    blockTags,
   };
 }
 
@@ -239,6 +249,21 @@ describe("PolicyChainService", () => {
       const { service } = buildHarness({ knownPolicy: false });
 
       await expect(service.getPolicy(POLICY_ADDRESS)).resolves.toBeUndefined();
+    });
+
+    it("answers every field from one pinned block", async () => {
+      // The inconsistency this prevents: a policy is assembled from a dozen
+      // calls, so a settlement mined midway through would produce a response
+      // that never existed on chain — `status: active` beside
+      // `settlementType: expiry`.
+      const { service, blockTags } = buildHarness();
+
+      await service.getPolicy(POLICY_ADDRESS);
+
+      expect(blockTags.length).toBeGreaterThan(1);
+      for (const overrides of blockTags) {
+        expect(overrides).toEqual({ blockTag: PINNED_BLOCK });
+      }
     });
 
     it("normalizes the requested address before querying", async () => {

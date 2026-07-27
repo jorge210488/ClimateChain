@@ -29,10 +29,16 @@
     "test:e2e": "cross-env NODE_ENV=test jest --config test/jest-e2e.json --runInBand --testPathIgnorePatterns chain.e2e-spec.ts",
     "test:e2e:chain": "cross-env NODE_ENV=test CHAIN_E2E_RPC_URL=http://127.0.0.1:8545 jest --config test/jest-e2e.json --runInBand --testPathPattern chain.e2e-spec.ts",
     "load:check": "cross-env NODE_ENV=test ts-node -r tsconfig-paths/register scripts/load-check.ts",
-    "audit:check": "npm audit --audit-level=critical",
+    "audit:check": "npm audit --omit=dev --audit-level=high",
+    "audit:report": "npm audit --audit-level=high",
     "quality:check": "npm run lint && npm run format:check",
     "stage5:check": "npm run build && npm run quality:check && npm run audit:check && npm run test && npm run test:e2e && npm run start:check && npm run api:check",
     "stage6:check": "npm run stage5:check && npm run test:e2e:chain && npm run test:cov"
+  },
+  "overrides": {
+    "@nestjs/swagger": {
+      "js-yaml": "^5.2.2"
+    }
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

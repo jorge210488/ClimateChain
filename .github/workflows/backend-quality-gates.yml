@@ -100,13 +100,12 @@ jobs:
           path: ${{ runner.temp }}/hardhat-node.log
           if-no-files-found: ignore
 
-      # Reported, not blocking. Every current high advisory is transitive
-      # through NestJS 11's own dependencies (multer, js-yaml, form-data) with
-      # no fixed version available, so failing on `high` would leave the gate
-      # permanently red and train people to ignore it. `stage5:check` blocks on
-      # `critical`; this step keeps the rest visible so a newly fixable
-      # advisory gets noticed instead of buried.
-      - name: Dependency audit report (high severity, non-blocking)
+      # `stage5:check` blocks on high-severity advisories reachable from
+      # production dependencies, which is what actually ships. This step reports
+      # the remaining dev-tooling advisories without blocking: they reach the
+      # build toolchain, not the running service, and they are gated behind
+      # transitive ranges the project does not control.
+      - name: Dependency audit report (including dev, non-blocking)
         if: always()
         continue-on-error: true
-        run: npm audit --audit-level=high
+        run: npm run audit:report

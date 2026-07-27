@@ -193,6 +193,51 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       );
     });
 
+    it("creates only one policy for a repeated Idempotency-Key", async () => {
+      // The failure this prevents costs money: a client retrying after a
+      // timeout would otherwise create a second policy and draw the coverage
+      // reserve down twice.
+      const body = {
+        coverageEth: "0.03",
+        premiumEth: "0.001",
+        rainfallThresholdMm: 33,
+        durationDays: 7,
+        region: "Idempotent",
+      };
+      const send = () =>
+        request(app.getHttpServer())
+          .post("/policies")
+          .set("Authorization", bearer)
+          .set("Idempotency-Key", "chain-e2e-key-1")
+          .send(body);
+
+      const first = await send();
+      expect(first.status).toBe(201);
+
+      const replay = await send();
+      expect(replay.status).toBe(201);
+      // Same policy, same transaction: nothing new was submitted.
+      expect(replay.body.address).toBe(first.body.address);
+      expect(replay.body.transactionHash).toBe(first.body.transactionHash);
+    });
+
+    it("rejects a reused Idempotency-Key with a different body", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/policies")
+        .set("Authorization", bearer)
+        .set("Idempotency-Key", "chain-e2e-key-1")
+        .send({
+          coverageEth: "0.09",
+          premiumEth: "0.003",
+          rainfallThresholdMm: 44,
+          durationDays: 7,
+          region: "Different",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toContain("different request body");
+    });
+
     it("creates a policy through the legacy path when no region is given", async () => {
       const res = await request(app.getHttpServer())
         .post("/policies")

@@ -87,10 +87,10 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
     const provider = this.chain.getProvider();
     const expectedChainId = this.registry.getChainId();
 
-    const network = await this.chain.call("getNetwork", () =>
-      provider.getNetwork(),
-    );
-    const actualChainId = network.chainId.toString();
+    // Asked of the node directly. `provider.getNetwork()` would return the
+    // configured value without a round trip whenever `staticNetwork` is active,
+    // making this comparison config-against-config and true on any chain.
+    const actualChainId = await this.chain.getChainIdFromNode();
     if (actualChainId !== expectedChainId) {
       throw new Error(
         `The node reports chainId=${actualChainId} but the deployment manifest ` +

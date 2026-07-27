@@ -8,6 +8,8 @@ import {
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+/** A byte size the `bytes` package parses unambiguously, e.g. 512, 64kb, 1.5mb. */
+const BYTE_SIZE_PATTERN = /^\d+(\.\d+)?\s?(b|kb|mb|gb)?$/i;
 
 /**
  * Fail-fast environment validation schema.
@@ -46,7 +48,15 @@ export const envValidationSchema = Joi.object({
     }),
   // Defaults to enabled for local profiles and disabled for deployed ones.
   SWAGGER_ENABLED: Joi.boolean().empty("").optional(),
+  // Constrained to what `bytes` actually parses, because both failure modes are
+  // silent and opposite: an unparseable value ("lots") leaves body-parser with
+  // no limit at all, while a near-miss ("64kbb") parses as 64 *bytes* and
+  // rejects every request. Neither surfaces as a configuration error.
   MAX_REQUEST_BODY_SIZE: Joi.string()
+    .pattern(BYTE_SIZE_PATTERN)
+    .message(
+      "MAX_REQUEST_BODY_SIZE must be a byte size such as 512, 64kb, or 1.5mb",
+    )
     .empty("")
     .default(CONFIG_DEFAULTS.maxRequestBodySize),
 

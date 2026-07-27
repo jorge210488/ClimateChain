@@ -51,9 +51,24 @@ export class ChainHealthIndicator {
     }
 
     try {
-      const blockNumber = await this.chain.call("health.getBlockNumber", () =>
-        this.chain.getProvider().getBlockNumber(),
-      );
+      // Both are asked of the node. Reporting the chain id recorded at boot
+      // would keep claiming the right chain after RPC_URL was repointed at a
+      // different one — precisely the drift this probe should catch.
+      const [chainId, blockNumber] = await Promise.all([
+        this.chain.getChainIdFromNode(),
+        this.chain.call("health.getBlockNumber", () =>
+          this.chain.getProvider().getBlockNumber(),
+        ),
+      ]);
+
+      if (chainId !== verification.chainId) {
+        return indicator.down({
+          reason:
+            `The node now reports chainId=${chainId} but this service was ` +
+            `verified against chainId=${verification.chainId} at startup. The ` +
+            `RPC endpoint points at a different chain than the deployed contracts.`,
+        });
+      }
 
       if (this.config.isDeployedProfile) {
         return indicator.up({ chainId: verification.chainId });

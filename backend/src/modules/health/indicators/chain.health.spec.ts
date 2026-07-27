@@ -41,8 +41,15 @@ function buildIndicator(options: {
   verification?: ChainVerification;
   blockNumber?: number | Error;
   deployedProfile?: boolean;
+  /** Chain id the node currently reports, to simulate a repointed endpoint. */
+  nodeChainId?: string;
 }): ChainHealthIndicator {
-  const { enabled = true, blockNumber = 99, deployedProfile = false } = options;
+  const {
+    enabled = true,
+    blockNumber = 99,
+    deployedProfile = false,
+    nodeChainId = "31337",
+  } = options;
 
   // Read through `in`: an explicitly passed `undefined` is the case under test
   // ("verification never completed"), which a destructuring default would hide.
@@ -53,6 +60,7 @@ function buildIndicator(options: {
     isEnabled: () => enabled,
     hasSigner: () => true,
     getProvider: () => ({}),
+    getChainIdFromNode: async () => nodeChainId,
     call: async () => {
       if (blockNumber instanceof Error) {
         throw blockNumber;
@@ -105,6 +113,19 @@ describe("ChainHealthIndicator", () => {
 
     expect(result.chain.status).toBe("down");
     expect(String(result.chain.reason)).toContain("socket hang up");
+  });
+
+  it("reports down when the endpoint now serves a different chain", async () => {
+    // The drift this catches: RPC_URL repointed at another chain after a
+    // successful boot. Reporting the chain id recorded at startup would keep
+    // claiming the right chain while every read came from the wrong one.
+    const result = await buildIndicator({ nodeChainId: "11155111" }).isHealthy(
+      "chain",
+    );
+
+    expect(result.chain.status).toBe("down");
+    expect(String(result.chain.reason)).toContain("11155111");
+    expect(String(result.chain.reason)).toContain("31337");
   });
 
   it("reports up with live diagnostics on local profiles", async () => {

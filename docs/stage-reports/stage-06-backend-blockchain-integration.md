@@ -261,6 +261,101 @@ on here.
 Gate after this round: 203 unit, 33 no-chain e2e, 16 live-chain e2e, 252 in the
 combined coverage run at 97.08% statements and 89.96% branches.
 
+## External review round (findings applied)
+
+An external review raised nine findings. Six were code defects and are fixed;
+three are contract-level design decisions and are recorded rather than changed
+unilaterally, because each alters on-chain behavior and reopens Stage 03/04.
+
+### Fixed
+
+- **R1 (high): the chain-id check was vacuous.** The provider is created with
+  `staticNetwork` when `CHAIN_ID` is set, and `provider.getNetwork()` then
+  returns the configured value **without contacting the node**. Bootstrap was
+  therefore comparing configuration with itself — a check that passed against
+  any chain, including the wrong one. Verified independently: `getNetwork()`
+  resolves against an unreachable URL. Now asked with a raw `eth_chainId`
+  request, and readiness re-asks on every probe instead of replaying the value
+  recorded at boot, so a repointed `RPC_URL` is caught at runtime too.
+
+  The unit test that "covered" this stubbed `getNetwork()`, so it exercised a
+  path production could not take — it validated the mock, not the system. It now
+  stubs at the raw-RPC level, plus an assertion that the request is actually
+  issued.
+
+- **R2 (high): no idempotency on creation.** `POST /policies` now honors an
+  `Idempotency-Key` header: a repeat with the same key replays the original
+  result, and reusing a key with a different body is a 409. Keys are scoped per
+  actor and bound to a payload hash; failures are not recorded so a key stays
+  usable after an error. The store is in-process and non-durable, which is
+  stated in the API description and the README — it covers a client retry, not a
+  restart or a second instance. Durable idempotency needs Stage 11.
+
+- **R3 (medium): DTOs accepted integers JavaScript cannot represent.**
+  `Number("9007199254740993")` silently becomes `9007199254740992`, satisfies
+  `@IsInt()`, and is then rejected by ABI encoding as an overflow — surfacing as
+  a generic 500 for what is a bad input. Added `@IsSafeInteger()` to the
+  affected fields, and mapped `INVALID_ARGUMENT` / `NUMERIC_FAULT` to 400 as a
+  backstop.
+
+- **R4 (medium): reads were not a coherent snapshot.** A policy is assembled
+  from a dozen calls with no `blockTag`, so a settlement mined midway through
+  could yield `status: active` beside `settlementType: expiry` — a state that
+  never existed. Every read in a response now carries one pinned block.
+
+- **R5 (operations): the audit gate was too weak, and the tree was not clean.**
+  The gate blocked only on `critical` across all dependencies. An earlier
+  conclusion in this report — that no fixes were available — was wrong: `npm
+  audit` reported `fixAvailable` for all eleven advisories. Applying the
+  non-breaking fixes resolved seven roots (multer, form-data, fast-uri, ws,
+  body-parser, joi, ethers). The remainder are `brace-expansion` and `js-yaml`
+  reported once per package in the jest/eslint chain, which is why the raw count
+  appeared to grow from 8 to 28 — it counts affected packages, not advisories.
+
+  `js-yaml` was the only advisory reachable from **production** dependencies,
+  via `@nestjs/swagger@11.4.6` pinning `5.2.1` against a `5.0.0–5.2.1` range.
+  Forced to `5.2.2` with an override scoped to that path; a global override
+  would hand eslint and ts-jest a major version they were never written
+  against. The gate now blocks on **high severity in production dependencies**
+  (`--omit=dev --audit-level=high`), which reports zero, and dev-tooling
+  advisories are reported non-blocking.
+
+- **R6 (medium): `MAX_REQUEST_BODY_SIZE` accepted any string.** Both failure
+  modes are silent and opposite: an unparseable value leaves body-parser with no
+  limit at all, while a near-miss (`64kbb`) parses as 64 *bytes* and rejects
+  every request. Constrained to a byte-size pattern.
+
+- **R7 (documentation):** the runbook still said the backend does not verify
+  bytecode and that the check belonged to Stage 06, which Stage 06 implemented.
+  Corrected.
+
+### Recorded, not changed
+
+These three change on-chain behavior. Implementing any of them means editing a
+contract, redeploying, and re-running the Stage 04 gates — a scope decision that
+belongs to the product owner, not to a review pass.
+
+- **The insured is `msg.sender`.** Already the headline blocker in this report.
+  The reviewer independently reached the same conclusion: the policy and any
+  payout belong to the backend's signer, not to the client, and the choice is
+  between user-signed transactions and a contract that accepts a beneficiary
+  plus an authorization/collection flow.
+- **A deferred payout can lock coverage permanently.** `executePayout` parks the
+  amount in `pendingPayoutWei` when the transfer to the insured fails, and only
+  `claimPendingPayout` — insured-only — can release it. An insured that never
+  accepts ETH leaves the coverage stranded with no recovery path. Unreachable
+  today because the insured is always an externally owned account, but it goes
+  live the moment the insured model changes, so it is coupled to the decision
+  above. Options: an authorized alternate recipient, signature-based escrow, or
+  governed recovery after a timeout.
+- **The weather-request lifecycle is ambiguous for an asynchronous oracle.**
+  `activate()` opens and emits a request before the weather window can be open,
+  and retries reuse the request id while emitting a fresh timestamp. An external
+  adapter can therefore try to fulfill too early and revert, or fail to tell a
+  retry from a duplicate. Worth resolving before Stage 10 wires a real oracle:
+  either open requests only from `startTimestamp`, or model attempts with
+  unambiguous identifiers.
+
 ## Risks or pending items
 
 - **The contract assigns the insured from `msg.sender`.** A policy created

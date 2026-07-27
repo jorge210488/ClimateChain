@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Post,
   Query,
@@ -16,6 +17,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -27,6 +29,7 @@ import type { Request } from "express";
 
 import { Public } from "../../common/decorators/public.decorator";
 import { ApiErrorResponse } from "../../common/dto/api-error-response.dto";
+import { IdempotencyService } from "../../common/idempotency/idempotency.service";
 import { ParseEvmAddressPipe } from "../../common/pipes/parse-evm-address.pipe";
 import { CreatePolicyDto } from "./dto/create-policy.dto";
 import { ListPoliciesQueryDto } from "./dto/list-policies-query.dto";
@@ -37,7 +40,10 @@ import {
 } from "./dto/policy-response.dto";
 import { PoliciesService } from "./policies.service";
 
-type RequestWithId = Request & { id?: string | number };
+type RequestWithId = Request & {
+  id?: string | number;
+  user?: { userId?: string };
+};
 
 @ApiTags("policies")
 @Controller("policies")
@@ -48,7 +54,10 @@ type RequestWithId = Request & { id?: string | number };
 @UseGuards(ThrottlerGuard)
 @SkipThrottle({ [AUTH_THROTTLER]: true })
 export class PoliciesController {
-  constructor(private readonly policiesService: PoliciesService) {}
+  constructor(
+    private readonly policiesService: PoliciesService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
 
   /**
    * Authenticated: unlike the read paths, creation is a state-changing
@@ -67,10 +76,24 @@ export class PoliciesController {
       "provider's coverage reserve. The contract assigns the insured from the " +
       "transaction sender, so the returned `insured` is the backend's signer.",
   })
+  @ApiHeader({
+    name: "Idempotency-Key",
+    required: false,
+    description:
+      "Opt-in replay protection. A repeat with the same key returns the " +
+      "original result instead of creating a second policy. Reusing a key with " +
+      "a different body is rejected with 409. The store is in-process and " +
+      "non-durable: it covers a client retry, not a restart or a second instance.",
+  })
   @ApiCreatedResponse({ type: CreatePolicyResponseDto })
   @ApiBadRequestResponse({
     type: ApiErrorResponse,
     description: "Payload failed validation, or the contract rejected it.",
+  })
+  @ApiConflictResponse({
+    type: ApiErrorResponse,
+    description:
+      "The Idempotency-Key is in flight, or was already used with a different body.",
   })
   @ApiUnauthorizedResponse({
     type: ApiErrorResponse,
@@ -85,10 +108,18 @@ export class PoliciesController {
   create(
     @Body() dto: CreatePolicyDto,
     @Req() request: RequestWithId,
+    @Headers("idempotency-key") idempotencyKey?: string,
   ): Promise<CreatePolicyResponseDto> {
     // Correlates the API request with the submitted transaction in the logs.
     const requestId = request.id !== undefined ? String(request.id) : undefined;
-    return this.policiesService.create(dto, requestId);
+
+    // Scoped to the authenticated principal so one caller's key cannot collide
+    // with another's.
+    const actor = request.user?.userId ?? "anonymous";
+
+    return this.idempotency.execute(actor, idempotencyKey, dto, () =>
+      this.policiesService.create(dto, requestId),
+    );
   }
 
   // Reads stay public: they project state that is already world-readable on

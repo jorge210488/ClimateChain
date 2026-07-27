@@ -438,7 +438,25 @@
       "post": {
         "description": "Submits the creation transaction on chain and returns once it is mined. Requires an authenticated principal: creation consumes the provider's coverage reserve. The contract assigns the insured from the transaction sender, so the returned `insured` is the backend's signer.",
         "operationId": "PoliciesController_create",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opt-in replay protection. A repeat with the same key returns the original result instead of creating a second policy. Reusing a key with a different body is rejected with 409. The store is in-process and non-durable: it covers a client retry, not a restart or a second instance.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -472,6 +490,16 @@
           },
           "401": {
             "description": "Missing or invalid bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Idempotency-Key is in flight, or was already used with a different body.",
             "content": {
               "application/json": {
                 "schema": {

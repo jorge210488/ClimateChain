@@ -66,10 +66,14 @@ the reserve, so fund it before exercising policy creation in Stage 06.
 
 ## 3. Confirm the manifest points at live code
 
-The backend validates that the manifest is *well-formed*; it does not yet check
-that anything is deployed at those addresses (that check belongs to Stage 06).
-Until then, verify manually — an empty result means you are pointing at a node
-that never received the deploy:
+The backend does this itself at boot: it asks the node for its chain id, checks
+that bytecode exists at every configured address, and compares the deployed
+contract constants against the ones the API validates against. Any mismatch
+aborts startup with an actionable message rather than failing later on a user's
+request (see the failure table below).
+
+To check by hand — an empty result means you are pointing at a node that never
+received the deploy:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8545 -H 'content-type: application/json' \

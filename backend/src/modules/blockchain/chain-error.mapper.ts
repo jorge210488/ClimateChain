@@ -263,6 +263,23 @@ const SUBMISSION_FAILURES: Record<string, RevertMapping> = {
       "The submitted transaction was replaced before confirming; verify " +
       "on-chain state before resubmitting.",
   },
+
+  // Argument encoding failures. Reached only when a value survives DTO
+  // validation and is still not representable on chain — an out-of-range
+  // integer, for instance. That is a bad input, so it must not be reported as a
+  // server fault; the DTO rules are the primary defense and this is the backstop.
+  INVALID_ARGUMENT: {
+    status: "bad-request",
+    message:
+      "A request value cannot be encoded for the contract call; check that " +
+      "numeric fields are within range",
+  },
+  NUMERIC_FAULT: {
+    status: "bad-request",
+    message:
+      "A numeric request value is out of range for the contract call " +
+      "(overflow or underflow)",
+  },
 };
 
 function readErrorCode(error: unknown): string | undefined {

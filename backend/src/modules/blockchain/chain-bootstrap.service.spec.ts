@@ -15,6 +15,7 @@ interface Harness {
   service: ChainBootstrapService;
   getCode: jest.Mock;
   constants: Record<string, jest.Mock>;
+  send: jest.Mock;
 }
 
 /**
@@ -64,8 +65,25 @@ function buildHarness(
     async (address: string) => codeByAddress[address] ?? "0x",
   );
 
+  /**
+   * Answers `eth_chainId` the way a node does, in hex.
+   *
+   * Stubbed at the raw-RPC level on purpose. An earlier version of this harness
+   * stubbed `provider.getNetwork()`, which made the chain-id test pass while the
+   * production path could not fail: with `staticNetwork` active, `getNetwork()`
+   * returns the configured value without contacting the node, so the check was
+   * comparing configuration with itself. The test validated the mock, not the
+   * system.
+   */
+  const send = jest.fn(async (method: string) => {
+    if (method === "eth_chainId") {
+      return `0x${nodeChainId.toString(16)}`;
+    }
+    throw new Error(`unexpected RPC method ${method}`);
+  });
+
   const provider = {
-    getNetwork: jest.fn(async () => ({ chainId: nodeChainId })),
+    send,
     getBlockNumber: jest.fn(async () => 42),
     getBalance: jest.fn(async () => signerBalance),
     getCode,
@@ -105,6 +123,9 @@ function buildHarness(
     getProvider: () => provider,
     getSignerAddress: () => signerAddress,
     call: <T>(_label: string, operation: () => Promise<T>) => operation(),
+    // Mirrors the real implementation: a raw request, parsed from hex.
+    getChainIdFromNode: async () =>
+      BigInt((await send("eth_chainId")) as string).toString(),
   } as unknown as ChainProviderService;
 
   const contracts = {
@@ -125,6 +146,7 @@ function buildHarness(
     service: new ChainBootstrapService(config, chain, contracts, registry),
     getCode,
     constants,
+    send,
   };
 }
 
@@ -209,6 +231,18 @@ describe("ChainBootstrapService", () => {
         /chainId=11155111.*manifest declares chainId=31337/s,
       );
       expect(service.getVerification()).toBeUndefined();
+    });
+
+    it("asks the node for the chain id rather than trusting configuration", async () => {
+      // The regression this locks down: reading the chain id through
+      // `provider.getNetwork()` returns the configured value without a round
+      // trip whenever `staticNetwork` is active, so the comparison above would
+      // pass against any chain. Only a real request can detect the mismatch.
+      const { service, send } = buildHarness();
+
+      await service.onApplicationBootstrap();
+
+      expect(send).toHaveBeenCalledWith("eth_chainId");
     });
 
     it("aborts when no contract is deployed at the provider address", async () => {

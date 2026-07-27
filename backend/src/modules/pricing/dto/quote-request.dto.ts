@@ -9,6 +9,7 @@ import {
   Min,
 } from "class-validator";
 
+import { IsSafeInteger } from "../../../common/validation/is-safe-integer.validator";
 import { MaxByteLength } from "../../../common/validation/max-byte-length.validator";
 import {
   ethAmountMessage,
@@ -62,6 +63,7 @@ export class QuoteRequestDto {
   })
   @Type(() => Number)
   @IsInt()
+  @IsSafeInteger()
   @Min(1)
   rainfallThresholdMm!: number;
 }
