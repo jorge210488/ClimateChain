@@ -161,7 +161,12 @@ export class IdempotencyService {
             `retry cannot submit again.`,
         );
       } else {
-        // Nothing was handed to the chain, so the same key must stay usable.
+        // Nothing was signed, so nothing can be in flight and the same key must
+        // stay usable. This holds only because the operation reports submission
+        // from the moment a transaction is *signed*, not when a node confirms
+        // receipt: a hash learned from the response would leave a lost reply
+        // indistinguishable from a clean failure, and releasing the key there
+        // would let the retry duplicate the effect.
         this.entries.delete(scopedKey);
       }
       throw error;

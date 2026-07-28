@@ -28,6 +28,8 @@
     "reserve:fund:localhost": "hardhat run scripts/fund-coverage-reserve.ts --network localhost",
     "reserve:fund:sepolia": "hardhat run scripts/fund-coverage-reserve.ts --network sepolia",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "oracle:deploy:sepolia": "hardhat run scripts/deploy-mock-oracle.ts --network sepolia",
+    "oracle:link:sepolia": "hardhat run scripts/link-oracle-registry.ts --network sepolia",
     "stress:policies:local": "hardhat run scripts/stress-create-policies.ts --network hardhat",
     "stress:policies:localhost": "hardhat run scripts/stress-create-policies.ts --network localhost",
     "stress:policies:local:smoke": "cross-env STRESS_POLICIES_COUNT=6 STRESS_BURST_SIZE=3 STRESS_INSURED_ACCOUNTS=3 hardhat run scripts/stress-create-policies.ts --network hardhat",

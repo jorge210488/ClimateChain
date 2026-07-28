@@ -17,6 +17,8 @@ const REGION_CODE =
   "0x56616c656e636961000000000000000000000000000000000000000000000000";
 /** Block the harness pretends is current, so pinning is observable. */
 const PINNED_BLOCK = 4242;
+const PROVIDER_ADDRESS = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
+const SUBMITTED_TX_HASH = `0x${"ab".repeat(32)}`;
 
 /** Values one policy contract returns, in the order the service reads them. */
 function policyStub(): Record<string, () => Promise<unknown>> {
@@ -89,6 +91,7 @@ function buildHarness(
     pageError?: unknown;
     chainTimestamp?: number;
     blockError?: boolean;
+    submitError?: unknown;
   } = {},
 ): Harness {
   const {
@@ -101,6 +104,7 @@ function buildHarness(
     pageError,
     chainTimestamp = Math.floor(Date.now() / 1000),
     blockError = false,
+    submitError,
   } = options;
 
   const readPolicyCalls: string[] = [];
@@ -108,7 +112,10 @@ function buildHarness(
   const concurrentPeak = { value: 0 };
   let inFlight = 0;
 
-  /** Stands in for a contract write method plus its staticCall dry run. */
+  /**
+   * Stands in for a contract write method, its staticCall dry run, and the
+   * populate step the service now uses so the hash exists before broadcast.
+   */
   const writeMethod = Object.assign(
     async (...args: unknown[]) => {
       sentArgs.push(args);
@@ -117,7 +124,13 @@ function buildHarness(
         wait: async () => receiptStub(),
       };
     },
-    { staticCall: async () => POLICY_ADDRESS },
+    {
+      staticCall: async () => POLICY_ADDRESS,
+      populateTransaction: async (...args: unknown[]) => {
+        sentArgs.push(args);
+        return { to: PROVIDER_ADDRESS, data: "0x", value: args.at(-1) };
+      },
+    },
   );
 
   const blockTags: unknown[] = [];
@@ -171,6 +184,19 @@ function buildHarness(
     getProvider: () => ({}),
     call: <T>(_label: string, operation: () => Promise<T>) => operation(),
     submitTransaction: <T>(send: () => Promise<T>) => send(),
+    // Mirrors the real order: the request is built, the hash is reported, and
+    // only then does anything resembling a broadcast happen.
+    submitSignedTransaction: async (
+      populate: () => Promise<unknown>,
+      onSigned: (signed: { transactionHash: string; nonce: number }) => void,
+    ) => {
+      await populate();
+      onSigned({ transactionHash: SUBMITTED_TX_HASH, nonce: 1 });
+      if (submitError) {
+        throw submitError;
+      }
+      return { hash: SUBMITTED_TX_HASH, wait: async () => receiptStub() };
+    },
   } as unknown as ChainProviderService;
 
   const config = {
@@ -419,6 +445,39 @@ describe("PolicyChainService", () => {
 
       const requestedStart = Number(sentArgs.at(-1)?.[4]);
       expect(requestedStart).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    });
+  });
+
+  describe("submission reporting", () => {
+    it("reports the submission even when the broadcast fails", async () => {
+      // The composition that closes the duplicate hole: the node may already
+      // hold this transaction, so the caller has to hear about it before the
+      // failure propagates. Idempotency keys the retained record off exactly
+      // this callback — if it never fires, the key is released and the retry
+      // creates a second policy that locks the reserve again.
+      const { service } = buildHarness({
+        submitError: Object.assign(new Error("socket hang up"), {
+          code: "NETWORK_ERROR",
+        }),
+      });
+      const handles: string[] = [];
+
+      await expect(
+        service.createPolicy(
+          {
+            insured: SIGNER,
+            coverageEth: "1.0",
+            premiumEth: "0.05",
+            rainfallThresholdMm: 50,
+            durationDays: 30,
+            region: "Valencia",
+          },
+          "req-1",
+          (handle) => handles.push(handle.transactionHash),
+        ),
+      ).rejects.toBeDefined();
+
+      expect(handles).toEqual([SUBMITTED_TX_HASH]);
     });
   });
 

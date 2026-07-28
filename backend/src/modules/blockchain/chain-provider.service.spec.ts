@@ -1,8 +1,12 @@
 import { ServiceUnavailableException } from "@nestjs/common";
+import { Transaction, TransactionRequest } from "ethers";
 
 import { AppConfigService } from "../../config/app-config.service";
 import { BlockchainConfig } from "../../config/config.types";
-import { ChainProviderService } from "./chain-provider.service";
+import {
+  ChainProviderService,
+  SignedSubmission,
+} from "./chain-provider.service";
 
 const HARDHAT_ACCOUNT_0 =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -220,6 +224,163 @@ describe("ChainProviderService", () => {
 
       await expect(first).rejects.toThrow("first failed");
       await expect(second).rejects.toThrow("second failed");
+      service.onModuleDestroy();
+    });
+  });
+
+  describe("submitSignedTransaction", () => {
+    /**
+     * Fully specified so signing needs no network round-trip: every field
+     * `populateTransaction` would otherwise fetch is already present.
+     */
+    function buildRequest(nonce = 7): TransactionRequest {
+      return {
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0x",
+        value: 0n,
+        nonce,
+        gasLimit: 21_000n,
+        maxFeePerGas: 1_000_000_000n,
+        maxPriorityFeePerGas: 1_000_000_000n,
+        chainId: 31337,
+        type: 2,
+      };
+    }
+
+    function buildSignedService(): {
+      service: ChainProviderService;
+      broadcast: jest.SpyInstance;
+    } {
+      const service = new ChainProviderService(
+        buildConfig({ privateKey: HARDHAT_ACCOUNT_0 }),
+      );
+      const broadcast = jest.spyOn(
+        service.getProvider(),
+        "broadcastTransaction",
+      );
+      return { service, broadcast };
+    }
+
+    it("knows the hash before the transaction reaches the network", async () => {
+      // The whole point of signing separately. If the hash were learned from
+      // the node's reply, a reply lost in transport would be indistinguishable
+      // from a transaction that was never accepted.
+      const { service, broadcast } = buildSignedService();
+      const order: string[] = [];
+      let broadcastRaw = "";
+
+      broadcast.mockImplementation((raw: string) => {
+        order.push("broadcast");
+        broadcastRaw = raw;
+        return Promise.resolve({ hash: Transaction.from(raw).hash });
+      });
+
+      let reported: SignedSubmission | undefined;
+      await service.submitSignedTransaction(
+        () => Promise.resolve(buildRequest()),
+        (signed) => {
+          order.push("signed");
+          reported = signed;
+        },
+      );
+
+      expect(order).toEqual(["signed", "broadcast"]);
+      // Not merely "a hash was reported": the reported value must be the hash
+      // of the exact bytes that were broadcast.
+      expect(reported?.transactionHash).toBe(
+        Transaction.from(broadcastRaw).hash,
+      );
+      expect(reported?.nonce).toBe(7);
+      service.onModuleDestroy();
+    });
+
+    it("still reports the hash when the broadcast reply is lost", async () => {
+      // The reported defect: the node may have accepted a transaction whose
+      // response never came back. Callers must be able to tell that apart from
+      // a clean failure, which they can only do with a hash in hand.
+      const { service, broadcast } = buildSignedService();
+      broadcast.mockRejectedValue(
+        Object.assign(new Error("socket hang up"), { code: "NETWORK_ERROR" }),
+      );
+
+      let reported: SignedSubmission | undefined;
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.resolve(buildRequest()),
+          (signed) => {
+            reported = signed;
+          },
+        ),
+      ).rejects.toThrow("socket hang up");
+
+      expect(reported?.transactionHash).toMatch(/^0x[0-9a-f]{64}$/);
+      service.onModuleDestroy();
+    });
+
+    it("does not rewind the nonce after a failed broadcast", async () => {
+      // Rewinding would hand the next send a nonce the node may already be
+      // holding, silently replacing a policy that is on its way.
+      const { service, broadcast } = buildSignedService();
+      broadcast.mockRejectedValue(new Error("timeout"));
+      const reset = jest.spyOn(service, "resetNonce");
+
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.resolve(buildRequest()),
+          () => undefined,
+        ),
+      ).rejects.toThrow("timeout");
+
+      expect(reset).not.toHaveBeenCalled();
+      service.onModuleDestroy();
+    });
+
+    it("rewinds the nonce when nothing was ever signed", async () => {
+      // The opposite case: a reserved nonce that was never used blocks every
+      // later send from the account.
+      const { service, broadcast } = buildSignedService();
+      const reset = jest.spyOn(service, "resetNonce");
+      const onSigned = jest.fn();
+
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.reject(new Error("could not build the call")),
+          onSigned,
+        ),
+      ).rejects.toThrow("could not build the call");
+
+      expect(reset).toHaveBeenCalledTimes(1);
+      expect(onSigned).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+      service.onModuleDestroy();
+    });
+
+    it("advances the nonce across consecutive submissions", async () => {
+      // Two sends must not reuse one nonce; the manager increments only once
+      // the transaction is signed and committed to.
+      const { service, broadcast } = buildSignedService();
+      const nonces: number[] = [];
+      broadcast.mockImplementation((raw: string) =>
+        Promise.resolve({ hash: Transaction.from(raw).hash }),
+      );
+
+      const populate = async (): Promise<TransactionRequest> => {
+        const request = buildRequest();
+        delete request.nonce;
+        return request;
+      };
+      const record = (signed: SignedSubmission): void => {
+        nonces.push(signed.nonce);
+      };
+
+      jest
+        .spyOn(service.getSigner(), "getNonce")
+        .mockImplementation(() => Promise.resolve(nonces.length === 0 ? 4 : 5));
+
+      await service.submitSignedTransaction(populate, record);
+      await service.submitSignedTransaction(populate, record);
+
+      expect(nonces).toEqual([4, 5]);
       service.onModuleDestroy();
     });
   });

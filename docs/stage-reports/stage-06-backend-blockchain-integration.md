@@ -457,6 +457,44 @@ Gate after both changes: contracts 117 tests with Slither clean (47 contracts,
 statements and 90.09% branches. The size baseline was re-recorded for the
 intentional 880-byte growth.
 
+### The ambiguous send
+
+A later review pass found the last hole in the idempotency state machine, and it
+was mine: the earlier fix closed the window *after* `tx.hash` was known and left
+open the one during the send itself.
+
+`sendTransaction` signs and broadcasts in one step, so the hash arrives with the
+node's reply. If that reply is lost in transport — a socket hang-up, a proxy
+timeout — the caller sees a plain failure for a transaction the node may already
+have accepted. `submitTransaction` then reset the nonce, `markSubmitted` never
+fired, and the idempotency record was deleted on the grounds that "nothing was
+handed to the chain". That premise was false, and the retry created a second
+policy that locked the reserve again.
+
+`submitSignedTransaction` splits the step. The transaction is signed locally,
+which determines its hash before anything touches the network, and `onSigned`
+fires first. A failure after that point is *ambiguous rather than clean*, and it
+carries a concrete hash to reconcile against.
+
+Two consequences follow from the same reasoning:
+
+- The nonce is **not** rewound when a broadcast fails. Rewinding would hand the
+  next send a nonce the node may be holding, replacing a policy already on its
+  way. It is rewound only when nothing was signed.
+- An idempotency key is burned by an ambiguous send even if the node in fact
+  rejected the transaction. That is the safe direction, and the `staticCall` dry
+  run already catches the deterministic rejections beforehand.
+
+The remaining findings in that pass addressed files that do not exist in this
+repository — a Flask service, a TypeORM indexer, React views, a paywall
+contract — and one flagged the in-process idempotency and nonce scope that this
+report already documents below as a Stage 11/12 prerequisite.
+
+Gate after the change: backend 241 unit, 34 no-chain e2e, 19 live-chain e2e, 294
+in the combined coverage run at 97.03% statements and 90.12% branches. The
+live-chain run is what matters here, since the split path exercises
+`populateTransaction`, gas estimation, and EIP-1559 fields that a stub cannot.
+
 ### Recorded, not changed
 
 This one changes on-chain behavior. Implementing it means editing a contract,

@@ -4,10 +4,26 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { JsonRpcProvider, Network, NonceManager, Wallet } from "ethers";
+import {
+  JsonRpcProvider,
+  Network,
+  NonceManager,
+  Transaction,
+  TransactionRequest,
+  TransactionResponse,
+  Wallet,
+} from "ethers";
 
 import { AppConfigService } from "../../config/app-config.service";
 import { withRpcRetry } from "./chain-retry.util";
+
+/** A transaction that has been signed but not necessarily broadcast. */
+export interface SignedSubmission {
+  /** Hash derived from the signed payload, valid before it reaches any node. */
+  transactionHash: string;
+  /** Nonce reserved for it on the signing account. */
+  nonce: number;
+}
 
 /**
  * Owns the JSON-RPC connection and the optional signer.
@@ -304,6 +320,97 @@ export class ChainProviderService implements OnModuleDestroy {
       }
     };
 
+    return this.enqueue(attempt);
+  }
+
+  /**
+   * Submits a transaction whose hash is known *before* it is broadcast.
+   *
+   * `submitTransaction` leaves one window open. `sendTransaction` signs and
+   * broadcasts in a single step, so the hash arrives with the node's response —
+   * and if that response is lost in transport, the caller sees a plain failure
+   * for a transaction the node may already have accepted. Treating that as "no
+   * effect" is what lets a retry create a second policy and lock the reserve
+   * twice.
+   *
+   * Splitting the step removes the ambiguity: the transaction is signed
+   * locally, which determines its hash, and `onSigned` fires before anything
+   * touches the network. From that point a failure is *ambiguous rather than
+   * clean*, and the caller can say so with a concrete hash to reconcile
+   * against, instead of guessing.
+   *
+   * The nonce is reserved on the same path. It is only released back — via
+   * `resetNonce` — when the transaction was never handed over, because a
+   * reserved-but-unused nonce blocks every later send from this account.
+   *
+   * @param populate Builds the unsigned request (typically from a contract
+   *   method's `populateTransaction`).
+   * @param onSigned Receives the hash and nonce once signed, before broadcast.
+   */
+  async submitSignedTransaction(
+    populate: () => Promise<TransactionRequest>,
+    onSigned: (signed: SignedSubmission) => void,
+  ): Promise<TransactionResponse> {
+    const attempt = async (): Promise<TransactionResponse> => {
+      const signer = this.getSigner();
+      const wallet = this.wallet;
+      if (!wallet) {
+        throw new ServiceUnavailableException(
+          "No signer is configured; set PRIVATE_KEY to enable on-chain writes",
+        );
+      }
+
+      let raw: string;
+      let nonce: number;
+      try {
+        const request = await populate();
+        // Populating through the NonceManager is what assigns the managed
+        // nonce; signing goes to the wallet underneath, which is the only one
+        // that holds the key.
+        const prepared = await signer.populateTransaction(request);
+        raw = await wallet.signTransaction(prepared);
+        nonce = Number(prepared.nonce);
+      } catch (error) {
+        // Nothing was signed, so nothing can be in flight.
+        this.resetNonce();
+        throw error;
+      }
+
+      const transactionHash = Transaction.from(raw).hash;
+      if (!transactionHash) {
+        // Unreachable for a signed transaction, but the type is nullable and a
+        // silent undefined here would defeat the whole point of this method.
+        this.resetNonce();
+        throw new ServiceUnavailableException(
+          "Could not derive a transaction hash before broadcasting",
+        );
+      }
+
+      // The point of no return, moved to where it belongs: from here on the
+      // transaction exists and may be mined, whatever the network reports.
+      onSigned({ transactionHash, nonce });
+      signer.increment();
+
+      try {
+        return await this.getProvider().broadcastTransaction(raw);
+      } catch (error) {
+        // Deliberately *not* resetting the nonce: the node may hold this
+        // transaction. Rewinding would make the next send reuse a live nonce
+        // and replace a policy that is already on its way.
+        this.logger.error(
+          `Broadcast failed for ${transactionHash} (nonce ${nonce}); it may ` +
+            `still be mined. Reconcile against the hash before resubmitting: ` +
+            `${describe(error)}`,
+        );
+        throw error;
+      }
+    };
+
+    return this.enqueue(attempt);
+  }
+
+  /** Runs one submission at a time, in call order. */
+  private enqueue<T>(attempt: () => Promise<T>): Promise<T> {
     const run = this.submissionQueue.then(attempt, attempt);
     // Swallow rejection on the chain itself so one failed submission does not
     // reject every queued follow-up; the caller still receives its own error.

@@ -8,6 +8,7 @@ import {
   Contract,
   ContractTransactionReceipt,
   Interface,
+  TransactionRequest,
   TransactionResponse,
 } from "ethers";
 
@@ -427,22 +428,27 @@ export class PolicyChainService {
       // an ambiguous timeout could submit the same policy twice, and a
       // duplicate policy spends the reserve again. Reads are safe to retry;
       // writes are not.
-      const tx: TransactionResponse = await this.chain.submitTransaction(() =>
-        (
-          provider[args.method] as (
-            ...a: unknown[]
-          ) => Promise<TransactionResponse>
-        )(...args.params, { value: premiumWei }),
+      //
+      // Signing happens before broadcasting so the hash is known first. Were it
+      // learned from the node's response, a response lost in transport would
+      // look like a clean failure for a transaction already accepted — and the
+      // retry that followed would create a second policy.
+      const tx: TransactionResponse = await this.chain.submitSignedTransaction(
+        () =>
+          (
+            provider[args.method].populateTransaction as (
+              ...a: unknown[]
+            ) => Promise<TransactionRequest>
+          )(...args.params, { value: premiumWei }),
+        // The point of no return. Everything after this may fail without
+        // meaning the policy does not exist.
+        (signed) =>
+          onSubmitted?.({
+            transactionHash: signed.transactionHash,
+            chainId: this.config.blockchain.chainId?.toString(),
+            nonce: signed.nonce,
+          }),
       );
-
-      // The point of no return: the node has accepted this transaction, so it
-      // may be mined even if everything after here fails. Reporting it before
-      // waiting is what lets a retry reconcile instead of submitting again.
-      onSubmitted?.({
-        transactionHash: tx.hash,
-        chainId: this.config.blockchain.chainId?.toString(),
-        nonce: tx.nonce,
-      });
 
       this.logger.log(
         `Policy creation submitted: txHash=${tx.hash} ` +
