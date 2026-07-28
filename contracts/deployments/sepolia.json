@@ -1,11 +1,15 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-28T02:19:28.037Z",
+  "generatedAt": "2026-07-28T23:16:51.296Z",
   "network": "sepolia",
   "chainId": "11155111",
   "deployer": "0x6e612A4ff0dAa0e42423c89303dcb6D8e0378187",
   "contracts": {
-    "weatherOracle": "0x159FC1f21074ef82901335500b574a23a50bfb07",
-    "insuranceProvider": "0xbfc559E62Fb2AE4E0B430a3aDdc3fD7f3AB166ac"
+    "weatherOracle": "0x1287eE5b5491520f68d12b756241d741A66aA8EA",
+    "insuranceProvider": "0x50d7df23F94530c27E5273C2621E04d107eE7BF1"
+  },
+  "runtimeBytecodeHashes": {
+    "weatherOracle": "0x1d010f343b1e4d3a95c432e1ce1563f6b17de7ce06148b43a8d173f661b0ec8d",
+    "insuranceProvider": "0xba0a7e66396c6703a7218a20a67b518db3b3f7957996cf6b7b513408132bb335"
   }
 }

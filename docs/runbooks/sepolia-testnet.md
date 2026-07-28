@@ -26,9 +26,16 @@ Measured, not estimated:
 | Deploy `InsuranceProvider` + link oracle + fund reserve | 0.0040 ETH |
 | One policy through creation, trigger, and payout | ~0.005 ETH |
 
-**About 0.15 ETH is comfortable**; 0.05 is enough for one full pass with a
-small reserve. The Google Cloud faucet gives 0.05/day, and pk910's proof-of-work
-faucet has no prerequisites.
+Gas is the small part. **About 0.15 ETH covers a full pass** with a small
+reserve; what you actually size for is the reserve itself, since it must exceed
+the coverage of every live policy at once. The Google Cloud faucet gives
+0.05/day, and pk910's proof-of-work faucet has no prerequisites.
+
+**Do not try to run the chain e2e suite here.** Beyond needing roughly 1 ETH of
+reserve, it fast-forwards time with `evm_increaseTime` and `evm_mine` to reach
+expiry — Hardhat-only RPC methods that no public network implements. Lifecycle
+coverage belongs on the local node; this network is for the behavior only it
+exhibits.
 
 ## 1. Credentials
 
@@ -85,25 +92,35 @@ afterwards. Skipping it leaves the oracle accepting pushes for any address:
 The provider's address is written to `contracts/deployments/sepolia.json`. There
 is **nothing to copy into any `.env`** — the backend reads that manifest.
 
-Deployed 2026-07-28:
+Current deployment:
 
 | Contract | Address |
 | --- | --- |
-| `InsuranceProvider` | `0xbfc559E62Fb2AE4E0B430a3aDdc3fD7f3AB166ac` |
-| `MockWeatherOracle` | `0x159FC1f21074ef82901335500b574a23a50bfb07` |
+| `InsuranceProvider` | `0x50d7df23F94530c27E5273C2621E04d107eE7BF1` |
+| `MockWeatherOracle` | `0x1287eE5b5491520f68d12b756241d741A66aA8EA` |
 
-> **This deployment is superseded and the backend will refuse to start against
-> it.** The contracts gained `MAX_POLICY_START_LEAD_TIME_SECONDS` and a
-> corrected `PayoutClaimed` signature afterwards. Boot compares mirrored
-> constants against the deployed contract, and reading one the deployed
-> provider does not have fails verification — which is the intended behavior,
-> since the API would otherwise validate against rules the chain does not
-> enforce.
->
-> Redeploy to use this network again. Withdraw the old provider's reserve first
-> (`withdrawCoverageReserve`), or the 0.02 ETH still in it is stranded. The
-> measurements recorded below remain valid: they describe network behavior, not
-> this particular bytecode.
+### Redeploying, and why the oracle goes too
+
+A contract change supersedes the whole deployment. Boot reads mirrored constants
+off the deployed provider, so a provider without `MAX_POLICY_START_LEAD_TIME_SECONDS`
+fails verification rather than serving traffic against rules the chain does not
+enforce.
+
+The oracle is less obvious. `MockWeatherOracle`'s own logic did not change, only
+an event in an interface it imports — yet its deployed bytecode did change,
+because Solidity appends a CBOR metadata hash covering every source file in the
+compilation unit. Reusing it would have left an address whose hash no longer
+matches the artifact. **Compare before assuming**: hash `getCode(address)` and
+the artifact's `deployedBytecode` and look, rather than reasoning about whether
+a change "should" matter.
+
+Withdraw the superseded provider's balances before abandoning it —
+`withdrawCoverageReserve` and `withdrawPremiumBalance`, both owner-only. The
+funds are not lost otherwise, but only while someone still knows the address.
+
+A superseded deployment is not deleted: the manifest records what was deployed,
+so the old addresses keep verifying against their own bytecode. It is the
+mirrored constants that make it unusable, which is the point.
 
 ## 4. Point the backend at it
 
@@ -139,14 +156,18 @@ invites confusion with Ethereum Sepolia (11155111).
 
 One policy, end to end, through the API and then the contracts:
 
-| Step | Wall clock |
-| --- | --- |
-| `POST /policies` (mined and confirmed) | 24.0 s |
-| Idempotent replay of the same key | 24 ms |
-| `GET /policies/:address` | 661 ms |
-| Weather request | 4.9 s |
-| Oracle publishes rainfall | 9.9 s |
-| Payout execution | 11.1 s |
+| Step | First pass | After redeploy |
+| --- | --- | --- |
+| `POST /policies` (mined and confirmed) | 24.0 s | 19.8 s |
+| Idempotent replay of the same key | 24 ms | 7 ms |
+| `GET /policies/:address` | 661 ms | 580 ms |
+| Weather request | 4.9 s | 9.4 s |
+| Oracle publishes rainfall | 9.9 s | 12.0 s |
+| Payout execution | 11.1 s | 9.1 s |
+
+Two passes are shown because the spread is the point: the same operations vary
+by seconds between runs on a public network. Treat these as an order of
+magnitude, never as a budget.
 
 Notes worth keeping:
 
@@ -169,4 +190,15 @@ status=paid_out  settlementType=payout  latestRainfallMm=120
 conditionMet=true  pendingPayoutWei=0
 ```
 
-Coverage of 0.01 ETH reached the insured and the reserve went from 0.03 to 0.02.
+Coverage of 0.01 ETH reached the insured and the reserve went from 1.0 to 0.99.
+
+The second pass also confirmed, against the live chain rather than a fixture:
+
+- A `requestedStartTimestamp` beyond `MAX_POLICY_START_LEAD_TIME_SECONDS` is
+  refused with a 400 before the request reaches the chain at all.
+- `PayoutClaimed` on the deployed policy reads
+  `[insured, recipient, amountWei, claimedAt]`, so an indexer can tell the
+  beneficiary from whoever was nominated to receive.
+- Boot verification compares the manifest's runtime bytecode hashes against
+  `getCode` and passes, which is what makes the check meaningful rather than a
+  test-only path.

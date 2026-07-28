@@ -650,10 +650,11 @@ Slither reports no findings across 47 contracts and 55 detectors.
 `InsurancePolicy` is 5,755 bytes and `InsuranceProvider` 16,311, both far inside
 the 24 KB limit.
 
-**The Sepolia deployment predates the contract changes in this round, and the
-backend now refuses to start against it.** Boot reads
-`MAX_POLICY_START_LEAD_TIME_SECONDS` off the deployed provider, which does not
-have it. That is the intended outcome — the API would otherwise validate against
-a rule the chain does not enforce — but it means the network needs a redeploy
-before use; see [the Sepolia runbook](../runbooks/sepolia-testnet.md). The
-timings measured there still hold: they describe the network, not the bytecode.
+Sepolia was redeployed onto this bytecode and re-verified end to end; addresses
+and measurements are in [the Sepolia runbook](../runbooks/sepolia-testnet.md).
+The redeploy confirmed the new boot check works against a live chain, and turned
+up something worth recording: `MockWeatherOracle`'s logic was untouched, yet its
+deployed bytecode changed anyway, because Solidity's trailing metadata hash
+covers every source file in the compilation unit — including the interface whose
+event was corrected. Reasoning about whether a change "should" affect bytecode is
+not a substitute for hashing both and comparing.
