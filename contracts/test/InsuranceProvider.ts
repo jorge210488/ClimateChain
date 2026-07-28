@@ -396,6 +396,60 @@ describe("InsuranceProvider", function () {
     ).to.be.revertedWithCustomError(provider, "InvalidRequestedStartTimestamp");
   });
 
+  it("refuses to lock the reserve for a policy starting beyond the cap", async function () {
+    // Coverage is reserved at creation and released only at settlement, so an
+    // unbounded start let anyone immobilize the whole reserve for as long as
+    // they liked while paying the 1% minimum premium. Creation is permissionless
+    // on the contract, so the bound is what makes the griefing uneconomic.
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const currentTimestamp = await time.latest();
+    const maxLeadSeconds = await provider.MAX_POLICY_START_LEAD_TIME_SECONDS();
+    const tooFarStartTimestamp = BigInt(currentTimestamp) + maxLeadSeconds + 60n;
+    const reserveBefore = await provider.coverageReserveWei();
+
+    await expect(
+      provider
+        .connect(insured)
+        .createPolicyWithMetadata(
+          ethers.parseEther("1.0"),
+          20,
+          10,
+          DEFAULT_REGION_CODE,
+          tooFarStartTimestamp,
+          insured.address,
+          { value: ethers.parseEther("0.10") },
+        ),
+    ).to.be.revertedWithCustomError(provider, "RequestedStartTooFarInFuture");
+
+    // The reserve must be untouched: rejection happens before it is drawn down.
+    expect(await provider.coverageReserveWei()).to.equal(reserveBefore);
+  });
+
+  it("accepts a policy starting exactly at the cap", async function () {
+    const { insured, provider } = await loadFixture(deployFixture);
+
+    const currentTimestamp = await time.latest();
+    const maxLeadSeconds = await provider.MAX_POLICY_START_LEAD_TIME_SECONDS();
+    // One second before the boundary the next block's timestamp still lands on
+    // or below it, so this is the last accepted value rather than a near miss.
+    const boundaryStartTimestamp = BigInt(currentTimestamp) + maxLeadSeconds;
+
+    await expect(
+      provider
+        .connect(insured)
+        .createPolicyWithMetadata(
+          ethers.parseEther("1.0"),
+          20,
+          10,
+          DEFAULT_REGION_CODE,
+          boundaryStartTimestamp,
+          insured.address,
+          { value: ethers.parseEther("0.10") },
+        ),
+    ).to.not.be.reverted;
+  });
+
   it("returns provider-side financial snapshot for known policy", async function () {
     const { owner, insured, oracle, provider } = await loadFixture(deployFixture);
 
@@ -1753,6 +1807,21 @@ describe("InsuranceProvider", function () {
       expect(await policy.pendingPayoutSince()).to.equal(0);
     });
 
+    it("names both the insured and the recipient when they differ", async function () {
+      // An indexer reads the first address as the policy's insured. Emitting
+      // only the nominee would record whoever happened to receive the money as
+      // the beneficiary of the policy, which they never were.
+      const { policy, holder, coverage } = await deferredPayoutFixture();
+      const [, , recipient] = await ethers.getSigners();
+      const insured = await policy.insured();
+
+      await expect(holder.claimPendingPayoutTo(await policy.getAddress(), recipient.address))
+        .to.emit(policy, "PayoutClaimed")
+        .withArgs(insured, recipient.address, coverage, anyValue);
+
+      expect(insured).to.not.equal(recipient.address);
+    });
+
     it("rejects a claim routed to the zero address", async function () {
       const { policy, holder } = await deferredPayoutFixture();
 
@@ -1971,9 +2040,11 @@ describe("InsuranceProvider", function () {
     const balanceBeforeClaim = await ethers.provider.getBalance(holderAddress);
     await holder.setAcceptEther(true);
 
+    // Insured and recipient are the same account on this path; the event still
+    // reports both, so an indexer never has to infer one from the other.
     await expect(holder.claimPendingPayout(policyAddress))
       .to.emit(policy, "PayoutClaimed")
-      .withArgs(holderAddress, coverage, anyValue);
+      .withArgs(holderAddress, holderAddress, coverage, anyValue);
 
     const balanceAfterClaim = await ethers.provider.getBalance(holderAddress);
 

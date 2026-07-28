@@ -78,7 +78,7 @@ Stress harness environment knobs (optional):
 - ABI exports are deterministic (no per-run timestamps) to reduce non-functional drift noise.
 - Deterministic deployment manifests written to `deployments/<network>.json`.
 - Provider policy creation supports both legacy and metadata-aware flows (`createPolicyWithMetadata`) with region and requested-start metadata.
-- Provider policy creation applies a minimum lead-time before weather-window opening.
+- Provider policy creation applies a minimum lead-time before weather-window opening, and caps how far ahead a policy may start (`MAX_POLICY_START_LEAD_TIME_SECONDS`, 365 days) so reserved coverage cannot be immobilized indefinitely.
 - Provider exposes paginated policy getters for insured and global lists.
 - Provider exposes settlement metadata via `getPolicySettlementInfo(policyAddress)`.
 - Provider weather request flow emits canonical request-id tracking events for oracle fulfill provenance.

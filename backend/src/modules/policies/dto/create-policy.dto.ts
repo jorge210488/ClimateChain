@@ -20,9 +20,10 @@ import {
 } from "../../../common/utils/eth-amount.util";
 import { POLICY_DOMAIN } from "../policy.constants";
 import {
-  IsAfterMinLeadTime,
+  IsWithinStartWindow,
+  MAX_START_LEAD_TIME_SECONDS,
   REQUIRED_START_LEAD_TIME_SECONDS,
-} from "../validators/min-lead-time.validator";
+} from "../validators/start-window.validator";
 import { IsAtLeastMinPremium } from "../validators/min-premium.validator";
 
 /** Request body for creating a parametric rainfall policy. */
@@ -102,14 +103,16 @@ export class CreatePolicyDto {
     description:
       "Requested coverage start as a Unix timestamp (seconds). Defaults to a " +
       "near-future start when omitted. " +
-      `Must be at least ${REQUIRED_START_LEAD_TIME_SECONDS} seconds ahead so ` +
-      "it still satisfies the on-chain lead time once the transaction is mined.",
+      `Must be between ${REQUIRED_START_LEAD_TIME_SECONDS} and ` +
+      `${MAX_START_LEAD_TIME_SECONDS} seconds ahead: far enough that the ` +
+      "on-chain lead time still holds once mined, and near enough that the " +
+      "policy cannot lock coverage indefinitely.",
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsSafeInteger()
   @IsPositive()
-  @IsAfterMinLeadTime()
+  @IsWithinStartWindow()
   requestedStartTimestamp?: number;
 }

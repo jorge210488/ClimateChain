@@ -14,6 +14,26 @@ interface DeploymentManifest {
     mockWeatherOracle?: string;
     insuranceProvider: string;
   };
+  /**
+   * keccak256 of the runtime bytecode at each address, keyed by manifest key.
+   *
+   * An address alone proves nothing: any contract with code passes a
+   * "something is deployed here" check. Recording what was deployed lets the
+   * backend verify at boot that the address still holds *that* code, which is
+   * what catches a manifest pointing at a different contract or a chain that
+   * was reset underneath it.
+   */
+  runtimeBytecodeHashes: Record<string, string>;
+}
+
+/** Hashes the runtime bytecode actually stored at an address. */
+async function hashRuntimeBytecode(address: string): Promise<string> {
+  const code = await ethers.provider.getCode(address);
+  if (!code || code === "0x") {
+    throw new Error(`No runtime bytecode found at ${address} after deployment`);
+  }
+
+  return ethers.keccak256(code);
 }
 
 function isStrictProvenanceEnabled(): boolean {
@@ -105,6 +125,10 @@ async function main(): Promise<void> {
       weatherOracle: oracleAddress,
       ...(mockWeatherOracleAddress ? { mockWeatherOracle: mockWeatherOracleAddress } : {}),
       insuranceProvider: providerAddress,
+    },
+    runtimeBytecodeHashes: {
+      weatherOracle: await hashRuntimeBytecode(oracleAddress),
+      insuranceProvider: await hashRuntimeBytecode(providerAddress),
     },
   };
 

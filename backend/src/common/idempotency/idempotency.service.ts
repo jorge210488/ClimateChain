@@ -86,10 +86,10 @@ export class IdempotencyService {
   private readonly entries = new Map<string, Entry<unknown>>();
 
   /**
-   * Retention for records that describe a real effect.
+   * Retention for records whose outcome is known and was already reported.
    *
-   * Long enough for a client to reconcile, bounded so a long-lived process does
-   * not accumulate records forever.
+   * Applies to `completed` only. Records describing an *unresolved* effect never
+   * expire; see {@link evictExpired}.
    */
   private static readonly TERMINAL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -218,11 +218,32 @@ export class IdempotencyService {
   /**
    * Drops records that have outlived their retention.
    *
-   * Only terminal states expire. An `in-flight` record is never released on a
-   * timer: this store lives in the process running the operation, so a record
-   * that is still in-flight means the operation is still running, and a clock
-   * cannot tell a slow operation from an abandoned one. If the process dies the
-   * whole map dies with it, so there is nothing to reclaim.
+   * Only `completed` expires, and the distinction is the whole point.
+   *
+   * An `in-flight` record is never released on a timer: this store lives in the
+   * process running the operation, so a record that is still in-flight means the
+   * operation is still running, and a clock cannot tell a slow operation from an
+   * abandoned one. If the process dies the whole map dies with it, so there is
+   * nothing to reclaim.
+   *
+   * A `submitted` record is never released either, for a sharper reason. It
+   * exists precisely because nobody knows the outcome: the transaction was
+   * handed to a node and the receipt never came back. Expiring it would delete
+   * the only evidence that something may be in flight, and a retry afterwards
+   * could submit a second transaction — the exact duplicate this class exists to
+   * prevent, merely deferred by the retention period. It stays until an operator
+   * reconciles it against the chain.
+   *
+   * `completed` is different: the effect is known and was reported to the
+   * caller, so retention is a convenience for replaying an answer, not a safety
+   * property. A bounded window there is the same trade every idempotency store
+   * makes.
+   *
+   * Unreconciled records therefore accumulate. They are produced only by a
+   * receipt timeout on an accepted transaction, which is rare, and each is a few
+   * hundred bytes — a leak worth taking over a duplicate that spends the
+   * reserve twice. A durable store with explicit reconciliation is the real
+   * answer; see the Stage 06 report.
    *
    * Runs on access rather than on an interval, which would keep the event loop
    * alive for a map only ever touched during a request.
@@ -231,16 +252,11 @@ export class IdempotencyService {
     const now = Date.now();
 
     for (const [key, entry] of this.entries) {
-      if (entry.state === "in-flight") {
+      if (entry.state !== "completed") {
         continue;
       }
 
-      const age =
-        entry.state === "completed"
-          ? now - entry.completedAt
-          : now - entry.submittedAt;
-
-      if (age > IdempotencyService.TERMINAL_TTL_MS) {
+      if (now - entry.completedAt > IdempotencyService.TERMINAL_TTL_MS) {
         this.entries.delete(key);
       }
     }

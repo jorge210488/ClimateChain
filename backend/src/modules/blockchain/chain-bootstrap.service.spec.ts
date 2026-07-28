@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { keccak256 } from "ethers";
 
 import { LEGACY_REGION_CODE } from "../../common/utils/region-code.util";
 import { AppConfigService } from "../../config/app-config.service";
@@ -38,6 +39,7 @@ function buildHarness(
     signerBalance?: bigint;
     coverageReserve?: bigint;
     legacyRegionCode?: string;
+    runtimeBytecodeHashes?: Record<string, string> | null;
   } = {},
 ): Harness {
   const {
@@ -53,6 +55,16 @@ function buildHarness(
     coverageReserve = 10n ** 19n,
     legacyRegionCode = LEGACY_REGION_CODE,
   } = overrides;
+
+  // `null` models a manifest written before hashes were recorded; the
+  // default records the hash of the code the harness actually serves.
+  const runtimeBytecodeHashes =
+    "runtimeBytecodeHashes" in overrides
+      ? overrides.runtimeBytecodeHashes
+      : {
+          insuranceProvider: keccak256(DEPLOYED_CODE),
+          weatherOracle: keccak256(DEPLOYED_CODE),
+        };
 
   // Read through `in` rather than a destructuring default: an explicitly
   // passed `undefined` is the case under test ("no oracle in the manifest"),
@@ -112,6 +124,11 @@ function buildHarness(
         constantValues.MIN_POLICY_START_LEAD_TIME_SECONDS ??
         BigInt(POLICY_DOMAIN.minPolicyStartLeadTimeSeconds),
     ),
+    MAX_POLICY_START_LEAD_TIME_SECONDS: jest.fn(
+      async () =>
+        constantValues.MAX_POLICY_START_LEAD_TIME_SECONDS ??
+        BigInt(POLICY_DOMAIN.maxPolicyStartLeadTimeSeconds),
+    ),
   };
 
   const reader = {
@@ -141,6 +158,13 @@ function buildHarness(
     getChainId: () => manifestChainId,
     getProviderAddress: () => PROVIDER_ADDRESS,
     getOracleAddress: () => oracleAddress,
+    getManifest: () => ({
+      contracts: {
+        insuranceProvider: PROVIDER_ADDRESS,
+        weatherOracle: ORACLE_ADDRESS,
+      },
+      ...(runtimeBytecodeHashes ? { runtimeBytecodeHashes } : {}),
+    }),
   } as unknown as ContractRegistryService;
 
   const config = {
@@ -220,6 +244,52 @@ describe("ChainBootstrapService", () => {
 
       await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
       expect(service.getVerification()?.signerBalanceWei).toBe("0");
+    });
+  });
+
+  describe("bytecode identity", () => {
+    it("aborts when the address holds a different contract than was deployed", async () => {
+      // Presence of code proves nothing on its own: an older provider left on
+      // the chain, or an address pasted from another network, all have code and
+      // all pass a "something is deployed here" check, then misbehave on the
+      // first call as an inscrutable decoding error.
+      const { service } = buildHarness({
+        runtimeBytecodeHashes: {
+          insuranceProvider: `0x${"11".repeat(32)}`,
+          weatherOracle: `0x${"11".repeat(32)}`,
+        },
+      });
+
+      await expect(service.onApplicationBootstrap()).rejects.toThrow(
+        /does not match the deployment manifest/,
+      );
+      expect(service.getVerification()).toBeUndefined();
+    });
+
+    it("passes when the deployed code matches what the manifest recorded", async () => {
+      const { service } = buildHarness();
+
+      await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+      expect(service.getVerification()).toBeDefined();
+    });
+
+    it("says so out loud when the manifest records no hash", async () => {
+      // A manifest written before hashes existed cannot be verified. Treating
+      // that silently as a pass would leave the weak check in place while
+      // looking like the strong one.
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      const { service } = buildHarness({ runtimeBytecodeHashes: null });
+
+      try {
+        await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining("No runtime bytecode hash recorded"),
+        );
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 

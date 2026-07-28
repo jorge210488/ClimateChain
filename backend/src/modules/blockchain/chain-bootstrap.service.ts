@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
+import { keccak256 } from "ethers";
 
 import { LEGACY_REGION_CODE } from "../../common/utils/region-code.util";
 import { AppConfigService } from "../../config/app-config.service";
@@ -6,6 +7,10 @@ import { POLICY_DOMAIN } from "../policies/policy.constants";
 import { ChainProviderService } from "./chain-provider.service";
 import { ContractFactoryService } from "./contract-factory.service";
 import { ContractRegistryService } from "./contract-registry.service";
+import {
+  ORACLE_MANIFEST_KEYS,
+  PROVIDER_MANIFEST_KEY,
+} from "./contract-registry.types";
 
 /** Result of the boot-time chain verification, surfaced by readiness. */
 export interface ChainVerification {
@@ -28,6 +33,7 @@ const MIRRORED_CONSTANTS = [
   ["MIN_PREMIUM_BPS", "minPremiumBps"],
   ["BASIS_POINTS_DENOMINATOR", "basisPointsDenominator"],
   ["MIN_POLICY_START_LEAD_TIME_SECONDS", "minPolicyStartLeadTimeSeconds"],
+  ["MAX_POLICY_START_LEAD_TIME_SECONDS", "maxPolicyStartLeadTimeSeconds"],
 ] as const;
 
 /**
@@ -104,6 +110,7 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
     const providerCodeSize = await this.assertContractDeployed(
       providerAddress,
       "InsuranceProvider (manifest key insuranceProvider)",
+      PROVIDER_MANIFEST_KEY,
     );
 
     const oracleAddress = this.registry.getOracleAddress();
@@ -111,6 +118,7 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
       ? await this.assertContractDeployed(
           oracleAddress,
           "weather oracle (manifest oracle key)",
+          this.resolveOracleManifestKey(),
         )
       : undefined;
 
@@ -174,10 +182,21 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
     };
   }
 
-  /** Confirms real bytecode exists at an address, returning its size. */
+  /**
+   * Confirms the address holds the bytecode the manifest says it should.
+   *
+   * Presence alone is a weak check: *any* contract has code, so an address
+   * pointing at something entirely different passes it. Comparing the runtime
+   * bytecode hash against the value recorded at deployment is what makes this
+   * verification of identity rather than of existence.
+   *
+   * @param manifestKey Key under which the manifest records this contract's hash.
+   * @returns Size of the deployed bytecode in bytes.
+   */
   private async assertContractDeployed(
     address: string,
     label: string,
+    manifestKey: string,
   ): Promise<number> {
     const code = await this.chain.call(`getCode(${label})`, () =>
       this.chain.getProvider().getCode(address),
@@ -193,7 +212,69 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
       );
     }
 
+    this.assertBytecodeIdentity(address, label, manifestKey, code);
+
     return (code.length - 2) / 2;
+  }
+
+  /**
+   * Names the manifest key the oracle address was actually resolved from.
+   *
+   * The registry accepts either `weatherOracle` or `mockWeatherOracle`, so the
+   * hash has to be looked up under whichever one supplied the address rather
+   * than under a guess.
+   */
+  private resolveOracleManifestKey(): string {
+    const manifest = this.registry.getManifest();
+    const oracleAddress = this.registry.getOracleAddress();
+
+    return (
+      ORACLE_MANIFEST_KEYS.find(
+        (key) => manifest.contracts[key] === oracleAddress,
+      ) ?? ORACLE_MANIFEST_KEYS[0]
+    );
+  }
+
+  /**
+   * Fails when the deployed code is not the code that was deployed.
+   *
+   * A manifest can point at a live contract that is simply the wrong one — an
+   * older provider left on the chain, a redeploy nobody regenerated the manifest
+   * for, an address pasted from another network. Every one of those passes a
+   * "code exists" check and then misbehaves at the first call, usually as an
+   * inscrutable decoding error rather than a configuration problem.
+   *
+   * Absence of a recorded hash is reported, not tolerated silently: a manifest
+   * written before this field existed cannot be verified, and pretending
+   * otherwise would be worse than the original weak check.
+   */
+  private assertBytecodeIdentity(
+    address: string,
+    label: string,
+    manifestKey: string,
+    code: string,
+  ): void {
+    const expectedHash =
+      this.registry.getManifest().runtimeBytecodeHashes?.[manifestKey];
+
+    if (!expectedHash) {
+      this.logger.warn(
+        `No runtime bytecode hash recorded for "${manifestKey}" in the ` +
+          `deployment manifest, so ${label} at ${address} is verified only to ` +
+          `hold *some* code. Redeploy to record it.`,
+      );
+      return;
+    }
+
+    const actualHash = keccak256(code);
+    if (actualHash !== expectedHash) {
+      throw new Error(
+        `Bytecode at ${address} does not match the deployment manifest for ` +
+          `${label}: expected ${expectedHash}, found ${actualHash}. The address ` +
+          `holds a different contract than the one deployed; redeploy and ` +
+          `regenerate contracts/deployments/${this.config.blockchain.network}.json.`,
+      );
+    }
   }
 
   /**

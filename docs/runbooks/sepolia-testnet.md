@@ -92,6 +92,19 @@ Deployed 2026-07-28:
 | `InsuranceProvider` | `0xbfc559E62Fb2AE4E0B430a3aDdc3fD7f3AB166ac` |
 | `MockWeatherOracle` | `0x159FC1f21074ef82901335500b574a23a50bfb07` |
 
+> **This deployment is superseded and the backend will refuse to start against
+> it.** The contracts gained `MAX_POLICY_START_LEAD_TIME_SECONDS` and a
+> corrected `PayoutClaimed` signature afterwards. Boot compares mirrored
+> constants against the deployed contract, and reading one the deployed
+> provider does not have fails verification — which is the intended behavior,
+> since the API would otherwise validate against rules the chain does not
+> enforce.
+>
+> Redeploy to use this network again. Withdraw the old provider's reserve first
+> (`withdrawCoverageReserve`), or the 0.02 ETH still in it is stranded. The
+> measurements recorded below remain valid: they describe network behavior, not
+> this particular bytecode.
+
 ## 4. Point the backend at it
 
 In `backend/.env`:

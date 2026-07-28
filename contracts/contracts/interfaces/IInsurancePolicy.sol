@@ -55,10 +55,19 @@ interface IInsurancePolicy {
   event PayoutClaimCreated(address indexed insured, uint256 amountWei, uint64 createdAt);
 
   /// @notice Emitted when insured successfully claims deferred payout.
-  /// @param insured Insured account that claimed deferred payout.
+  /// @dev Carries both parties because the insured may nominate a different
+  ///      recipient. Reporting only one address would make an indexer record
+  ///      the nominee as the policy's insured, which it never is.
+  /// @param insured Insured account entitled to the deferred payout.
+  /// @param recipient Account that actually received the funds.
   /// @param amountWei Claimed amount in wei.
   /// @param claimedAt Timestamp when claim was executed.
-  event PayoutClaimed(address indexed insured, uint256 amountWei, uint64 claimedAt);
+  event PayoutClaimed(
+    address indexed insured,
+    address indexed recipient,
+    uint256 amountWei,
+    uint64 claimedAt
+  );
 
   /// @notice Emitted when an unclaimed deferred payout is returned to the provider.
   /// @param insured Insured account that did not claim within the window.

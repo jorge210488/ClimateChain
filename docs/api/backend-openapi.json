@@ -951,7 +951,7 @@
           "requestedStartTimestamp": {
             "type": "number",
             "example": 1767225600,
-            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start when omitted. Must be at least 180 seconds ahead so it still satisfies the on-chain lead time once the transaction is mined."
+            "description": "Requested coverage start as a Unix timestamp (seconds). Defaults to a near-future start when omitted. Must be between 180 and 31536000 seconds ahead: far enough that the on-chain lead time still holds once mined, and near enough that the policy cannot lock coverage indefinitely."
           }
         },
         "required": [

@@ -495,6 +495,51 @@ in the combined coverage run at 97.03% statements and 90.12% branches. The
 live-chain run is what matters here, since the split path exercises
 `populateTransaction`, gas estimation, and EIP-1559 fields that a stub cannot.
 
+### Third review round
+
+Eleven findings; six named files that do not exist here, and five held up.
+
+**The retention window reopened the duplicate.** A `submitted` record — the one
+that exists precisely because nobody knows the outcome — was expiring after 24
+hours like any completed one. A transaction accepted but never reconciled can
+still be mined later, so a retry past the window could submit a second policy.
+Only `completed` expires now: its effect is known and was reported, so retention
+there is a convenience, not a safety property. The earlier test stopped at 12
+hours, inside the window, and so never touched the boundary; it now runs to a
+week.
+
+**An unbounded start immobilized the reserve.** Coverage is drawn at creation
+and released only at settlement, and the contract bounded the start only from
+below. A policy starting decades out locked its coverage for that whole span
+while paying the 1% minimum premium, and creation is permissionless on the
+contract, so nothing stopped a third party doing it deliberately.
+`MAX_POLICY_START_LEAD_TIME_SECONDS` caps it at 365 days; with the existing
+duration cap the worst case is two years. The API rejects the same input with a
+400 rather than letting it revert.
+
+**`PayoutClaimed` misreported the insured.** Introduced with
+`claimPendingPayoutTo` in the previous round: the event emitted the nominated
+recipient in a field declared as `insured`, so an indexer would record whoever
+received the money as the policy's beneficiary. It now carries both.
+
+**Bytecode verification verified nothing in particular.** Boot confirmed that
+*some* code existed at each address, which any contract satisfies. Deployment now
+records the runtime bytecode hash in the manifest and boot compares it, so an
+address holding a different contract — an old provider, a pasted address from
+another network — fails immediately instead of at the first decode error. A
+manifest without the field is reported rather than silently treated as a pass.
+
+**One test was named for something it never did.** The e2e case called "the
+legacy path" exercises the placeholder region code; the service always uses
+`createPolicyWithMetadata`.
+
+The rest belong to stages that own them: a real oracle adapter and owner-only
+settlement operations to Stage 10, roles and multisig with timelock to Stage 13,
+pricing and premium collection to Stage 09, the read model to Stage 11, and
+horizontal scaling to Stage 11/12. Whether policy creation should stay
+permissionless is a product question for the Stage 11 user model; the bound
+above makes the griefing uneconomic in the meantime.
+
 ### Recorded, not changed
 
 This one changes on-chain behavior. Implementing it means editing a contract,
@@ -583,7 +628,32 @@ to the product owner, not to a review pass.
   settlement operations. The error mapping, retry policy, and transaction
   serialization already cover those paths — reuse them rather than adding a
   second client.
-- Resolve the insured-assignment question before any user-facing deployment. It
-  is a contract-shape decision, so it likely reopens Stage 03.
 - Keep `npm run stage6:check` green and extend it; the live-chain suite is the
   only thing that actually proves this integration works.
+
+## Where the numbers stand
+
+Each "gate after…" line above is a snapshot taken when that change landed, kept
+so the history reads honestly. This is the current state, and the only figure to
+quote:
+
+| | Count |
+| --- | --- |
+| Contract tests (`contracts/npm test`) | 120 |
+| Backend unit | 249 |
+| Backend e2e, no chain | 34 |
+| Backend e2e, live chain | 19 |
+| **Combined coverage run** | **302** |
+| Statements / branches | 97.14% / 89.92% |
+
+Slither reports no findings across 47 contracts and 55 detectors.
+`InsurancePolicy` is 5,755 bytes and `InsuranceProvider` 16,311, both far inside
+the 24 KB limit.
+
+**The Sepolia deployment predates the contract changes in this round, and the
+backend now refuses to start against it.** Boot reads
+`MAX_POLICY_START_LEAD_TIME_SECONDS` off the deployed provider, which does not
+have it. That is the intended outcome — the API would otherwise validate against
+a rule the chain does not enforce — but it means the network needs a redeploy
+before use; see [the Sepolia runbook](../runbooks/sepolia-testnet.md). The
+timings measured there still hold: they describe the network, not the bytecode.

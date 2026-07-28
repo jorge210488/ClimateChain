@@ -315,7 +315,7 @@ contract InsurancePolicy is Ownable, ReentrancyGuard, IInsurancePolicy {
     (bool success, ) = recipient.call{value: claimAmountWei}("");
     if (!success) revert EthTransferFailed();
 
-    emit PayoutClaimed(recipient, claimAmountWei, uint64(block.timestamp));
+    emit PayoutClaimed(insured, recipient, claimAmountWei, uint64(block.timestamp));
     _forwardBalanceToOwnerExcludingLockedAmount(0);
   }
 

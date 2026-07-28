@@ -63,6 +63,12 @@ const REVERT_MAPPINGS: Record<string, RevertMapping> = {
       "Requested start timestamp is inside the minimum lead-time window; " +
       "submit a later start",
   },
+  RequestedStartTooFarInFuture: {
+    status: "bad-request",
+    message:
+      "Requested start timestamp is beyond the maximum the contract allows; " +
+      "coverage cannot be reserved that far ahead",
+  },
   PremiumMustBePositive: {
     status: "bad-request",
     message: "Premium must be greater than zero",

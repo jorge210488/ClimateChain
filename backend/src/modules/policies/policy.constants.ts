@@ -17,6 +17,13 @@ export const POLICY_DOMAIN = {
   /** `MIN_POLICY_START_LEAD_TIME_SECONDS` */
   minPolicyStartLeadTimeSeconds: 60,
   /**
+   * `MAX_POLICY_START_LEAD_TIME_SECONDS` — 365 days.
+   *
+   * Coverage is reserved at creation and released only at settlement, so an
+   * unbounded start would let one policy immobilize the reserve indefinitely.
+   */
+  maxPolicyStartLeadTimeSeconds: 365 * 24 * 60 * 60,
+  /**
    * Extra margin required on top of the on-chain lead time.
    *
    * The contract compares `requestedStartTimestamp` against `block.timestamp`

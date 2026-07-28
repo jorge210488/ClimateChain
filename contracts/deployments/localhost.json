@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-28T01:47:37.254Z",
+  "generatedAt": "2026-07-28T22:56:26.434Z",
   "network": "localhost",
   "chainId": "31337",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
@@ -8,5 +8,9 @@
     "weatherOracle": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     "mockWeatherOracle": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     "insuranceProvider": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+  },
+  "runtimeBytecodeHashes": {
+    "weatherOracle": "0x1d010f343b1e4d3a95c432e1ce1563f6b17de7ce06148b43a8d173f661b0ec8d",
+    "insuranceProvider": "0xba0a7e66396c6703a7218a20a67b518db3b3f7957996cf6b7b513408132bb335"
   }
 }

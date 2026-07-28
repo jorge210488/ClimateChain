@@ -254,11 +254,15 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
       expect(res.body.message).toContain("different request body");
     });
 
-    it("creates a policy through the legacy path when no region is given", async () => {
+    it("falls back to the placeholder region code when none is given", async () => {
+      // Named for what it actually exercises. The service always calls
+      // createPolicyWithMetadata — the legacy entry point cannot name a
+      // beneficiary — so a missing region takes the contract's own placeholder
+      // rather than a different code path.
       const res = await request(app.getHttpServer())
         .post("/policies")
         .set("Authorization", bearer)
-        .set("Idempotency-Key", "create-legacy")
+        .set("Idempotency-Key", "create-without-region")
         .send({
           insured: BENEFICIARY,
           coverageEth: "0.1",
@@ -273,8 +277,8 @@ describeChain("ClimateChain policy lifecycle on chain (e2e)", () => {
         `/policies/${res.body.address}`,
       );
       expect(read.status).toBe(200);
-      // The legacy entry point stores keccak("LEGACY_UNSPECIFIED"), which is
-      // not decodable text, so `region` is absent while `regionCode` is not.
+      // The placeholder is keccak("LEGACY_UNSPECIFIED"), which is not decodable
+      // text, so `region` is absent while `regionCode` is not.
       expect(read.body.region).toBeUndefined();
       expect(read.body.regionCode).toMatch(/^0x[0-9a-f]{64}$/);
     });

@@ -30,6 +30,13 @@ export interface DeploymentManifest {
   chainId: string;
   deployer?: string;
   contracts: Record<string, string>;
+  /**
+   * keccak256 of the runtime bytecode deployed at each address, by manifest key.
+   *
+   * Optional because manifests written before this field exist. Boot
+   * verification says so out loud rather than treating its absence as a pass.
+   */
+  runtimeBytecodeHashes?: Record<string, string>;
 }
 
 /**

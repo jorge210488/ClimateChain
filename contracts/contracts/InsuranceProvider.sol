@@ -51,6 +51,12 @@ contract InsuranceProvider is
   uint32 public constant MAX_DURATION_DAYS = 365;
   /// @notice Minimum delay applied between policy creation and weather-window start.
   uint64 public constant MIN_POLICY_START_LEAD_TIME_SECONDS = 60;
+  /// @notice Furthest into the future a policy may be scheduled to start.
+  /// @dev Coverage is reserved at creation and released only at settlement, so an
+  ///      unbounded start lets anyone immobilize the reserve for as long as they
+  ///      like while paying only the minimum premium. Bounding the start caps the
+  ///      lock at this window plus MAX_DURATION_DAYS.
+  uint64 public constant MAX_POLICY_START_LEAD_TIME_SECONDS = 365 days;
   /// @notice Region code used by legacy createPolicy overload when explicit metadata is not provided.
   bytes32 public constant LEGACY_REGION_CODE = keccak256("LEGACY_UNSPECIFIED");
 
@@ -189,6 +195,7 @@ contract InsuranceProvider is
   error InvalidRegionCode();
   error InvalidInsuredAddress();
   error InvalidRequestedStartTimestamp(uint64 minimumAllowed, uint64 providedStart);
+  error RequestedStartTooFarInFuture(uint64 maximumAllowed, uint64 providedStart);
   error PremiumMustBePositive();
   error PremiumBelowMinimum(uint256 minimumWei, uint256 providedWei);
   error InsufficientCoverageReserve(uint256 available, uint256 requiredAmount);
@@ -727,6 +734,13 @@ contract InsuranceProvider is
     );
     if (requestedStartTimestamp < minimumAllowedStartTimestamp) {
       revert InvalidRequestedStartTimestamp(minimumAllowedStartTimestamp, requestedStartTimestamp);
+    }
+
+    uint64 maximumAllowedStartTimestamp = uint64(
+      block.timestamp + MAX_POLICY_START_LEAD_TIME_SECONDS
+    );
+    if (requestedStartTimestamp > maximumAllowedStartTimestamp) {
+      revert RequestedStartTooFarInFuture(maximumAllowedStartTimestamp, requestedStartTimestamp);
     }
 
     if (coverageReserveWei < coverageAmountWei) {

@@ -195,15 +195,24 @@ describe("IdempotencyService", () => {
       ).rejects.toThrow("not mined within the timeout");
     });
 
-    it("keeps the submitted record even as the completed TTL passes", async () => {
+    it.each([
+      ["well within retention", 12 * 60 * 60 * 1000],
+      ["past the retention window", 25 * 60 * 60 * 1000],
+      ["a week later", 7 * 24 * 60 * 60 * 1000],
+    ])("keeps the submitted record %s", async (_label, elapsedMs) => {
+      // The earlier version of this test stopped at 12 hours — inside the
+      // window — so it never exercised the boundary, and the record was in fact
+      // being evicted at 24 hours like any completed one. That reopened the
+      // duplicate: a transaction accepted but never reconciled could still be
+      // mined later, while a retry was free to submit a second policy. The
+      // record is unresolved, not terminal, so no clock may release it.
       jest.useFakeTimers();
       try {
         await service
           .execute("admin", "key-1", PAYLOAD, failAfterSubmitting("0xabc"))
           .catch(() => undefined);
 
-        // Well within retention: the record must still block a resubmission.
-        jest.advanceTimersByTime(12 * 60 * 60 * 1000);
+        jest.advanceTimersByTime(elapsedMs);
 
         await expect(
           service.execute("admin", "key-1", PAYLOAD, async () => "resent"),

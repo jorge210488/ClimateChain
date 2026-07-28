@@ -238,6 +238,22 @@
     {
       "inputs": [
         {
+          "internalType": "uint64",
+          "name": "maximumAllowed",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "providedStart",
+          "type": "uint64"
+        }
+      ],
+      "name": "RequestedStartTooFarInFuture",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "oracleAddress",
           "type": "address"
@@ -663,6 +679,19 @@
           "internalType": "uint32",
           "name": "",
           "type": "uint32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_POLICY_START_LEAD_TIME_SECONDS",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
         }
       ],
       "stateMutability": "view",
