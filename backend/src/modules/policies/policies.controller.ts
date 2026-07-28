@@ -74,8 +74,8 @@ export class PoliciesController {
     description:
       "Submits the creation transaction on chain and returns once it is " +
       "mined. Requires an authenticated principal: creation consumes the " +
-      "provider's coverage reserve. The contract assigns the insured from the " +
-      "transaction sender, so the returned `insured` is the backend's signer.",
+      "provider's coverage reserve. The beneficiary is the `insured` address " +
+      "in the request, not the backend's signer, which still pays the premium.",
   })
   @ApiHeader({
     name: "Idempotency-Key",

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T02:19:28.037Z",
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x6e612A4ff0dAa0e42423c89303dcb6D8e0378187",
+  "contracts": {
+    "weatherOracle": "0x159FC1f21074ef82901335500b574a23a50bfb07",
+    "insuranceProvider": "0xbfc559E62Fb2AE4E0B430a3aDdc3fD7f3AB166ac"
+  }
+}

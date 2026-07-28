@@ -531,6 +531,14 @@ to the product owner, not to a review pass.
   every record. Durable idempotency, shared nonce coordination, and mutual
   exclusion are prerequisites for running more than one instance — not
   optimizations.
+- ~~Public-testnet validation is outstanding.~~ **Done on 2026-07-28.** The
+  contracts run on Ethereum Sepolia and one policy went through creation,
+  trigger, and payout with the backend driving it; see
+  [the Sepolia runbook](../runbooks/sepolia-testnet.md). Creation takes 24
+  seconds there — two confirmations at ~12-second blocks — against milliseconds
+  locally, which makes the synchronous `POST /policies` a queueing question for
+  Stage 11 rather than a correctness one. The idempotent replay of that same
+  request took 24 ms, since it never reaches the chain.
 - Reads are uncached and always hit the chain, which is correct for
   consistency and expensive under load. A read-through cache with explicit
   invalidation is worth considering if list traffic grows.
