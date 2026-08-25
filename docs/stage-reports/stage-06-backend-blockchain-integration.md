@@ -598,6 +598,33 @@ Gate after the round: contracts 120 tests with Slither clean; backend 265 unit,
 34 no-chain e2e, 19 live-chain e2e, 318 in the combined coverage run at 97.14%
 statements and 89.78% branches.
 
+### Closing pass
+
+Three follow-ups, all consequences of the previous round rather than new
+discoveries.
+
+**The defense-in-depth check had fallen behind its own promise.** The config
+factory re-asserts deployed-profile invariants so no path can boot on
+development credentials even if Joi is bypassed — but the previous round added
+`PRIVATE_KEY` and the confirmation floor to the schema without mirroring them
+here, leaving the guarantee partly untrue. Both are mirrored now, with a note
+saying that adding one without the other is how this drifts.
+
+**A missing bytecode hash is now fatal on deployed profiles.** It logged a
+warning and fell back to checking that *some* code existed — the weak check the
+hash was introduced to replace, reinstated silently exactly where identity
+matters most. Local profiles keep the warning so a manifest predating the field
+still runs.
+
+**The queue's recovery is now asserted, not assumed.** Bounding the broadcast is
+only worth having if the queue survives the timeout, and the existing test
+proved the first call failed on time, which is not the same claim. A second
+write now has to reach `broadcastTransaction` after the first one hangs.
+
+Gate: contracts 120 tests with Slither clean; backend 269 unit, 34 no-chain e2e,
+19 live-chain e2e, 322 in the combined coverage run at 97.16% statements and
+89.86% branches.
+
 ### Recorded, not changed
 
 This one changes on-chain behavior. Implementing it means editing a contract,
@@ -702,11 +729,11 @@ quote:
 | | Count |
 | --- | --- |
 | Contract tests (`contracts/npm test`) | 120 |
-| Backend unit | 265 |
+| Backend unit | 269 |
 | Backend e2e, no chain | 34 |
 | Backend e2e, live chain | 19 |
-| **Combined coverage run** | **318** |
-| Statements / branches | 97.14% / 89.78% |
+| **Combined coverage run** | **322** |
+| Statements / branches | 97.16% / 89.86% |
 
 Slither reports no findings across 47 contracts and 55 detectors.
 `InsurancePolicy` is 5,755 bytes and `InsuranceProvider` 16,311, both far inside

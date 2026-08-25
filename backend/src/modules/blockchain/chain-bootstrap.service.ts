@@ -349,11 +349,24 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
       this.registry.getManifest().runtimeBytecodeHashes?.[manifestKey];
 
     if (!expectedHash) {
-      this.logger.warn(
+      const explanation =
         `No runtime bytecode hash recorded for "${manifestKey}" in the ` +
-          `deployment manifest, so ${label} at ${address} is verified only to ` +
-          `hold *some* code. Redeploy to record it.`,
-      );
+        `deployment manifest, so ${label} at ${address} can only be verified ` +
+        `to hold *some* code. Redeploy to record it.`;
+
+      // Deployed profiles must not run on an unverifiable manifest: the whole
+      // point of the hash is to catch an address holding a different contract,
+      // and downgrading that to a log line where it matters most would make the
+      // check decorative. Local profiles keep the warning, so a manifest
+      // predating the field still runs.
+      if (this.config.isDeployedProfile) {
+        throw new Error(
+          `${explanation} Deployed profiles require it: without a recorded ` +
+            `hash the address is not verified to hold the expected contract.`,
+        );
+      }
+
+      this.logger.warn(explanation);
       return;
     }
 

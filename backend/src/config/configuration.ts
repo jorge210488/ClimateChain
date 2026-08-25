@@ -167,6 +167,10 @@ export function configuration(): Record<string, RootConfig> {
  * validation were ever bypassed (a skipped `validationSchema`, a direct call in
  * a test harness). Re-asserting here means no code path can boot a deployed
  * profile on development credentials.
+ *
+ * Every invariant the schema enforces for deployed profiles must be mirrored
+ * here, or the guarantee above is only partly true. Adding one to the schema
+ * without adding it here is the way this drifts.
  */
 function assertDeployedProfileInvariants(config: RootConfig): void {
   if (!config.app.isDeployedProfile) {
@@ -192,6 +196,26 @@ function assertDeployedProfileInvariants(config: RootConfig): void {
       `CORS_ORIGINS is not configured for profile "${config.app.nodeEnv}". ` +
         `Deployed profiles must declare an explicit origin allowlist instead ` +
         `of reflecting any origin.`,
+    );
+  }
+
+  if (!config.blockchain.privateKey) {
+    throw new Error(
+      `PRIVATE_KEY is not configured for profile "${config.app.nodeEnv}". ` +
+        `Policy creation is signed by this service, so an unsigned deployed ` +
+        `instance would pass readiness and fail every write.`,
+    );
+  }
+
+  if (
+    config.blockchain.confirmations < CONFIG_DEFAULTS.minDeployedConfirmations
+  ) {
+    throw new Error(
+      `CHAIN_CONFIRMATIONS is ${config.blockchain.confirmations} for profile ` +
+        `"${config.app.nodeEnv}", below the minimum of ` +
+        `${CONFIG_DEFAULTS.minDeployedConfirmations}. A public chain can ` +
+        `reorganize its head, and one confirmation would report policies that ` +
+        `later cease to exist.`,
     );
   }
 }

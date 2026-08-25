@@ -40,6 +40,7 @@ function buildHarness(
     coverageReserve?: bigint;
     legacyRegionCode?: string;
     runtimeBytecodeHashes?: Record<string, string> | null;
+    deployedProfile?: boolean;
   } = {},
 ): Harness {
   const {
@@ -54,6 +55,7 @@ function buildHarness(
     signerBalance = 10n ** 18n,
     coverageReserve = 10n ** 19n,
     legacyRegionCode = LEGACY_REGION_CODE,
+    deployedProfile = false,
   } = overrides;
 
   // `null` models a manifest written before hashes were recorded; the
@@ -169,6 +171,7 @@ function buildHarness(
 
   const config = {
     blockchain: { network: "localhost" },
+    isDeployedProfile: deployedProfile,
   } as AppConfigService;
 
   return {
@@ -271,6 +274,21 @@ describe("ChainBootstrapService", () => {
 
       await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
       expect(service.getVerification()).toBeDefined();
+    });
+
+    it("refuses to boot a deployed profile on an unverifiable manifest", async () => {
+      // Where identity matters most, a missing hash cannot be a log line: the
+      // address would be verified to hold *some* code and nothing more, which
+      // is the weak check this was added to replace.
+      const { service } = buildHarness({
+        runtimeBytecodeHashes: null,
+        deployedProfile: true,
+      });
+
+      await expect(service.onApplicationBootstrap()).rejects.toThrow(
+        /Deployed profiles require it/,
+      );
+      expect(service.getVerification()).toBeUndefined();
     });
 
     it("says so out loud when the manifest records no hash", async () => {

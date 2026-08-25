@@ -343,6 +343,36 @@ describe("ChainProviderService", () => {
       service.onModuleDestroy();
     });
 
+    it("lets the next write through after a hung broadcast times out", async () => {
+      // The intent behind bounding the broadcast, stated as a test. Submission
+      // is serialized, so a send that never returns would hold the queue and
+      // every later write with it — the timeout is only worth having if the
+      // queue actually recovers. Asserting the first call fails on time does
+      // not show that; this does.
+      const { service, broadcast } = buildSignedService();
+      broadcast
+        .mockImplementationOnce(() => new Promise(() => undefined))
+        .mockImplementation((raw: string) =>
+          Promise.resolve({ hash: Transaction.from(raw).hash }),
+        );
+
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.resolve(buildRequest(7)),
+          () => undefined,
+        ),
+      ).rejects.toMatchObject({ code: "TIMEOUT" });
+
+      const second = await service.submitSignedTransaction(
+        () => Promise.resolve(buildRequest(8)),
+        () => undefined,
+      );
+
+      expect(broadcast).toHaveBeenCalledTimes(2);
+      expect(second.hash).toMatch(/^0x[0-9a-f]{64}$/);
+      service.onModuleDestroy();
+    });
+
     it("does not rewind the nonce after a hung broadcast either", async () => {
       const { service, broadcast } = buildSignedService();
       broadcast.mockImplementation(() => new Promise(() => undefined));

@@ -18,6 +18,8 @@ describe("configuration", () => {
     process.env = originalEnv;
   });
 
+  const DEPLOYED_PRIVATE_KEY = `0x${"11".repeat(32)}`;
+
   function build() {
     return configuration()[CONFIG_NAMESPACE];
   }
@@ -28,6 +30,10 @@ describe("configuration", () => {
     process.env.JWT_SECRET = "a-real-production-jwt-secret-value";
     process.env.RPC_URL = "https://rpc.example.com";
     process.env.CORS_ORIGINS = "https://app.example.com";
+    process.env.PRIVATE_KEY = DEPLOYED_PRIVATE_KEY;
+    process.env.CHAIN_CONFIRMATIONS = String(
+      CONFIG_DEFAULTS.minDeployedConfirmations,
+    );
   }
 
   it("resolves local defaults for the development profile", () => {
@@ -72,6 +78,22 @@ describe("configuration", () => {
     delete process.env.CORS_ORIGINS;
 
     expect(() => build()).toThrow(/CORS_ORIGINS/);
+  });
+
+  it("refuses to boot a deployed profile without a signer", () => {
+    // Mirrors the schema. This factory resolves its own values, so an invariant
+    // enforced only in Joi is bypassed by any path that skips validation.
+    deployedEnv();
+    delete process.env.PRIVATE_KEY;
+
+    expect(() => build()).toThrow(/PRIVATE_KEY/);
+  });
+
+  it("refuses to boot a deployed profile on a single confirmation", () => {
+    deployedEnv();
+    process.env.CHAIN_CONFIRMATIONS = "1";
+
+    expect(() => build()).toThrow(/CHAIN_CONFIRMATIONS/);
   });
 
   it("accepts a fully configured deployed profile", () => {
