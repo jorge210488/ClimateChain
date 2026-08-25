@@ -293,6 +293,76 @@ describe("ChainBootstrapService", () => {
     });
   });
 
+  describe("deployment drift", () => {
+    it("reports nothing while the deployment is intact", async () => {
+      const { service } = buildHarness();
+      await service.onApplicationBootstrap();
+
+      await expect(service.detectDeploymentDrift()).resolves.toBeUndefined();
+    });
+
+    it("detects a node reset that kept the same chain id", async () => {
+      // A restarted Hardhat node answers eth_chainId identically and holds no
+      // contracts. Readiness saw only the chain id, so it stayed green.
+      const codeByAddress: Record<string, string> = {
+        [PROVIDER_ADDRESS]: DEPLOYED_CODE,
+        [ORACLE_ADDRESS]: DEPLOYED_CODE,
+      };
+      const { service } = buildHarness({ codeByAddress });
+      await service.onApplicationBootstrap();
+
+      codeByAddress[PROVIDER_ADDRESS] = "0x";
+
+      await expect(service.detectDeploymentDrift()).resolves.toMatch(
+        /no longer holds any code/,
+      );
+    });
+
+    it("detects an endpoint swapped to a different deployment", async () => {
+      const codeByAddress: Record<string, string> = {
+        [PROVIDER_ADDRESS]: DEPLOYED_CODE,
+        [ORACLE_ADDRESS]: DEPLOYED_CODE,
+      };
+      const { service } = buildHarness({ codeByAddress });
+      await service.onApplicationBootstrap();
+
+      codeByAddress[PROVIDER_ADDRESS] = "0xdeadbeef";
+
+      await expect(service.detectDeploymentDrift()).resolves.toMatch(
+        /different bytecode/,
+      );
+    });
+
+    it("caches a clean result instead of re-reading code on every probe", async () => {
+      // A readiness probe runs often; this must not turn into an eth_getCode
+      // flood against the RPC endpoint.
+      const codeByAddress: Record<string, string> = {
+        [PROVIDER_ADDRESS]: DEPLOYED_CODE,
+        [ORACLE_ADDRESS]: DEPLOYED_CODE,
+      };
+      const { service, getCode } = buildHarness({ codeByAddress });
+      await service.onApplicationBootstrap();
+
+      await service.detectDeploymentDrift();
+      const afterFirst = getCode.mock.calls.length;
+      await service.detectDeploymentDrift();
+
+      expect(getCode.mock.calls.length).toBe(afterFirst);
+    });
+
+    it("fails closed when the check itself cannot complete", async () => {
+      // An unanswerable check is not a passing one.
+      const { service, getCode } = buildHarness();
+      await service.onApplicationBootstrap();
+
+      getCode.mockRejectedValue(new Error("socket hang up"));
+
+      await expect(service.detectDeploymentDrift()).resolves.toMatch(
+        /Could not re-verify the deployment/,
+      );
+    });
+  });
+
   describe("fatal misconfiguration", () => {
     it("aborts when the node runs a different chain than the manifest", async () => {
       // Pointing at the wrong chain is silent otherwise: addresses parse, calls

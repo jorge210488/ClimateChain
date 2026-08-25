@@ -222,6 +222,54 @@ paths** instead of relying on the defaults.
 > `ConfigModule` convention and keeps `src`/`dist` resolution simple) but should
 > be revisited if the launch directory ever becomes non-deterministic.
 
+## Deployment constraints
+
+These are not preferences. Each one is load-bearing until the stage that removes
+it lands, and violating one silently reintroduces a defect this service was
+built to prevent.
+
+**Exactly one replica.** Idempotency records and the nonce counter both live in
+process memory. Two replicas share neither: they will not deduplicate each
+other's retries, and they will hand the same nonce to two transactions. Durable
+idempotency and distributed nonce coordination are Stage 11/12 work; until then,
+horizontal scaling is not a tuning decision, it is a correctness one.
+
+**Exactly one signing account.** The submission queue serializes writes for the
+signer it owns. A second process sending from the same account reintroduces the
+race the queue exists to remove. If you need more throughput before Stage 11,
+give each instance its own account rather than sharing one.
+
+**No restarts while a write is unresolved.** A record in the `submitted` state
+means a transaction reached a node and its receipt never came back. That record
+is what stops a retry from creating a second policy, and it does not survive a
+restart. Drain writes before rolling, and treat a rolling deploy under write
+traffic as a duplicate risk.
+
+**A proxy in front requires `TRUST_PROXY`.** The rate limiter keys on the client
+address Express reports. Behind an unconfigured proxy every caller shares the
+proxy's budget; with the setting wrongly enabled where no trusted proxy exists,
+any caller can forge `X-Forwarded-For` and escape the limit entirely. Set it to
+the hop count or the trusted addresses — never to bare `true` on a public edge.
+
+### Sizing the read budget
+
+Reads are not uniformly priced, and the default budget is generous. One
+`GET /policies?limit=50` costs roughly:
+
+```
+1 (block pin) + 1 (page) + 50 x ~14 (per-policy reads) = ~702 RPC calls
+```
+
+At `CHAIN_READ_RATE_LIMIT_MAX=60` per minute, a single client can therefore
+drive on the order of 42,000 RPC calls per minute. Batching bounds concurrency,
+not total cost, and the limiter counts requests rather than weighting them by
+`limit`.
+
+Until Stage 11 replaces direct chain reads with a read model, size for it
+explicitly: lower `CHAIN_READ_RATE_LIMIT_MAX`, lower `CHAIN_MAX_PAGE_SIZE`, or
+put a quota in front at the RPC provider or WAF. Weighted per-request cost and
+`Multicall3` batching belong with that read model, not on top of this one.
+
 ## Commands
 
 ```bash

@@ -27,6 +27,14 @@ export interface ChainVerification {
   premiumBalanceWei: string;
 }
 
+/**
+ * How long a deployment-identity check is trusted before being redone.
+ *
+ * Short enough that drift is caught in seconds, long enough that a probe
+ * hammering `eth_getCode` does not become its own load problem.
+ */
+const IDENTITY_RECHECK_TTL_MS = 30_000;
+
 /** On-chain constants mirrored by `POLICY_DOMAIN`, read back for comparison. */
 const MIRRORED_CONSTANTS = [
   ["MAX_DURATION_DAYS", "maxDurationDays"],
@@ -53,6 +61,8 @@ const MIRRORED_CONSTANTS = [
 export class ChainBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ChainBootstrapService.name);
   private verification?: ChainVerification;
+  private driftCheckedAt?: number;
+  private lastDriftReason?: string;
 
   constructor(
     private readonly config: AppConfigService,
@@ -215,6 +225,87 @@ export class ChainBootstrapService implements OnApplicationBootstrap {
     this.assertBytecodeIdentity(address, label, manifestKey, code);
 
     return (code.length - 2) / 2;
+  }
+
+  /**
+   * Re-checks, at most once per {@link IDENTITY_RECHECK_TTL_MS}, that the
+   * contracts are still the ones verified at boot.
+   *
+   * Boot proves the chain was right *then*. Readiness currently proves the node
+   * answers and reports the same chain id, which misses the failure that is
+   * easiest to hit: a local node restarted from scratch keeps chain id 31337 and
+   * loses every contract, and an RPC failing over to a fork can do the same on a
+   * public network. Readiness stays green while every address is empty.
+   *
+   * Cached because a probe runs often and this costs one `eth_getCode` per
+   * contract. Fails closed — a check that cannot complete is reported as drift
+   * rather than assumed healthy.
+   *
+   * @returns A reason when the deployment no longer matches, undefined when it does.
+   */
+  async detectDeploymentDrift(): Promise<string | undefined> {
+    const now = Date.now();
+    if (
+      this.driftCheckedAt !== undefined &&
+      now - this.driftCheckedAt < IDENTITY_RECHECK_TTL_MS
+    ) {
+      return this.lastDriftReason;
+    }
+
+    const verification = this.verification;
+    if (!verification) {
+      return "Chain verification did not complete at startup";
+    }
+
+    try {
+      const targets: Array<[string, string, string]> = [
+        [
+          verification.providerAddress,
+          "InsuranceProvider",
+          PROVIDER_MANIFEST_KEY,
+        ],
+      ];
+      if (verification.oracleAddress) {
+        targets.push([
+          verification.oracleAddress,
+          "weather oracle",
+          this.resolveOracleManifestKey(),
+        ]);
+      }
+
+      let reason: string | undefined;
+      for (const [address, label, manifestKey] of targets) {
+        const code = await this.chain.call(`getCode(${label})`, () =>
+          this.chain.getProvider().getCode(address),
+        );
+
+        if (!code || code === "0x") {
+          reason =
+            `${label} at ${address} no longer holds any code. The node was ` +
+            `reset or replaced since startup.`;
+          break;
+        }
+
+        const expected =
+          this.registry.getManifest().runtimeBytecodeHashes?.[manifestKey];
+        if (expected && keccak256(code) !== expected) {
+          reason =
+            `${label} at ${address} holds different bytecode than at startup. ` +
+            `The endpoint points at a different deployment.`;
+          break;
+        }
+      }
+
+      this.driftCheckedAt = now;
+      this.lastDriftReason = reason;
+      return reason;
+    } catch (error) {
+      // Fail closed: an unanswerable check is not a passing one. Not cached,
+      // so a transient failure is retried on the next probe.
+      return `Could not re-verify the deployment: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
   }
 
   /**

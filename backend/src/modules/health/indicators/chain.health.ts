@@ -71,6 +71,16 @@ export class ChainHealthIndicator {
         });
       }
 
+      // Chain id is not enough on its own. A local node restarted from scratch
+      // keeps id 31337 and loses every contract; an RPC failing over to a fork
+      // can do the same on a public network. Both leave this probe green while
+      // every manifest address is empty, so the deployment itself is re-checked
+      // — cached, since a probe runs often and this costs an eth_getCode.
+      const drift = await this.bootstrap.detectDeploymentDrift();
+      if (drift) {
+        return indicator.down({ reason: drift });
+      }
+
       if (this.config.isDeployedProfile) {
         return indicator.up({ chainId: verification.chainId });
       }

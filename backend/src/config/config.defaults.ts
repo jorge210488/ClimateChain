@@ -50,6 +50,13 @@ export const CONFIG_DEFAULTS = {
    * confirmation can still be reorganized away.
    */
   chainConfirmations: 1,
+  /**
+   * Confirmation floor enforced on deployed profiles.
+   *
+   * Two is the smallest number that survives a single-block reorganization,
+   * which is routine on a public chain and impossible on a local node.
+   */
+  minDeployedConfirmations: 2,
   /** Per-RPC-call timeout. Beyond this the call is treated as transient. */
   chainRpcTimeoutMs: 10_000,
   /** How long to wait for a submitted transaction to be mined. */

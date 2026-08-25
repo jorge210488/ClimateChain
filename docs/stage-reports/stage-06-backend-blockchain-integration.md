@@ -540,6 +540,64 @@ horizontal scaling to Stage 11/12. Whether policy creation should stay
 permissionless is a product question for the Stage 11 user model; the bound
 above makes the griefing uneconomic in the meantime.
 
+### Fourth review round
+
+Eleven findings; seven were real and are fixed, four belong to the stages that
+own them.
+
+**The broadcast ignored its own timeout.** Splitting sign-then-broadcast in the
+previous round left the broadcast outside `call()`, and therefore outside
+`CHAIN_RPC_TIMEOUT_MS`. A socket the node never answers would hold the request
+until ethers or the OS gave up — and because submission is serialized, every
+write queued behind it too. It is now bounded by the configured timeout and
+still never retried: a timeout here is the ambiguous case, so the hash was
+already reported and the nonce is deliberately left alone.
+
+**A deployed profile could be ready and unable to write.** `RPC_URL` was
+required for deployed profiles; `PRIVATE_KEY` was not, with a comment deferring
+the question to Stage 06. Stage 06 answered it — the backend signs — so an
+unsigned deployed instance passed readiness and failed every `POST /policies`
+with a 503. It is now required there, and this report's own credentials section
+claimed it already was: the code was the side that was wrong.
+
+**Readiness could not see a node reset.** It compared chain id and height, which
+a Hardhat node restarted from scratch reproduces exactly while holding no
+contracts; an RPC failing over to a fork does the same on a public network. The
+probe now re-checks deployment identity against the manifest's bytecode hashes,
+cached for 30 seconds so it does not become an `eth_getCode` flood, and fails
+closed when the check itself cannot complete.
+
+**One confirmation was allowed anywhere.** Correct on a local node, wrong on a
+public one, and the Sepolia runbook's instruction to raise it is advice rather
+than an invariant. Deployed profiles now require at least two.
+
+**`trust proxy` was never configured.** The rate limiter keys on the address
+Express reports, so behind a proxy every caller shared one budget. Enabling it
+unconditionally would be worse — any caller could then forge `X-Forwarded-For` —
+so it is a deliberate `TRUST_PROXY` setting with no default.
+
+**Policy creation was authenticated but not authorized.** Every token today
+comes from `ADMIN_API_KEY`, so requiring the admin role changes nothing now and
+fails closed later: when Stage 11 introduces end-user identities, a plain user
+must not inherit the ability to spend the reserve.
+
+**The single-replica constraint was documented in this report and nowhere an
+operator would look.** It is now in the backend README as a deployment
+constraint, alongside the read-budget arithmetic: one `limit=50` page costs
+about 702 RPC calls, so the default 60/minute budget permits roughly 42,000
+calls per minute from one client. Sizing guidance is explicit until Stage 11
+replaces direct reads.
+
+Not fixed, because they belong elsewhere: durable idempotency and distributed
+nonce coordination (Stage 11/12 — the constraint above is the interim answer),
+weighted read cost and a read model or `Multicall3` (Stage 11), binding the
+caller to the beneficiary they may name (Stage 11), and the real oracle
+adapter (Stage 10).
+
+Gate after the round: contracts 120 tests with Slither clean; backend 265 unit,
+34 no-chain e2e, 19 live-chain e2e, 318 in the combined coverage run at 97.14%
+statements and 89.78% branches.
+
 ### Recorded, not changed
 
 This one changes on-chain behavior. Implementing it means editing a contract,
@@ -613,8 +671,12 @@ to the product owner, not to a review pass.
 
 - Credentials required now: No, for local development. The full stack runs on a
   local Hardhat node using its published development accounts.
-- Credentials list: `RPC_URL`, `PRIVATE_KEY` (both already required for deployed
-  profiles by the Stage 05 boot invariants).
+- Credentials list: `RPC_URL`, `PRIVATE_KEY`. Both are now required for deployed
+  profiles. This paragraph previously claimed `PRIVATE_KEY` already was, while
+  the schema left it optional — a review caught the contradiction, and the code
+  was the side that was wrong: Stage 06 settled that this service signs its own
+  transactions, so a deployed instance without a key passes readiness and then
+  fails every write.
 - Purpose: `RPC_URL` is the JSON-RPC endpoint the chain client connects to.
   `PRIVATE_KEY` signs policy-creation transactions and pays their gas. For any
   non-local network use a dedicated account holding only what it needs; never
@@ -640,11 +702,11 @@ quote:
 | | Count |
 | --- | --- |
 | Contract tests (`contracts/npm test`) | 120 |
-| Backend unit | 249 |
+| Backend unit | 265 |
 | Backend e2e, no chain | 34 |
 | Backend e2e, live chain | 19 |
-| **Combined coverage run** | **302** |
-| Statements / branches | 97.14% / 89.92% |
+| **Combined coverage run** | **318** |
+| Statements / branches | 97.14% / 89.78% |
 
 Slither reports no findings across 47 contracts and 55 detectors.
 `InsurancePolicy` is 5,755 bytes and `InsuranceProvider` 16,311, both far inside

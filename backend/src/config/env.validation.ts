@@ -106,13 +106,27 @@ export const envValidationSchema = Joi.object({
       otherwise: Joi.optional(),
     }),
   // Format-checked at boot so a malformed signer key fails here instead of on
-  // the first Stage 06 transaction. Whether a signer is required at all is a
-  // Stage 06 decision (backend-signed vs. user-signed transactions).
+  // the first transaction.
+  //
+  // Required on deployed profiles. Stage 06 settled the open question this
+  // field used to defer — transactions are signed by the backend, not by the
+  // user — so a deployed instance without a signer can pass readiness while
+  // every POST /policies returns 503. Local profiles stay optional: reads work
+  // unsigned and onboarding should not demand a key.
   PRIVATE_KEY: Joi.string()
     .pattern(PRIVATE_KEY_PATTERN)
     .message("PRIVATE_KEY must be a 0x-prefixed 32-byte hex string")
-    .optional()
-    .allow(""),
+    .empty("")
+    .when("NODE_ENV", {
+      is: Joi.valid(...DEPLOYED_PROFILES),
+      then: Joi.required().messages({
+        "any.required":
+          "PRIVATE_KEY is required for staging/testnet/production profiles: " +
+          "policy creation is signed by this service, so an unsigned deployed " +
+          "instance would accept traffic it cannot serve",
+      }),
+      otherwise: Joi.optional(),
+    }),
   FACTORY_ADDRESS: Joi.string()
     .pattern(EVM_ADDRESS_PATTERN)
     .message("FACTORY_ADDRESS must be a 0x-prefixed 20-byte hex address")
@@ -122,10 +136,35 @@ export const envValidationSchema = Joi.object({
   CONTRACTS_DEPLOYMENTS_DIR: Joi.string().optional().allow(""),
 
   // Chain client tuning (Stage 06).
+  // One confirmation is right for a local node, where a mined block is final,
+  // and wrong for a public one, where the head can be reorganized — the service
+  // would report a policy that later ceases to exist. The Sepolia runbook says
+  // to raise it; a runbook is not an invariant, so deployed profiles enforce it.
+  /**
+   * Express `trust proxy` value; unset leaves it off.
+   *
+   * Accepts what Express accepts: `true`, a hop count, or a list of trusted
+   * addresses/subnets. Prefer a hop count or explicit addresses — bare `true`
+   * trusts whatever `X-Forwarded-For` arrives with.
+   */
+  TRUST_PROXY: Joi.string().empty("").optional(),
   CHAIN_CONFIRMATIONS: Joi.number()
     .integer()
-    .min(1)
     .empty("")
+    .when("NODE_ENV", {
+      is: Joi.valid(...DEPLOYED_PROFILES),
+      then: Joi.number()
+        .integer()
+        .min(CONFIG_DEFAULTS.minDeployedConfirmations)
+        .messages({
+          "number.min":
+            "CHAIN_CONFIRMATIONS must be at least " +
+            `${CONFIG_DEFAULTS.minDeployedConfirmations} on staging/testnet/production: ` +
+            "a public chain can reorganize its head, and one confirmation would " +
+            "report policies that later cease to exist",
+        }),
+      otherwise: Joi.number().integer().min(1),
+    })
     .default(CONFIG_DEFAULTS.chainConfirmations),
   CHAIN_RPC_TIMEOUT_MS: Joi.number()
     .integer()

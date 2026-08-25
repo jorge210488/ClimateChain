@@ -1,6 +1,8 @@
 import { CONFIG_DEFAULTS } from "./config.defaults";
 import { envValidationSchema } from "./env.validation";
 
+const DEPLOYED_PRIVATE_KEY = `0x${"11".repeat(32)}`;
+
 describe("envValidationSchema", () => {
   it("resolves empty .env values to defaults for local profiles", () => {
     const { error, value } = envValidationSchema.validate(
@@ -72,7 +74,12 @@ describe("envValidationSchema", () => {
 
     it("is accepted for deployed profiles when set", () => {
       const { error } = envValidationSchema.validate(
-        { ...deployedEnv, RPC_URL: "https://rpc.example.com" },
+        {
+          ...deployedEnv,
+          RPC_URL: "https://rpc.example.com",
+          PRIVATE_KEY: DEPLOYED_PRIVATE_KEY,
+          CHAIN_CONFIRMATIONS: 2,
+        },
         { abortEarly: false, allowUnknown: true },
       );
 
@@ -82,6 +89,96 @@ describe("envValidationSchema", () => {
     it("stays optional for local profiles", () => {
       const { error } = envValidationSchema.validate(
         { NODE_ENV: "development", RPC_URL: "" },
+        { allowUnknown: true },
+      );
+
+      expect(error).toBeUndefined();
+    });
+  });
+
+  describe("PRIVATE_KEY", () => {
+    const deployedEnv = {
+      NODE_ENV: "production",
+      JWT_SECRET: "a-real-production-jwt-secret-value",
+      CORS_ORIGINS: "https://app.example.com",
+      RPC_URL: "https://rpc.example.com",
+      CHAIN_CONFIRMATIONS: 2,
+    };
+
+    it("is required for deployed profiles", () => {
+      // Stage 06 settled that this service signs its own transactions, so a
+      // deployed instance without a key passes readiness and then fails every
+      // POST /policies with a 503 — accepting traffic it cannot serve.
+      const { error } = envValidationSchema.validate(
+        { ...deployedEnv, PRIVATE_KEY: "" },
+        { abortEarly: false, allowUnknown: true },
+      );
+
+      expect(error).toBeDefined();
+      expect(error?.message).toMatch(/PRIVATE_KEY is required/);
+    });
+
+    it("is accepted for deployed profiles when set", () => {
+      const { error } = envValidationSchema.validate(
+        { ...deployedEnv, PRIVATE_KEY: DEPLOYED_PRIVATE_KEY },
+        { abortEarly: false, allowUnknown: true },
+      );
+
+      expect(error).toBeUndefined();
+    });
+
+    it("stays optional for local profiles, where reads work unsigned", () => {
+      const { error } = envValidationSchema.validate(
+        { NODE_ENV: "development", PRIVATE_KEY: "" },
+        { allowUnknown: true },
+      );
+
+      expect(error).toBeUndefined();
+    });
+
+    it("still rejects a malformed key on any profile", () => {
+      const { error } = envValidationSchema.validate(
+        { NODE_ENV: "development", PRIVATE_KEY: "not-a-key" },
+        { allowUnknown: true },
+      );
+
+      expect(error?.message).toMatch(/0x-prefixed 32-byte hex/);
+    });
+  });
+
+  describe("CHAIN_CONFIRMATIONS", () => {
+    const deployedEnv = {
+      NODE_ENV: "production",
+      JWT_SECRET: "a-real-production-jwt-secret-value",
+      CORS_ORIGINS: "https://app.example.com",
+      RPC_URL: "https://rpc.example.com",
+      PRIVATE_KEY: DEPLOYED_PRIVATE_KEY,
+    };
+
+    it("refuses a single confirmation on a deployed profile", () => {
+      // Final on a local node, not on a public chain: one confirmation would
+      // report policies that a reorganization then removes.
+      const { error } = envValidationSchema.validate(
+        { ...deployedEnv, CHAIN_CONFIRMATIONS: 1 },
+        { abortEarly: false, allowUnknown: true },
+      );
+
+      expect(error).toBeDefined();
+      expect(error?.message).toMatch(/CHAIN_CONFIRMATIONS must be at least 2/);
+    });
+
+    it("accepts the floor on a deployed profile", () => {
+      const { error } = envValidationSchema.validate(
+        { ...deployedEnv, CHAIN_CONFIRMATIONS: 2 },
+        { abortEarly: false, allowUnknown: true },
+      );
+
+      expect(error).toBeUndefined();
+    });
+
+    it("still allows one confirmation locally", () => {
+      const { error } = envValidationSchema.validate(
+        { NODE_ENV: "development", CHAIN_CONFIRMATIONS: 1 },
         { allowUnknown: true },
       );
 

@@ -13,6 +13,7 @@ import {
 import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
 
 import { AUTH_THROTTLER } from "../../common/throttling/throttling.module";
+import { Roles } from "../../common/decorators/roles.decorator";
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
@@ -68,6 +69,12 @@ export class PoliciesController {
    * behalf, is refined in Stage 11; requiring a valid principal is the floor.
    */
   @Post()
+  // Explicitly administrative. Every principal is an admin today, because the
+  // only way to obtain a token is ADMIN_API_KEY — so this changes nothing now
+  // and fails closed later: when Stage 11 introduces end-user identities, a
+  // plain user must not silently inherit the ability to spend the reserve.
+  // Binding the caller to the `insured` they may name is that stage's work.
+  @Roles("admin")
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Create a parametric rainfall policy",

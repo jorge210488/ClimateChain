@@ -317,6 +317,48 @@ describe("ChainProviderService", () => {
       service.onModuleDestroy();
     });
 
+    it("bounds a hung broadcast by the configured timeout", async () => {
+      // Without this the broadcast bypassed CHAIN_RPC_TIMEOUT_MS entirely: a
+      // socket the node never answers would hold this request *and* every write
+      // queued behind it until ethers or the OS gave up. The submission queue
+      // is serial, so one hung send stalls all of them.
+      const { service, broadcast } = buildSignedService();
+      broadcast.mockImplementation(() => new Promise(() => undefined));
+      const reported: SignedSubmission[] = [];
+
+      const started = Date.now();
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.resolve(buildRequest()),
+          (signed) => reported.push(signed),
+        ),
+      ).rejects.toMatchObject({ code: "TIMEOUT" });
+
+      // rpcTimeoutMs is 50 in this harness; the point is that it returns at all.
+      expect(Date.now() - started).toBeLessThan(5_000);
+      // Timing out is the ambiguous case, so the hash must still have been
+      // reported — otherwise idempotency would release the key and a retry
+      // could submit a transaction the node may already hold.
+      expect(reported).toHaveLength(1);
+      service.onModuleDestroy();
+    });
+
+    it("does not rewind the nonce after a hung broadcast either", async () => {
+      const { service, broadcast } = buildSignedService();
+      broadcast.mockImplementation(() => new Promise(() => undefined));
+      const reset = jest.spyOn(service, "resetNonce");
+
+      await expect(
+        service.submitSignedTransaction(
+          () => Promise.resolve(buildRequest()),
+          () => undefined,
+        ),
+      ).rejects.toMatchObject({ code: "TIMEOUT" });
+
+      expect(reset).not.toHaveBeenCalled();
+      service.onModuleDestroy();
+    });
+
     it("does not rewind the nonce after a failed broadcast", async () => {
       // Rewinding would hand the next send a nonce the node may already be
       // holding, silently replacing a policy that is on its way.

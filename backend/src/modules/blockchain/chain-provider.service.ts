@@ -392,7 +392,17 @@ export class ChainProviderService implements OnModuleDestroy {
       signer.increment();
 
       try {
-        return await this.getProvider().broadcastTransaction(raw);
+        // Timed out, never retried. Retrying would resubmit a transaction the
+        // node may already hold; leaving it untimed would let one hung socket
+        // block this request *and* every write queued behind it until ethers or
+        // the OS gave up, ignoring the configured budget entirely. A timeout
+        // here is the ambiguous case, not a clean failure — which is why the
+        // hash was reported before the call and the nonce is left alone.
+        return await this.withTimeout(
+          "broadcastTransaction",
+          () => this.getProvider().broadcastTransaction(raw),
+          this.config.blockchain.rpcTimeoutMs,
+        );
       } catch (error) {
         // Deliberately *not* resetting the nonce: the node may hold this
         // transaction. Rewinding would make the next send reuse a live nonce

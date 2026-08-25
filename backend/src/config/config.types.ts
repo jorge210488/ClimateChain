@@ -14,6 +14,16 @@ export interface AppRuntimeConfig {
   swaggerEnabled: boolean;
   /** Maximum accepted request body size (Express/body-parser syntax). */
   maxRequestBodySize: string;
+  /**
+   * Express `trust proxy` setting, or undefined to leave it off.
+   *
+   * Off by default on purpose. Behind a proxy the rate limiter otherwise
+   * meters the proxy's address and one client can exhaust everyone's budget;
+   * but enabling it where no trusted proxy exists is worse, because then any
+   * caller can spoof `X-Forwarded-For` and get an unlimited budget. It has
+   * to be a deliberate statement about the topology, never a default.
+   */
+  trustProxy?: string;
 }
 
 export interface BlockchainConfig {

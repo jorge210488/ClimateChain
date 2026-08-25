@@ -77,6 +77,9 @@ export function configuration(): Record<string, RootConfig> {
       maxRequestBodySize:
         optionalString(env.MAX_REQUEST_BODY_SIZE) ??
         CONFIG_DEFAULTS.maxRequestBodySize,
+      // No default: trusting a proxy that is not there hands every caller a
+      // spoofable client address, which is worse than metering the proxy.
+      trustProxy: optionalString(env.TRUST_PROXY),
     },
     blockchain: {
       network:

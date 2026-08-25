@@ -43,12 +43,15 @@ function buildIndicator(options: {
   deployedProfile?: boolean;
   /** Chain id the node currently reports, to simulate a repointed endpoint. */
   nodeChainId?: string;
+  /** Drift reason the bootstrap re-check reports, or undefined when intact. */
+  driftReason?: string;
 }): ChainHealthIndicator {
   const {
     enabled = true,
     blockNumber = 99,
     deployedProfile = false,
     nodeChainId = "31337",
+    driftReason,
   } = options;
 
   // Read through `in`: an explicitly passed `undefined` is the case under test
@@ -71,6 +74,7 @@ function buildIndicator(options: {
 
   const bootstrap = {
     getVerification: () => verification,
+    detectDeploymentDrift: async () => driftReason,
   } as unknown as ChainBootstrapService;
 
   const config = { isDeployedProfile: deployedProfile } as AppConfigService;
@@ -84,6 +88,24 @@ function buildIndicator(options: {
 }
 
 describe("ChainHealthIndicator", () => {
+  it("reports down when the contracts no longer match the deployment", async () => {
+    // The failure chainId cannot catch, and the easiest one to hit: a local
+    // node restarted from scratch keeps id 31337 and loses every contract, so
+    // this probe stayed green while every manifest address was empty.
+    const result = await buildIndicator({
+      driftReason: "InsuranceProvider at 0xabc no longer holds any code.",
+    }).isHealthy("chain");
+
+    expect(result.chain.status).toBe("down");
+    expect(String(result.chain.reason)).toContain("no longer holds any code");
+  });
+
+  it("reports up when the deployment is still intact", async () => {
+    const result = await buildIndicator({}).isHealthy("chain");
+
+    expect(result.chain.status).toBe("up");
+  });
+
   it("reports down when no RPC endpoint is configured", async () => {
     // Not "broken", but genuinely not ready to serve policy traffic. Reporting
     // up here would claim a capability the service cannot deliver.

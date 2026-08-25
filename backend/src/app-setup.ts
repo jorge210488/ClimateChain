@@ -37,6 +37,15 @@ export function configureApp(app: INestApplication): void {
 
   // Baseline security headers. `contentSecurityPolicy` is left at helmet's
   // default; Swagger UI is served from the same origin so it is unaffected.
+  // Applied before anything reads a client address. The rate limiter keys on
+  // what Express reports, so behind a proxy without this every caller shares
+  // the proxy's budget; with it wrongly enabled, every caller can forge one.
+  const { trustProxy } = config.app;
+  if (trustProxy !== undefined) {
+    const parsed = /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy;
+    app.getHttpAdapter().getInstance().set("trust proxy", parsed);
+  }
+
   app.use(helmet());
 
   // An empty allowlist reflects any origin, which only local/dev/test may do —
