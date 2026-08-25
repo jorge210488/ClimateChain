@@ -1,10 +1,8 @@
 # ClimateChain ML service dependencies.
 #
-# Stage 01 baseline: enough for the documented onboarding command
-# (`pip install -r requirements.txt`) to succeed and for a virtual environment
-# to be reproducible. The serving stack, model runtime, and training pipeline
-# are added by their owning stages (07 serving, 08 training), which extend this
-# file rather than replacing it.
+# Stage 01 established the baseline; Stage 07 adds the serving stack and the
+# model runtime. The training pipeline is Stage 08, which extends this file
+# rather than replacing it.
 #
 # Pins are lower bounds on purpose: the lockfile equivalent arrives with the
 # Stage 12 container build, where the runtime image is what needs to be exact.
@@ -16,5 +14,18 @@ pydantic>=2.11,<3
 pydantic-settings>=2.8,<3
 python-dotenv>=1.0,<2
 
+# Serving stack (Stage 07).
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+
+# Fitting the baseline artifact (scripts/build_baseline_model.py). Not imported
+# by any runtime path: the service loads coefficients and evaluates them in
+# plain Python, so serving needs no numerical stack.
+numpy>=2.1,<3
+
 # Test tooling, so `tests/` is runnable from Stage 01 onward.
 pytest>=8.3,<9
+httpx>=0.28,<1
+
+# Lint and format, enforced by the Stage 07 gate.
+ruff>=0.9,<1

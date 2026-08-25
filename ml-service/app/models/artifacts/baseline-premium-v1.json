@@ -1,0 +1,58 @@
+{
+  "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
+  "coefficients": [
+    -1.652890544407,
+    -1.469513825599,
+    0.289907544628,
+    0.785219470978
+  ],
+  "createdAt": "2026-08-25T22:43:03Z",
+  "defaultRegionRisk": 2.0125,
+  "features": [
+    "intercept",
+    "log_threshold_mm",
+    "log_duration_days",
+    "region_risk"
+  ],
+  "modelVersion": "baseline-premium-v1",
+  "premiumLoading": 0.35,
+  "provider": "baseline",
+  "regionRisk": {
+    "bogota": 3.4,
+    "buenos aires": 2.9,
+    "cartagena": 2.6,
+    "lima": 0.2,
+    "medellin": 4.1,
+    "santiago": 0.8,
+    "sevilla": 0.9,
+    "valencia": 1.2
+  },
+  "schemaVersion": 1,
+  "training": {
+    "durationDaysGrid": [
+      7,
+      14,
+      30,
+      60,
+      90,
+      180,
+      365
+    ],
+    "kind": "synthetic",
+    "note": "Seeded gamma-distributed daily rainfall, not observed climate. Replaced by the Stage 08 data pipeline.",
+    "observations": 448,
+    "seed": 20260728,
+    "thresholdMmGrid": [
+      10,
+      20,
+      30,
+      50,
+      80,
+      120,
+      200,
+      300
+    ],
+    "transitional": true,
+    "yearsOfHistory": 30
+  }
+}

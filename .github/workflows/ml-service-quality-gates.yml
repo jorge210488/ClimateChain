@@ -1,0 +1,70 @@
+name: ML Service Quality Gates
+
+on:
+  pull_request:
+    paths:
+      - "ml-service/**"
+      # The contract tests read the backend's published schema and domain
+      # constants, so a change on that side can break this gate.
+      - "docs/api/backend-openapi.json"
+      - "backend/src/modules/policies/policy.constants.ts"
+      - ".github/workflows/ml-service-quality-gates.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "ml-service/**"
+      - "docs/api/backend-openapi.json"
+      - "backend/src/modules/policies/policy.constants.ts"
+      - ".github/workflows/ml-service-quality-gates.yml"
+
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ml-service-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ml-service-stage7-gates:
+    name: ml-service-stage7-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: ml-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # Matches the floor in pyproject.toml. The local toolchain runs 3.13;
+          # pinning the older supported version here means a 3.11 incompatibility
+          # is caught in CI rather than by whoever installs it next.
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ml-service/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Stage 07 full gate
+        run: python scripts/stage7_check.py
+
+      - name: Model artifact drift gate
+        # The gate rebuilds the artifact; anything left modified in the working
+        # tree means the committed file is not what the script produces. Same
+        # guarantee the contracts workflow enforces for shared ABIs.
+        run: |
+          if [[ -n "$(git status --porcelain .)" ]]; then
+            echo "Detected drift after stage7_check. Commit the rebuilt artifact."
+            git --no-pager status --short .
+            exit 1
+          fi

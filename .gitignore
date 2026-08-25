@@ -43,6 +43,12 @@ out/
 __pycache__/
 *.py[cod]
 *.pyo
+
+# The model artifact is a committed, reviewable JSON file whose rebuild the
+# Stage 07 gate verifies. The blanket `artifacts/` rule above targets Hardhat's
+# build output and would otherwise swallow it.
+!ml-service/app/models/artifacts/
+!ml-service/app/models/artifacts/*.json
 *.pyd
 .python-version
 .mypy_cache/

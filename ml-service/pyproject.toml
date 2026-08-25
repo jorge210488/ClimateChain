@@ -1,0 +1,24 @@
+[project]
+name = "climatechain-ml-service"
+version = "0.1.0"
+description = "Premium pricing inference service for ClimateChain"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["."]
+
+[tool.ruff.lint]
+# Chosen to match the strictness the Node modules already enforce: unused code,
+# shadowed builtins, and implicit string concatenation are errors there too.
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert on magic numbers by design; naming them would hide the case.
+"tests/*" = ["N806"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import mode keeps `app` importable without installing the package.
+addopts = "-q --strict-markers"

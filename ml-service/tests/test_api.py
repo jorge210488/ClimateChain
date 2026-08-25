@@ -1,0 +1,233 @@
+"""
+HTTP behaviour: the boot contract, the probes, and `/predict`.
+
+Startup is exercised through the real lifespan rather than by calling the
+service functions directly, because "fails to boot without a model" is the
+acceptance criterion and only the lifespan can demonstrate it.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.core.config import Settings
+from app.main import create_app
+from app.models.artifact import ModelArtifactError
+from tests.conftest_helpers import ARTIFACT_PATH
+
+
+def build_settings(**overrides) -> Settings:
+    defaults = {
+        "APP_ENV": "test",
+        "MODEL_PROVIDER": "baseline",
+        "MODEL_PATH": str(ARTIFACT_PATH),
+    }
+    defaults.update(overrides)
+    # `_env_file=None` isolates the test from a developer's local .env, which
+    # would otherwise decide whether these assertions hold.
+    return Settings(_env_file=None, **defaults)
+
+
+@pytest.fixture()
+def client() -> TestClient:
+    with TestClient(create_app(build_settings())) as test_client:
+        yield test_client
+
+
+class TestStartup:
+    def test_refuses_to_start_without_an_artifact(self, tmp_path) -> None:
+        # The acceptance criterion. A service that starts without a model looks
+        # healthy to an orchestrator and fails on the first real request.
+        settings = build_settings(MODEL_PATH=str(tmp_path / "absent.json"))
+
+        with (
+            pytest.raises(ModelArtifactError, match="No model artifact"),
+            TestClient(create_app(settings)),
+        ):
+            pass
+
+    def test_refuses_to_start_on_a_corrupted_artifact(self, tmp_path) -> None:
+        # A truncated copy parses as JSON but hashes differently. Loading it
+        # would price confidently from wrong numbers.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload["coefficients"][0] += 1.0
+        corrupted = tmp_path / "corrupted.json"
+        corrupted.write_text(json.dumps(payload), encoding="utf-8")
+
+        settings = build_settings(MODEL_PATH=str(corrupted))
+
+        with (
+            pytest.raises(ModelArtifactError, match="integrity check"),
+            TestClient(create_app(settings)),
+        ):
+            pass
+
+    def test_refuses_an_artifact_from_another_provider(self, tmp_path) -> None:
+        # Configuration and artifact must agree on which model is running, or an
+        # operator can be serving something they did not deploy.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload["provider"] = "stage08-gbm"
+        from app.models.artifact import compute_checksum
+
+        payload["checksum"] = compute_checksum(payload)
+        foreign = tmp_path / "foreign.json"
+        foreign.write_text(json.dumps(payload), encoding="utf-8")
+
+        settings = build_settings(MODEL_PATH=str(foreign))
+
+        with (
+            pytest.raises(ModelArtifactError, match="MODEL_PROVIDER"),
+            TestClient(create_app(settings)),
+        ):
+            pass
+
+
+class TestHealth:
+    def test_liveness_is_independent_of_the_model(self, client: TestClient) -> None:
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+    def test_readiness_reports_the_loaded_model(self, client: TestClient) -> None:
+        response = client.get("/health/ready")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ready"
+        assert body["model"]["loaded"] is True
+        assert body["model"]["modelVersion"] == "baseline-premium-v1"
+        # Which model, not just whether one is loaded: during an incident the
+        # useful question is whether this instance is running the current one.
+        assert len(body["model"]["checksum"]) == 64
+
+    def test_readiness_is_503_when_no_model_is_loaded(self) -> None:
+        # Constructed without running the lifespan, which is the state a process
+        # would be in if startup had failed.
+        app = create_app(build_settings())
+        client = TestClient(app)
+
+        response = client.get("/health/ready")
+
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "not_ready"
+        assert body["model"]["loaded"] is False
+        assert body["model"]["reason"]
+
+
+class TestPredict:
+    def _request(self, **overrides) -> dict:
+        payload = {
+            "region": "Valencia",
+            "startDate": "2026-04-01",
+            "endDate": "2026-04-30",
+            "coverageEth": "1.0",
+            "rainfallThresholdMm": 50,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_returns_the_published_response_shape(self, client: TestClient) -> None:
+        response = client.post("/predict", json=self._request())
+
+        assert response.status_code == 200
+        body = response.json()
+        for field in (
+            "region",
+            "premiumEth",
+            "premiumWei",
+            "currency",
+            "startDate",
+            "endDate",
+            "modelVersion",
+        ):
+            assert field in body
+
+    def test_premium_wei_is_a_string(self, client: TestClient) -> None:
+        # Wei for a large coverage exceeds what a JSON number survives; the
+        # backend's DTO types it as a string for the same reason.
+        response = client.post("/predict", json=self._request(coverageEth="1000000.0"))
+
+        body = response.json()
+        assert isinstance(body["premiumWei"], str)
+        assert int(body["premiumWei"]) > 0
+
+    def test_the_two_premium_representations_agree(self, client: TestClient) -> None:
+        from app.core.money import parse_eth_to_wei
+
+        body = client.post("/predict", json=self._request()).json()
+
+        assert parse_eth_to_wei(body["premiumEth"]) == int(body["premiumWei"])
+
+    def test_echoes_the_requested_window_and_region(self, client: TestClient) -> None:
+        body = client.post("/predict", json=self._request()).json()
+
+        assert body["region"] == "Valencia"
+        assert body["startDate"] == "2026-04-01"
+        assert body["endDate"] == "2026-04-30"
+
+    @pytest.mark.parametrize(
+        ("overrides", "expected_fragment"),
+        [
+            ({"coverageEth": "not-a-number"}, "coverageEth"),
+            ({"coverageEth": "0"}, "greater than zero"),
+            ({"coverageEth": "1.0000000000000000001"}, "coverageEth"),
+            ({"rainfallThresholdMm": 0}, "rainfallThresholdMm"),
+            ({"rainfallThresholdMm": -5}, "rainfallThresholdMm"),
+            ({"region": ""}, "region"),
+            ({"region": "x" * 32}, "on-chain limit"),
+            ({"endDate": "2026-03-01"}, "on or after"),
+            ({"startDate": "2026-01-01", "endDate": "2027-06-30"}, "on-chain maximum"),
+        ],
+    )
+    def test_rejects_invalid_payloads_with_a_clear_message(
+        self, client: TestClient, overrides: dict, expected_fragment: str
+    ) -> None:
+        response = client.post("/predict", json=self._request(**overrides))
+
+        assert response.status_code == 422
+        assert expected_fragment in json.dumps(response.json())
+
+    def test_rejects_unknown_fields(self, client: TestClient) -> None:
+        # A field the caller thinks is priced but is silently ignored is worse
+        # than a rejection: the quote would look considered and not be.
+        response = client.post("/predict", json=self._request(unexpectedRiskFactor=1.0))
+
+        assert response.status_code == 422
+
+    def test_a_region_at_the_byte_budget_is_accepted(self, client: TestClient) -> None:
+        # 31 bytes exactly: the last value the chain can encode.
+        response = client.post("/predict", json=self._request(region="x" * 31))
+
+        assert response.status_code == 200
+
+    def test_a_multibyte_region_is_measured_in_bytes(self, client: TestClient) -> None:
+        # 16 accented characters are 32 UTF-8 bytes, so this must be refused
+        # even though it is shorter than the character limit suggests.
+        response = client.post("/predict", json=self._request(region="ñ" * 16))
+
+        assert response.status_code == 422
+        assert "UTF-8 bytes" in json.dumps(response.json())
+
+    def test_a_single_day_window_is_priced(self, client: TestClient) -> None:
+        response = client.post(
+            "/predict",
+            json=self._request(startDate="2026-04-01", endDate="2026-04-01"),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["durationDays"] == 1
+
+    def test_the_maximum_window_is_priced(self, client: TestClient) -> None:
+        # 365 days inclusive: the longest policy the provider will create.
+        response = client.post(
+            "/predict",
+            json=self._request(startDate="2026-01-01", endDate="2026-12-31"),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["durationDays"] == 365
