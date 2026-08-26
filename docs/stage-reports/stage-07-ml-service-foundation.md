@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **95 passing**, comprising
+- Tests: **109 passing** after the review round below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -138,6 +138,56 @@ premium floor, distinct risks price identically, so two dry regions return the
 same premium while reporting different `triggerProbability`. The test was wrong,
 not the code, and the behaviour is now pinned by
 `test_the_floor_compresses_low_risk_quotes`.
+
+## Review round
+
+Five findings on the code above, all real and all fixed. Four were defects in
+what this stage had just claimed.
+
+**The quote → create promise failed at valid limits.** The amount pattern here
+was written to match the backend's rather than copied from it, and diverged in
+both directions: it refused `"01.0"` the backend accepts and accepted 31 integer
+digits it refuses. `rainfallThresholdMm` had no upper bound, so a value past
+2^53 passed here and would be rejected there as already-corrupted. Worst of the
+three: a 30-digit coverage the backend accepts, priced at maximum risk, produced
+a 31-digit premium the backend would then refuse — the invariant this service
+advertises, broken at its own boundary. The pattern is now copied character for
+character, the threshold is bounded, and every premium is checked against the
+backend's pattern before the response is sent, returning 422 when a coverage
+cannot be priced within the shared format.
+
+**A valid-looking artifact could load and break `/predict`.** Loading verified
+the checksum and the feature/coefficient count, but not that the features were
+ones the evaluator computes or that the numbers were finite. An artifact with
+`features=["unsupported_feature"]` loaded, readiness reported ready, and the
+first quote returned 500 — the precise failure fail-fast exists to prevent.
+Reproduced with four more cases beyond the one reported: NaN coefficient,
+infinite loading, duplicated feature, missing feature. Loading now rejects all
+six.
+
+**The gate would fail falsely on a fresh Windows clone.** The build script wrote
+with the platform's newline while the committed file is LF, and the drift check
+compares raw bytes. It passed locally only because that working tree already
+held CRLF; a clean checkout under `core.autocrlf=input` gets LF, rebuilds to
+CRLF, and fails on a change that never happened. Fixed on both sides — explicit
+`newline="
+"` on write, and a `.gitattributes` pinning `*.json` to LF, which
+also covers the ABI and deployment manifests other gates compare.
+
+**The startup check could pass without starting anything.** A fixed port meant
+any listener already on it could answer the probes while the process under test
+failed to bind and died. It now reserves an ephemeral port, verifies the
+responder reports the checksum this run built, and confirms the child is still
+alive after the requests.
+
+**Warnings were emitted and ignored.** With open dependency ranges, a
+deprecation is how an incompatibility announces itself before it breaks. The
+suite now treats warnings as errors, with one documented ignore for a
+test-only Starlette notice. It immediately caught a deprecated status constant
+in the code written minutes earlier.
+
+Gate after the round: lint and format clean, artifact drift clean, **109 tests
+passing**, and a real startup verified by checksum.
 
 ## Risks or pending items
 

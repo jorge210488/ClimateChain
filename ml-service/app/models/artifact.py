@@ -16,12 +16,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 # Bumped when the artifact's shape changes in a way this loader cannot read.
 SUPPORTED_SCHEMA_VERSION = 1
+
+# Features the baseline evaluator can compute. Declared here rather than in the
+# evaluator so loading can reject an artifact the evaluator would choke on:
+# discovering an unknown feature at quote time means readiness reported "ready"
+# for a model that cannot price, which is exactly what fail-fast is for.
+BASELINE_FEATURES = frozenset(
+    {"intercept", "log_threshold_mm", "log_duration_days", "region_risk"}
+)
 
 # Fields that must be present for the artifact to be usable at all.
 REQUIRED_FIELDS = (
@@ -72,6 +81,24 @@ def compute_checksum(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _require_finite(value: object, label: str) -> float:
+    """
+    Coerces to a real, finite float or fails the load.
+
+    NaN and infinity survive JSON round-trips through most writers and then
+    poison arithmetic quietly: a NaN coefficient yields a NaN premium, and an
+    infinite loading overflows. Neither is detectable once it reaches money.
+    """
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as error:
+        raise ModelArtifactError(f"{label} is not a number: {value!r}") from error
+
+    if not math.isfinite(number):
+        raise ModelArtifactError(f"{label} must be finite, got {number}")
+    return number
+
+
 def load_artifact(path: Path) -> ModelArtifact:
     """
     Reads, verifies, and returns the model at `path`.
@@ -119,17 +146,47 @@ def load_artifact(path: Path) -> ModelArtifact:
             f"It was modified or truncated after being written."
         )
 
-    features = tuple(payload["features"])
-    coefficients = tuple(float(value) for value in payload["coefficients"])
+    features = tuple(str(name) for name in payload["features"])
+    coefficients = tuple(
+        _require_finite(value, f"coefficient {index}")
+        for index, value in enumerate(payload["coefficients"])
+    )
+
     if len(features) != len(coefficients):
         raise ModelArtifactError(
             f"Model artifact at {path} has {len(features)} features and "
             f"{len(coefficients)} coefficients; they must correspond"
         )
 
+    if len(set(features)) != len(features):
+        raise ModelArtifactError(
+            f"Model artifact at {path} repeats a feature: {features}. Each "
+            f"feature contributes once, so a duplicate silently doubles it."
+        )
+
+    # Exactly the supported set, in any order. Order is free because features
+    # and coefficients travel together; membership is not, because a missing
+    # feature changes the model without looking like an error, and an unknown
+    # one cannot be computed at all.
+    if set(features) != BASELINE_FEATURES:
+        unknown = sorted(set(features) - BASELINE_FEATURES)
+        missing = sorted(BASELINE_FEATURES - set(features))
+        raise ModelArtifactError(
+            f"Model artifact at {path} does not match the features this service "
+            f"evaluates. Unknown: {unknown or 'none'}. Missing: "
+            f"{missing or 'none'}."
+        )
+
+    try:
+        region_items = list(payload["regionRisk"].items())
+    except AttributeError as error:
+        raise ModelArtifactError(
+            f"Model artifact at {path} has a regionRisk that is not a mapping"
+        ) from error
+
     region_risk = {
-        str(region).strip().lower(): float(value)
-        for region, value in payload["regionRisk"].items()
+        str(region).strip().lower(): _require_finite(value, f"regionRisk[{region}]")
+        for region, value in region_items
     }
 
     return ModelArtifact(
@@ -138,8 +195,10 @@ def load_artifact(path: Path) -> ModelArtifact:
         features=features,
         coefficients=coefficients,
         region_risk=region_risk,
-        default_region_risk=float(payload["defaultRegionRisk"]),
-        premium_loading=float(payload["premiumLoading"]),
+        default_region_risk=_require_finite(
+            payload["defaultRegionRisk"], "defaultRegionRisk"
+        ),
+        premium_loading=_require_finite(payload["premiumLoading"], "premiumLoading"),
         source_path=path,
         checksum=str(payload["checksum"]),
     )

@@ -229,9 +229,12 @@ def main() -> None:
     payload = _preserve_created_at(payload, args.output)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    # newline="\n" explicitly: write_text() translates to CRLF on Windows, and
+    # the gate compares this file byte for byte against a fresh rebuild. A
+    # checkout on one platform and a rebuild on another would then differ with
+    # no semantic change at all. `.gitattributes` pins the checkout side.
+    with args.output.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
     print(f"Model version:  {payload['modelVersion']}")
     print(f"Observations:   {payload['training']['observations']}")

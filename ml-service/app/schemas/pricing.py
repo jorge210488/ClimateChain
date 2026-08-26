@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core.domain import (
     MAX_DURATION_DAYS,
     MAX_REGION_CODE_BYTES,
+    MAX_SAFE_INTEGER,
     MIN_DURATION_DAYS,
 )
 from app.core.money import POSITIVE_ETH_AMOUNT_PATTERN
@@ -46,7 +47,14 @@ class QuoteRequest(BaseModel):
     end_date: date = Field(..., alias="endDate")
     coverage_eth: str = Field(..., alias="coverageEth", examples=["1.0"])
     rainfall_threshold_mm: int = Field(
-        ..., alias="rainfallThresholdMm", ge=1, examples=[50]
+        ...,
+        alias="rainfallThresholdMm",
+        ge=1,
+        # Bounded above by what JavaScript represents exactly. Python would
+        # carry a larger integer happily, but the backend rejects it — and a
+        # threshold that changes value in transit is corrupted, not large.
+        le=MAX_SAFE_INTEGER,
+        examples=[50],
     )
 
     @field_validator("region")
@@ -69,12 +77,15 @@ class QuoteRequest(BaseModel):
     @field_validator("coverage_eth")
     @classmethod
     def _coverage_is_an_eth_amount(cls, value: str) -> str:
+        # One pattern, shared with the backend, so acceptance is identical in
+        # both directions: zero and every spelling of it are refused by the
+        # pattern itself, and leading zeros are allowed because the backend
+        # allows them.
         if not POSITIVE_ETH_AMOUNT_PATTERN.match(value):
             raise ValueError(
-                "coverageEth must be a positive decimal with at most 18 decimals"
+                "coverageEth must be a positive decimal with at most "
+                "30 integer digits and 18 fractional digits"
             )
-        if value.strip("0.") == "":
-            raise ValueError("coverageEth must be greater than zero")
         return value
 
     @model_validator(mode="after")

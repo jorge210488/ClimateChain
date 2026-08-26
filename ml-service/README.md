@@ -27,6 +27,20 @@ here instead of quoted, because the policy it describes could never be created.
 so two dry regions can return the same premium while reporting different
 `triggerProbability` values. That is the floor working, not the model failing.
 
+### The promise is checked on the way out, too
+
+Bounding the inputs is not sufficient. The amount format both sides share caps
+integer digits at 30, and the loading multiplies — so a coverage at the top of
+the accepted range can price *above* it, and the backend would refuse the quote
+it asked for. Every premium is therefore checked against the backend's own
+pattern before the response is sent; a coverage that cannot be priced within the
+format returns 422 naming the reason, rather than a number that reverts.
+
+The amount pattern here is copied character for character from the backend's
+`POSITIVE_ETH_AMOUNT_REGEX`, not approximated. Approximating it produced
+divergences in both directions: refusing `"01.0"` the backend accepts, and
+accepting 31 integer digits it rejects.
+
 ## Endpoints
 
 | Method | Path | Purpose |
@@ -97,6 +111,11 @@ which is not an acceptable property for something read at every boot from an
 operator-controlled path. JSON also lets a reviewer read what the service prices
 with. The file carries a `sha256` over its own contents, so a truncated or
 edited copy fails to load instead of pricing from wrong numbers.
+
+Loading also rejects anything the evaluator could not use: an unknown, missing,
+or duplicated feature, and any non-finite coefficient, region risk, or loading.
+Those used to pass the checksum and fail at the first quote — which meant
+readiness reported a model that could not price.
 
 Rebuild it with:
 

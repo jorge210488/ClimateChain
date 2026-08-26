@@ -18,6 +18,7 @@ from app.core.domain import minimum_premium_wei
 from app.core.money import (
     InvalidEthAmountError,
     format_wei_to_eth,
+    is_backend_consumable_amount,
     parse_eth_to_wei,
 )
 from app.models.artifact import (
@@ -87,11 +88,16 @@ class TestMoney:
     @pytest.mark.parametrize(
         ("amount", "expected_wei"),
         [
-            ("0", 0),
             ("1.0", 10**18),
             ("0.08", 8 * 10**16),
             ("0.000000000000000001", 1),
             ("12.345", 12_345 * 10**15),
+            # Leading zeros are accepted because the backend accepts them.
+            # Rejecting them here refused business the chain would have taken.
+            ("01.0", 10**18),
+            ("0000.5", 5 * 10**17),
+            # Thirty integer digits: the largest the shared contract carries.
+            ("9" * 30, int("9" * 30) * 10**18),
         ],
     )
     def test_parses_exact_wei(self, amount: str, expected_wei: int) -> None:
@@ -104,18 +110,35 @@ class TestMoney:
             "-1.0",
             "1e18",
             "1,5",
-            "01.0",
             "",
             ".5",
             "abc",
+            # Zero in every spelling: the backend's lookahead refuses all of
+            # them, and a policy with no coverage is not creatable anyway.
+            "0",
+            "0.0",
+            "00",
+            "0.000",
+            # Thirty-one integer digits: one past what the backend accepts.
+            "9" * 31,
         ],
     )
     def test_rejects_malformed_amounts(self, amount: str) -> None:
         with pytest.raises(InvalidEthAmountError):
             parse_eth_to_wei(amount)
 
+    def test_accepts_exactly_what_the_backend_accepts(self) -> None:
+        # The divergences a review found, pinned as a set. This pattern used to
+        # reject "01.0" the backend takes and accept 31 digits it refuses —
+        # opposite errors, both breaking quote -> create.
+        accepted = ["1.0", "01.0", "0.08", "9" * 30, "0.000000000000000001"]
+        refused = ["0", "0.0", "9" * 31, "1.0000000000000000001", "-1"]
+
+        assert all(is_backend_consumable_amount(value) for value in accepted)
+        assert not any(is_backend_consumable_amount(value) for value in refused)
+
     @pytest.mark.parametrize(
-        "amount", ["0", "1.0", "0.08", "0.000000000000000001", "999999.123456789"]
+        "amount", ["1.0", "0.08", "0.000000000000000001", "999999.123456789"]
     )
     def test_round_trips_without_loss(self, amount: str) -> None:
         # The property that matters: a premium rendered here is parsed back to

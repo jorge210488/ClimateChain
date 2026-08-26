@@ -17,7 +17,7 @@ from app.models.artifact import ModelArtifactError
 from app.models.registry import ModelRegistry
 from app.schemas.health import HealthResponse, ModelStatusResponse, ReadinessResponse
 from app.schemas.pricing import QuoteRequest, QuoteResponse
-from app.services.pricing import quote_premium
+from app.services.pricing import UnquotableCoverageError, quote_premium
 
 router = APIRouter()
 
@@ -103,14 +103,23 @@ def predict(payload: QuoteRequest, request: Request) -> QuoteResponse:
             detail=str(error),
         ) from error
 
-    quote = quote_premium(
-        artifact=artifact,
-        region=payload.region,
-        coverage_eth=payload.coverage_eth,
-        rainfall_threshold_mm=payload.rainfall_threshold_mm,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-    )
+    try:
+        quote = quote_premium(
+            artifact=artifact,
+            region=payload.region,
+            coverage_eth=payload.coverage_eth,
+            rainfall_threshold_mm=payload.rainfall_threshold_mm,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
+    except UnquotableCoverageError as error:
+        # 422, not 500: the request is well-formed and the service is healthy,
+        # but this particular coverage has no premium the chain could carry.
+        # Returning it anyway would hand the caller a number that reverts.
+        # The literal, not the named constant: Starlette is mid-rename from
+        # HTTP_422_UNPROCESSABLE_ENTITY to HTTP_422_UNPROCESSABLE_CONTENT, and
+        # either name couples this to a version window. The number is stable.
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
     return QuoteResponse(
         region=payload.region,

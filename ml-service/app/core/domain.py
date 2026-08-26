@@ -40,6 +40,16 @@ MAX_REGION_CODE_BYTES = 31
 WEI_PER_ETH = 10**18
 ETH_DECIMALS = 18
 
+# Integer digits the backend's amount regex accepts (`\d{1,30}`). Exceeded,
+# an amount is rejected there — which matters for the premium this service
+# produces, not only for the coverage it receives.
+MAX_ETH_INTEGER_DIGITS = 30
+
+# Largest integer JavaScript represents exactly. The backend rejects anything
+# above it because `Number("9007199254740993")` silently becomes ...992, and a
+# threshold that changed value in transit is a corrupted input, not a large one.
+MAX_SAFE_INTEGER = 2**53 - 1
+
 
 def minimum_premium_wei(coverage_wei: int) -> int:
     """

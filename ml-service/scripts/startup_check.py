@@ -12,7 +12,9 @@ proof: a real process, a real port, and the probes answering.
 
 from __future__ import annotations
 
+import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -22,14 +24,26 @@ from pathlib import Path
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
-PORT = 8123  # Not the default, so a service already running locally is not hit.
-BASE_URL = f"http://{HOST}:{PORT}"
 BOOT_TIMEOUT_SECONDS = 45
 ARTIFACT_PATH = MODULE_ROOT / "app/models/artifacts/baseline-premium-v1.json"
 
 
-def _get(path: str, timeout: float = 5.0) -> tuple[int, str]:
-    request = urllib.request.Request(f"{BASE_URL}{path}", method="GET")
+def reserve_port() -> int:
+    """
+    Picks a port the operating system says is free.
+
+    A fixed port made this check unsound: anything already listening on it —
+    a leftover instance, an unrelated service — could answer the probes while
+    the process under test failed to bind and died. The check would report
+    success for a service it never started.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind((HOST, 0))
+        return probe.getsockname()[1]
+
+
+def _get(base_url: str, path: str, timeout: float = 5.0) -> tuple[int, str]:
+    request = urllib.request.Request(f"{base_url}{path}", method="GET")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, response.read().decode("utf-8")
@@ -37,9 +51,11 @@ def _get(path: str, timeout: float = 5.0) -> tuple[int, str]:
         return error.code, error.read().decode("utf-8")
 
 
-def _post(path: str, body: bytes, timeout: float = 10.0) -> tuple[int, str]:
+def _post(
+    base_url: str, path: str, body: bytes, timeout: float = 10.0
+) -> tuple[int, str]:
     request = urllib.request.Request(
-        f"{BASE_URL}{path}",
+        f"{base_url}{path}",
         data=body,
         method="POST",
         headers={"content-type": "application/json"},
@@ -51,7 +67,7 @@ def _post(path: str, body: bytes, timeout: float = 10.0) -> tuple[int, str]:
         return error.code, error.read().decode("utf-8")
 
 
-def _wait_for_liveness(process: subprocess.Popen) -> None:
+def _wait_for_liveness(process: subprocess.Popen, base_url: str) -> None:
     deadline = time.monotonic() + BOOT_TIMEOUT_SECONDS
 
     while time.monotonic() < deadline:
@@ -67,19 +83,26 @@ def _wait_for_liveness(process: subprocess.Popen) -> None:
                 f"--- service output ---\n{output}"
             )
         try:
-            status, _ = _get("/health", timeout=2.0)
+            status, _ = _get(base_url, "/health", timeout=2.0)
             if status == 200:
                 return
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             time.sleep(0.5)
 
     raise SystemExit(
-        f"startup-check FAILED: no response on {BASE_URL}/health within "
+        f"startup-check FAILED: no response on {base_url}/health within "
         f"{BOOT_TIMEOUT_SECONDS}s"
     )
 
 
 def main() -> None:
+    port = reserve_port()
+    base_url = f"http://{HOST}:{port}"
+
+    # The artifact is read here so the responses can be checked against the
+    # model this run is supposed to be serving, rather than against any model.
+    expected = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+
     command = [
         sys.executable,
         "-m",
@@ -88,7 +111,7 @@ def main() -> None:
         "--host",
         HOST,
         "--port",
-        str(PORT),
+        str(port),
         "--log-level",
         "warning",
     ]
@@ -114,25 +137,58 @@ def main() -> None:
     )
 
     try:
-        _wait_for_liveness(process)
-        print(f"startup-check OK: GET /health -> 200 on {BASE_URL}")
+        _wait_for_liveness(process, base_url)
+        print(f"startup-check OK: GET /health -> 200 on {base_url}")
 
-        status, body = _get("/health/ready")
+        status, body = _get(base_url, "/health/ready")
         if status != 200:
             raise SystemExit(
                 f"startup-check FAILED: GET /health/ready -> {status} {body}"
             )
-        print("startup-check OK: GET /health/ready -> 200 (model loaded)")
+
+        # Not merely "something answered". Readiness must name the artifact this
+        # run built, which is what distinguishes the process under test from any
+        # other service that happens to speak the same protocol on this host.
+        reported = json.loads(body)["model"]
+        if reported["checksum"] != expected["checksum"]:
+            raise SystemExit(
+                f"startup-check FAILED: the responder is serving checksum "
+                f"{reported['checksum']}, not the {expected['checksum']} this "
+                f"run built. Something other than the process under test "
+                f"answered."
+            )
+        print(
+            f"startup-check OK: GET /health/ready -> 200 "
+            f"(model {reported['modelVersion']}, checksum verified)"
+        )
 
         # The point of the whole service, exercised against a real socket.
         quote_request = (
             b'{"region":"Valencia","startDate":"2026-04-01",'
             b'"endDate":"2026-04-30","coverageEth":"1.0","rainfallThresholdMm":50}'
         )
-        status, body = _post("/predict", quote_request)
+        status, body = _post(base_url, "/predict", quote_request)
         if status != 200:
             raise SystemExit(f"startup-check FAILED: POST /predict -> {status} {body}")
+
+        quote = json.loads(body)
+        if quote["modelVersion"] != expected["modelVersion"]:
+            raise SystemExit(
+                f"startup-check FAILED: the quote came from model "
+                f"{quote['modelVersion']}, expected {expected['modelVersion']}"
+            )
         print(f"startup-check OK: POST /predict -> 200 {body}")
+
+        # Last, because a process that answered three requests and then died was
+        # not actually serving them — it would mean something else was.
+        if process.poll() is not None:
+            output = process.stdout.read() if process.stdout else ""
+            raise SystemExit(
+                f"startup-check FAILED: the service exited with code "
+                f"{process.returncode} while it was supposedly serving\n"
+                f"--- service output ---\n{output}"
+            )
+        print("startup-check OK: the process under test is still serving")
     finally:
         process.terminate()
         try:

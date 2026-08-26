@@ -174,7 +174,12 @@ class TestPredict:
         ("overrides", "expected_fragment"),
         [
             ({"coverageEth": "not-a-number"}, "coverageEth"),
-            ({"coverageEth": "0"}, "greater than zero"),
+            ({"coverageEth": "0"}, "coverageEth"),
+            ({"coverageEth": "0.0"}, "coverageEth"),
+            ({"coverageEth": "9" * 31}, "30 integer digits"),
+            # 2**53: Python carries it, JavaScript does not, so the backend
+            # would refuse a threshold that already lost precision.
+            ({"rainfallThresholdMm": 9007199254740992}, "rainfallThresholdMm"),
             ({"coverageEth": "1.0000000000000000001"}, "coverageEth"),
             ({"rainfallThresholdMm": 0}, "rainfallThresholdMm"),
             ({"rainfallThresholdMm": -5}, "rainfallThresholdMm"),
@@ -212,6 +217,82 @@ class TestPredict:
 
         assert response.status_code == 422
         assert "UTF-8 bytes" in json.dumps(response.json())
+
+    def test_accepts_leading_zeros_because_the_backend_does(
+        self, client: TestClient
+    ) -> None:
+        # Refusing these would reject coverage the chain would happily insure.
+        response = client.post("/predict", json=self._request(coverageEth="01.0"))
+
+        assert response.status_code == 200
+
+    def test_accepts_the_largest_representable_coverage(
+        self, client: TestClient
+    ) -> None:
+        # Thirty integer digits at a low risk: the premium stays inside the
+        # shared amount format, so this must be quotable.
+        response = client.post(
+            "/predict",
+            json=self._request(
+                coverageEth="9" * 30, region="lima", rainfallThresholdMm=300
+            ),
+        )
+
+        assert response.status_code == 200
+        from app.core.money import is_backend_consumable_amount
+
+        assert is_backend_consumable_amount(response.json()["premiumEth"])
+
+    def test_refuses_a_coverage_whose_premium_the_backend_could_not_carry(
+        self, client: TestClient
+    ) -> None:
+        # The compound failure of the quote -> create promise: a coverage the
+        # backend accepts, priced at maximum risk, produced a 31-digit premium
+        # the backend would then refuse. Better to say so than to hand over a
+        # number that reverts.
+        response = client.post(
+            "/predict",
+            json=self._request(
+                coverageEth="9" * 30,
+                region="medellin",
+                rainfallThresholdMm=1,
+                startDate="2026-01-01",
+                endDate="2026-12-31",
+            ),
+        )
+
+        assert response.status_code == 422
+        assert "exceeds the amount format" in json.dumps(response.json())
+
+    def test_the_largest_safe_threshold_is_accepted(self, client: TestClient) -> None:
+        response = client.post(
+            "/predict", json=self._request(rainfallThresholdMm=2**53 - 1)
+        )
+
+        assert response.status_code == 200
+
+    def test_every_successful_quote_is_backend_consumable(
+        self, client: TestClient
+    ) -> None:
+        # The invariant this service promises, asserted across the range rather
+        # than at one point.
+        from app.core.money import is_backend_consumable_amount
+
+        for region in ("lima", "valencia", "medellin"):
+            for threshold in (1, 50, 300):
+                for coverage in ("0.000000000000000001", "1.0", "1000000.0"):
+                    response = client.post(
+                        "/predict",
+                        json=self._request(
+                            region=region,
+                            coverageEth=coverage,
+                            rainfallThresholdMm=threshold,
+                        ),
+                    )
+                    assert response.status_code == 200, response.text
+                    body = response.json()
+                    assert is_backend_consumable_amount(body["premiumEth"])
+                    assert int(body["premiumWei"]) > 0
 
     def test_a_single_day_window_is_priced(self, client: TestClient) -> None:
         response = client.post(

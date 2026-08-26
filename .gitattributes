@@ -1,0 +1,15 @@
+# Normalize text in the index; let each platform check out what it prefers.
+* text=auto
+
+# Files compared byte for byte by a gate must be identical on every platform.
+# The Stage 07 artifact drift check rebuilds the model and compares raw bytes,
+# so a CRLF checkout on Windows would fail a build that changed nothing. The
+# writer also pins newline="\n"; this pins the other half.
+*.json text eol=lf
+
+# Deployment manifests and ABIs are compared and hashed the same way.
+shared/abi/*.json text eol=lf
+contracts/deployments/*.json text eol=lf
+
+# Shell scripts must keep LF or they will not execute in CI containers.
+*.sh text eol=lf

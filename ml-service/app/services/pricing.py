@@ -13,9 +13,17 @@ from dataclasses import dataclass
 from datetime import date
 
 from app.core.domain import minimum_premium_wei
-from app.core.money import format_wei_to_eth, parse_eth_to_wei
+from app.core.money import (
+    format_wei_to_eth,
+    is_backend_consumable_amount,
+    parse_eth_to_wei,
+)
 from app.models.artifact import ModelArtifact
 from app.models.baseline import PricingInputs, assess_risk
+
+
+class UnquotableCoverageError(ValueError):
+    """Raised when a valid coverage produces a premium the contract cannot carry."""
 
 
 @dataclass(frozen=True)
@@ -81,10 +89,24 @@ def quote_premium(
 
     floor_wei = minimum_premium_wei(coverage_wei)
     premium_wei = max(expected_premium_wei, floor_wei)
+    premium_eth = format_wei_to_eth(premium_wei)
+
+    # The last step of the quote -> create promise, and the one that was missing.
+    # A coverage at the top of the accepted range can price above it: the loading
+    # multiplies, so 30 integer digits of coverage can become 31 of premium, and
+    # the backend's own amount regex would then refuse the quote it asked for.
+    # Checking the output rather than guessing a safe input bound keeps every
+    # coverage that *can* be quoted quotable.
+    if not is_backend_consumable_amount(premium_eth):
+        raise UnquotableCoverageError(
+            f"coverage of {coverage_eth} ETH prices at {premium_eth} ETH, which "
+            f"exceeds the amount format the contract accepts; reduce the "
+            f"coverage or split it across policies"
+        )
 
     return Quote(
         premium_wei=premium_wei,
-        premium_eth=format_wei_to_eth(premium_wei),
+        premium_eth=premium_eth,
         trigger_probability=assessment.trigger_probability,
         duration_days=duration_days,
         region_known=assessment.region_known,

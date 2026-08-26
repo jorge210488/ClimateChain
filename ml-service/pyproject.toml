@@ -20,5 +20,23 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Import mode keeps `app` importable without installing the package.
 addopts = "-q --strict-markers"
+
+# Warnings are failures by default. Dependency ranges here are open lower
+# bounds, so an incompatibility arrives as a deprecation long before it arrives
+# as a break — and a warning nobody fails on is a warning nobody reads.
+#
+# Each ignore is a known third-party notice with a reason and an owner, never a
+# blanket mute. Our own code has none: a DeprecationWarning raised inside `app`
+# fails the suite.
+filterwarnings = [
+    "error",
+    # Starlette's TestClient warns that httpx is deprecated in favour of httpx2.
+    # Test-only, no runtime path involved, and pinned open until Starlette
+    # settles on a client. Revisit when FastAPI's dependency floor moves.
+    #
+    # No category is named: it raises StarletteDeprecationWarning, which is not
+    # a DeprecationWarning subclass, and naming the wrong one silently fails to
+    # match rather than erroring.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
