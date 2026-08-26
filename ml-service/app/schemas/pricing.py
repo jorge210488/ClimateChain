@@ -60,11 +60,15 @@ class QuoteRequest(BaseModel):
     @field_validator("region")
     @classmethod
     def _region_fits_on_chain(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("region must not be empty")
+        if not value.strip():
+            raise ValueError(
+                "region must contain at least one non-whitespace character"
+            )
 
-        encoded = len(stripped.encode("utf-8"))
+        # Measured on the value as sent, because that is what gets encoded into
+        # the bytes32 region code. Measuring a trimmed copy would accept a
+        # padded name the chain cannot carry.
+        encoded = len(value.encode("utf-8"))
         if encoded > MAX_REGION_CODE_BYTES:
             # Bytes, not characters: the limit is a bytes32 slot, so an accented
             # name costs more than its length suggests.
@@ -72,7 +76,12 @@ class QuoteRequest(BaseModel):
                 f"region is {encoded} UTF-8 bytes, above the on-chain limit of "
                 f"{MAX_REGION_CODE_BYTES}"
             )
-        return stripped
+
+        # Returned unchanged. Whitespace is not noise here: the backend encodes
+        # the region exactly as given, so a trimmed echo would name a different
+        # region than the policy would carry. Normalisation happens only where
+        # risk is looked up.
+        return value
 
     @field_validator("coverage_eth")
     @classmethod

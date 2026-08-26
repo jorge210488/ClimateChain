@@ -18,7 +18,7 @@ from app.core.money import (
     is_backend_consumable_amount,
     parse_eth_to_wei,
 )
-from app.models.artifact import ModelArtifact
+from app.models.artifact import PREMIUM_RATE_SCALE, ModelArtifact
 from app.models.baseline import PricingInputs, assess_risk
 
 
@@ -82,7 +82,8 @@ def quote_premium(
     # Integer arithmetic throughout. The probability is a float, so it is scaled
     # into an integer rate before touching the coverage amount; multiplying wei
     # by a float would lose precision at the bottom of the value.
-    rate_scale = 10**12
+    # The same constant the loader proved does not overflow for this model.
+    rate_scale = PREMIUM_RATE_SCALE
     loaded_rate = assessment.trigger_probability * (1.0 + artifact.premium_loading)
     scaled_rate = round(loaded_rate * rate_scale)
     expected_premium_wei = (coverage_wei * scaled_rate) // rate_scale

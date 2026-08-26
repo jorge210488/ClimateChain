@@ -4,10 +4,18 @@ on:
   pull_request:
     paths:
       - "ml-service/**"
-      # The contract tests read the backend's published schema and domain
-      # constants, so a change on that side can break this gate.
+      # Everything this gate's guarantee actually depends on. The contract tests
+      # read the backend's schema, its domain constants, the shared vectors, and
+      # the DTO and utilities that define acceptance; `.gitattributes` decides
+      # the line endings the byte-for-byte artifact check compares.
       - "docs/api/backend-openapi.json"
       - "backend/src/modules/policies/policy.constants.ts"
+      - "backend/src/modules/pricing/dto/**"
+      - "backend/src/modules/pricing/validators/**"
+      - "backend/src/common/utils/eth-amount.util.ts"
+      - "backend/src/common/validation/**"
+      - "shared/contracts/**"
+      - ".gitattributes"
       - ".github/workflows/ml-service-quality-gates.yml"
   push:
     branches:
@@ -16,6 +24,12 @@ on:
       - "ml-service/**"
       - "docs/api/backend-openapi.json"
       - "backend/src/modules/policies/policy.constants.ts"
+      - "backend/src/modules/pricing/dto/**"
+      - "backend/src/modules/pricing/validators/**"
+      - "backend/src/common/utils/eth-amount.util.ts"
+      - "backend/src/common/validation/**"
+      - "shared/contracts/**"
+      - ".gitattributes"
       - ".github/workflows/ml-service-quality-gates.yml"
 
 # Least privilege: this workflow only reads the repository.

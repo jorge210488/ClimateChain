@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "description": "Acceptance vectors for a premium quote request, shared by the backend's QuoteRequestDto and the ML service's QuoteRequest. Both run every vector and must agree. Checking published field names and limits was not enough: a review found the two sides disagreeing on dates and on region whitespace while every schema-shape assertion passed.",
+  "base": {
+    "region": "Valencia",
+    "startDate": "2026-04-01",
+    "endDate": "2026-04-30",
+    "coverageEth": "1.0",
+    "rainfallThresholdMm": 50
+  },
+  "vectors": [
+    {
+      "name": "canonical request",
+      "override": {},
+      "expect": "accept"
+    },
+
+    {
+      "name": "date with a time component",
+      "override": { "startDate": "2026-04-01T12:00:00Z" },
+      "expect": "reject",
+      "why": "Coverage is measured in whole days. A time component has no meaning here and invites two readings of the same window, so both sides take dates only."
+    },
+    {
+      "name": "date without zero padding",
+      "override": { "startDate": "2026-4-1" },
+      "expect": "reject",
+      "why": "One spelling per date keeps the window unambiguous."
+    },
+    {
+      "name": "end date before start date",
+      "override": { "endDate": "2026-03-01" },
+      "expect": "reject"
+    },
+    {
+      "name": "single day window",
+      "override": { "endDate": "2026-04-01" },
+      "expect": "accept",
+      "why": "Endpoints are inclusive, so this covers one day rather than none."
+    },
+    {
+      "name": "window at the on-chain maximum",
+      "override": { "startDate": "2026-01-01", "endDate": "2026-12-31" },
+      "expect": "accept"
+    },
+    {
+      "name": "window past the on-chain maximum",
+      "override": { "startDate": "2026-01-01", "endDate": "2027-06-30" },
+      "expect": "reject",
+      "why": "MAX_DURATION_DAYS. A longer window could be priced but never created."
+    },
+
+    {
+      "name": "region with surrounding whitespace",
+      "override": { "region": "  Valencia  " },
+      "expect": "accept",
+      "why": "Accepted, and preserved verbatim. The backend encodes the region into bytes32 as given, so trimming it in one service would quote a different region than the policy would carry."
+    },
+    {
+      "name": "region of only whitespace",
+      "override": { "region": "   " },
+      "expect": "reject",
+      "why": "Not a region. It used to pass the backend because IsNotEmpty only rejects the empty string, and would have been encoded on-chain as a bytes32 of spaces."
+    },
+    {
+      "name": "empty region",
+      "override": { "region": "" },
+      "expect": "reject"
+    },
+    {
+      "name": "region at the byte budget",
+      "override": { "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      "expect": "accept",
+      "why": "31 bytes: the largest a bytes32 region code carries."
+    },
+    {
+      "name": "region one byte over the budget",
+      "override": { "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      "expect": "reject"
+    },
+    {
+      "name": "multibyte region within the character count but over the byte budget",
+      "override": { "region": "ññññññññññññññññ" },
+      "expect": "reject",
+      "why": "16 characters, 32 UTF-8 bytes. The limit is a byte budget, not a length."
+    },
+
+    {
+      "name": "coverage with leading zeros",
+      "override": { "coverageEth": "01.0" },
+      "expect": "accept",
+      "why": "The shared amount pattern allows them; refusing would reject coverage the chain would insure."
+    },
+    {
+      "name": "coverage of one wei",
+      "override": { "coverageEth": "0.000000000000000001" },
+      "expect": "accept"
+    },
+    {
+      "name": "coverage at the integer digit limit",
+      "override": { "coverageEth": "999999999999999999999999999999" },
+      "expect": "accept",
+      "why": "Thirty integer digits."
+    },
+    {
+      "name": "coverage past the integer digit limit",
+      "override": { "coverageEth": "9999999999999999999999999999999" },
+      "expect": "reject"
+    },
+    {
+      "name": "coverage of zero",
+      "override": { "coverageEth": "0" },
+      "expect": "reject"
+    },
+    {
+      "name": "coverage of zero written with decimals",
+      "override": { "coverageEth": "0.000" },
+      "expect": "reject"
+    },
+    {
+      "name": "coverage with nineteen decimals",
+      "override": { "coverageEth": "1.0000000000000000001" },
+      "expect": "reject",
+      "why": "Wei is the smallest unit; a nineteenth decimal cannot be represented."
+    },
+    {
+      "name": "coverage in exponent notation",
+      "override": { "coverageEth": "1e18" },
+      "expect": "reject"
+    },
+    {
+      "name": "negative coverage",
+      "override": { "coverageEth": "-1.0" },
+      "expect": "reject"
+    },
+
+    {
+      "name": "threshold of one millimetre",
+      "override": { "rainfallThresholdMm": 1 },
+      "expect": "accept"
+    },
+    {
+      "name": "threshold of zero",
+      "override": { "rainfallThresholdMm": 0 },
+      "expect": "reject"
+    },
+    {
+      "name": "negative threshold",
+      "override": { "rainfallThresholdMm": -5 },
+      "expect": "reject"
+    },
+    {
+      "name": "threshold at the largest exactly representable integer",
+      "override": { "rainfallThresholdMm": 9007199254740991 },
+      "expect": "accept"
+    },
+    {
+      "name": "threshold past exact integer representation",
+      "override": { "rainfallThresholdMm": 9007199254740992 },
+      "expect": "reject",
+      "why": "Beyond 2^53 JavaScript silently changes the value, so a threshold that arrived corrupted must not be treated as merely large."
+    },
+    {
+      "name": "fractional threshold",
+      "override": { "rainfallThresholdMm": 12.5 },
+      "expect": "reject"
+    }
+  ]
+}

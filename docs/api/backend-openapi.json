@@ -1199,12 +1199,12 @@
           "startDate": {
             "type": "string",
             "example": "2026-04-01",
-            "description": "Coverage window start date (ISO-8601)."
+            "description": "Coverage window start date, as YYYY-MM-DD."
           },
           "endDate": {
             "type": "string",
             "example": "2026-04-30",
-            "description": "Coverage window end date (ISO-8601). Must be >= startDate."
+            "description": "Coverage window end date, as YYYY-MM-DD. Must be >= startDate."
           },
           "coverageEth": {
             "type": "string",

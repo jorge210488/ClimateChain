@@ -229,6 +229,55 @@ class TestArtifactIntegrity:
         with pytest.raises(ModelArtifactError, match="must correspond"):
             load_artifact(path)
 
+    def _rewritten(self, tmp_path, **changes):
+        """Writes a checksum-valid artifact with the given fields replaced."""
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload.update(changes)
+        payload["checksum"] = compute_checksum(payload)
+        path = tmp_path / "variant.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def test_rejects_a_loading_that_overflows_when_scaled(self, tmp_path) -> None:
+        # Finite on its own and infinite once pricing scales it. This loaded
+        # cleanly, left readiness green, and returned 500 on the first quote —
+        # the exact failure fail-fast is supposed to prevent.
+        path = self._rewritten(tmp_path, premiumLoading=1e308)
+
+        with pytest.raises(ModelArtifactError, match="overflows when scaled"):
+            load_artifact(path)
+
+    def test_rejects_a_negative_loading(self, tmp_path) -> None:
+        # It loaded, and then priced every policy at the minimum floor — the
+        # commercial model silently replaced, with nothing looking broken.
+        path = self._rewritten(tmp_path, premiumLoading=-2.0)
+
+        with pytest.raises(ModelArtifactError, match="below zero"):
+            load_artifact(path)
+
+    def test_accepts_a_loading_of_zero(self, tmp_path) -> None:
+        # Charging exactly the expected loss is a defensible choice, unlike
+        # charging less than it.
+        path = self._rewritten(tmp_path, premiumLoading=0.0)
+
+        assert load_artifact(path).premium_loading == 0.0
+
+    def test_rejects_regions_that_collide_once_normalised(self, tmp_path) -> None:
+        # Lookups are case-insensitive, so these are one region with two risks.
+        # The winner used to be whichever JSON key came last.
+        path = self._rewritten(
+            tmp_path, regionRisk={"Valencia": 1.2, "valencia": 9.876}
+        )
+
+        with pytest.raises(ModelArtifactError, match="more than once"):
+            load_artifact(path)
+
+    def test_rejects_a_region_key_that_normalises_to_nothing(self, tmp_path) -> None:
+        path = self._rewritten(tmp_path, regionRisk={"  ": 1.2})
+
+        with pytest.raises(ModelArtifactError, match="blank once normalised"):
+            load_artifact(path)
+
     def test_checksum_ignores_key_order(self, tmp_path) -> None:
         # Canonical serialization: rewriting the file with different key order
         # must not look like tampering.

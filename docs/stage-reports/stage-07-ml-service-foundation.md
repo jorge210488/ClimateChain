@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **109 passing** after the review round below, comprising
+- Tests: **144 passing** after the review rounds below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -188,6 +188,58 @@ in the code written minutes earlier.
 
 Gate after the round: lint and format clean, artifact drift clean, **109 tests
 passing**, and a real startup verified by checksum.
+
+## Second review round
+
+Four findings, all real. One of them exposed a gap in the round before it.
+
+**The two services did not agree on what a request is.** Field names and
+published limits matched, and every contract assertion passed, while the backend
+accepted an ISO timestamp the ML service rejects, accepted a region of only
+whitespace, and preserved padding that the ML service trimmed. The last one is
+the consequential one: the backend encodes the region into `bytes32` exactly as
+sent, so a quote for `"  Valencia  "` returned `"Valencia"` and the policy
+created would have carried a different region code than the one priced.
+
+Resolved by fixing both sides rather than either. Dates are calendar dates on
+both — coverage is measured in whole days and a time component invites two
+readings of one window. A region of only whitespace is refused on both;
+`@IsNotEmpty()` only ever rejected the empty string, and a bytes32 of spaces
+would have gone on chain. Padding is now preserved on both, because the region
+identifier is the caller's, and normalisation happens only where risk is looked
+up.
+
+**An artifact could still load and fail on the first quote.** The loader
+required `premiumLoading` to be finite, which `1e308` is — and pricing then
+scales it into an overflow. Readiness green, `/predict` returning 500. A negative
+loading was worse than an error: it loaded, priced every policy at the minimum
+floor, and looked like it was working. Loading now rejects a negative loading
+and proves the scaled worst case is finite, using the same constant pricing
+multiplies by.
+
+**Two spellings of one region resolved by JSON key order.** `regionRisk` keys
+are normalised for lookup, so `"Valencia"` and `"valencia"` are one region with
+two risks, and the winner was whichever appeared last in the file. Collisions and
+keys that normalise to nothing now fail the load.
+
+**The gate did not cover everything its guarantee rests on.** `.gitattributes`
+decides the line endings the byte-for-byte artifact check compares, and the
+backend's DTO, validators, and amount utilities decide what the contract tests
+are checking against — none of them triggered this workflow.
+
+The deeper half of that finding was the important one: the contract test compared
+published *shape*, which is why it did not catch the date and region divergence
+above. There are now shared acceptance vectors in
+`shared/contracts/pricing-request-vectors.json`, run by both
+`ml-service/tests/test_shared_contract_vectors.py` and
+`backend/src/modules/pricing/dto/quote-request.dto.spec.ts`. Adding a vector
+tests both services; a rule changed on one side fails on the other.
+
+Running them immediately found a divergence nobody had reported: the backend's
+pricing DTO had no maximum-duration check, so it accepted windows longer than
+any policy the provider will create. Added.
+
+Gate after the round: ML 144 tests, backend 352, both gates green.
 
 ## Risks or pending items
 

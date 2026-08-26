@@ -28,6 +28,11 @@ SUPPORTED_SCHEMA_VERSION = 1
 # evaluator so loading can reject an artifact the evaluator would choke on:
 # discovering an unknown feature at quote time means readiness reported "ready"
 # for a model that cannot price, which is exactly what fail-fast is for.
+# Scale the pricing service multiplies the loaded rate by before converting to
+# an integer. Declared here so loading can prove the multiplication stays
+# finite rather than discovering it at quote time.
+PREMIUM_RATE_SCALE = 10**12
+
 BASELINE_FEATURES = frozenset(
     {"intercept", "log_threshold_mm", "log_duration_days", "region_risk"}
 )
@@ -177,6 +182,28 @@ def load_artifact(path: Path) -> ModelArtifact:
             f"{missing or 'none'}."
         )
 
+    premium_loading = _require_finite(payload["premiumLoading"], "premiumLoading")
+    if premium_loading < 0:
+        # A negative loading charges less than the expected loss, which is not a
+        # pricing choice but a broken model. It also hides: every quote falls to
+        # the minimum floor and the service looks like it is working.
+        raise ModelArtifactError(
+            f"Model artifact at {path} has premiumLoading={premium_loading}. A "
+            f"loading below zero would price coverage under its expected loss."
+        )
+
+    # Finite is not enough on its own. Pricing multiplies (1 + loading) by the
+    # rate scale and rounds to an integer, and a merely finite value like 1e308
+    # overflows there — loading fine, readiness green, and a 500 on the first
+    # quote. Proving the worst case here is what keeps fail-fast honest.
+    worst_case_rate = (1.0 + premium_loading) * PREMIUM_RATE_SCALE
+    if not math.isfinite(worst_case_rate):
+        raise ModelArtifactError(
+            f"Model artifact at {path} has premiumLoading={premium_loading}, "
+            f"which overflows when scaled for pricing. The model would load and "
+            f"then fail on every quote."
+        )
+
     try:
         region_items = list(payload["regionRisk"].items())
     except AttributeError as error:
@@ -184,10 +211,24 @@ def load_artifact(path: Path) -> ModelArtifact:
             f"Model artifact at {path} has a regionRisk that is not a mapping"
         ) from error
 
-    region_risk = {
-        str(region).strip().lower(): _require_finite(value, f"regionRisk[{region}]")
-        for region, value in region_items
-    }
+    region_risk: dict[str, float] = {}
+    for region, value in region_items:
+        normalized = str(region).strip().lower()
+        if not normalized:
+            raise ModelArtifactError(
+                f"Model artifact at {path} has a regionRisk key that is blank "
+                f"once normalised: {region!r}"
+            )
+        if normalized in region_risk:
+            # Two spellings of one region, silently resolved by JSON key order
+            # before this check existed. The price would then depend on how the
+            # file happened to be written.
+            raise ModelArtifactError(
+                f"Model artifact at {path} defines region {normalized!r} more "
+                f"than once (last seen as {region!r}); lookups are "
+                f"case-insensitive, so the risk would be ambiguous."
+            )
+        region_risk[normalized] = _require_finite(value, f"regionRisk[{region}]")
 
     return ModelArtifact(
         model_version=str(payload["modelVersion"]),
@@ -198,7 +239,7 @@ def load_artifact(path: Path) -> ModelArtifact:
         default_region_risk=_require_finite(
             payload["defaultRegionRisk"], "defaultRegionRisk"
         ),
-        premium_loading=_require_finite(payload["premiumLoading"], "premiumLoading"),
+        premium_loading=premium_loading,
         source_path=path,
         checksum=str(payload["checksum"]),
     )
