@@ -128,9 +128,12 @@ export function IsRealCalendarDate(validationOptions?: ValidationOptions) {
           }
 
           const [, year, month, day] = match;
-          const parsed = new Date(
-            Date.UTC(Number(year), Number(month) - 1, Number(day)),
-          );
+          // `Date.UTC` maps years 0-99 onto 1900-1999, so 0001-01-01 became
+          // 1901 and failed the round trip below while the ML service accepted
+          // it. Setting the year explicitly keeps early years themselves.
+          const parsed = new Date(0);
+          parsed.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+          parsed.setUTCHours(0, 0, 0, 0);
           if (Number.isNaN(parsed.getTime())) {
             return false;
           }

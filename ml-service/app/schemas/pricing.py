@@ -24,7 +24,7 @@ from app.core.domain import (
     MAX_SAFE_INTEGER,
     MIN_DURATION_DAYS,
 )
-from app.core.money import POSITIVE_ETH_AMOUNT_PATTERN
+from app.core.money import is_backend_consumable_amount
 
 # A calendar date and nothing else. Shape only; the calendar itself is checked
 # by parsing, because a regex cannot know that February has no thirtieth.
@@ -62,6 +62,26 @@ class QuoteRequest(BaseModel):
         examples=[50],
     )
 
+    @field_validator("rainfall_threshold_mm", mode="before")
+    @classmethod
+    def _is_a_canonical_integer(cls, value: object) -> object:
+        # `bool` subclasses `int`, so `True` arrived as the threshold 1 — on
+        # both services, and against an OpenAPI document that publishes an
+        # integer.
+        if isinstance(value, bool):
+            raise ValueError("rainfallThresholdMm must be an integer, not a boolean")
+
+        # A string is accepted only as plain ASCII decimal digits, matching what
+        # the backend now narrows to. `isdigit()` alone is not enough: it is
+        # true for Arabic-Indic and fullwidth digits, which the backend's `\d`
+        # never matches.
+        if isinstance(value, str) and not (value.isascii() and value.isdigit()):
+            raise ValueError(
+                "rainfallThresholdMm must be a base-ten integer without sign, "
+                "separators, or exponent"
+            )
+        return value
+
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
     def _is_a_calendar_date(cls, value: object) -> object:
@@ -69,10 +89,14 @@ class QuoteRequest(BaseModel):
         # contract does: `2026-04-01T00:00:00Z` parses to a date here and is
         # refused by the backend. Narrowing the input first is what keeps one
         # spelling per date across both services.
-        if isinstance(value, str) and not CALENDAR_DATE_PATTERN.match(value):
+        #
+        # A non-string is refused outright rather than passed through: the
+        # backend takes text, so anything else is a request the two services
+        # would answer differently.
+        if not isinstance(value, str) or not CALENDAR_DATE_PATTERN.fullmatch(value):
             raise ValueError(
-                "dates must be calendar dates in YYYY-MM-DD form, without a "
-                "time component"
+                "dates must be calendar dates in YYYY-MM-DD form, as text, "
+                "without a time component"
             )
         return value
 
@@ -84,10 +108,23 @@ class QuoteRequest(BaseModel):
                 "region must contain at least one non-whitespace character"
             )
 
+        # Encodable before measurable. An unpaired surrogate is a valid JSON
+        # string and not valid UTF-8, so encoding it raises — and it used to
+        # raise while building a validation error whose payload echoes the
+        # input, which then could not be serialised either. A malformed request
+        # became a 500.
+        try:
+            encoded_value = value.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise ValueError(
+                "region must be well-formed UTF-8 text; it contains a character "
+                "that cannot be encoded, such as an unpaired surrogate"
+            ) from error
+
         # Measured on the value as sent, because that is what gets encoded into
         # the bytes32 region code. Measuring a trimmed copy would accept a
         # padded name the chain cannot carry.
-        encoded = len(value.encode("utf-8"))
+        encoded = len(encoded_value)
         if encoded > MAX_REGION_CODE_BYTES:
             # Bytes, not characters: the limit is a bytes32 slot, so an accented
             # name costs more than its length suggests.
@@ -105,11 +142,12 @@ class QuoteRequest(BaseModel):
     @field_validator("coverage_eth")
     @classmethod
     def _coverage_is_an_eth_amount(cls, value: str) -> str:
-        # One pattern, shared with the backend, so acceptance is identical in
-        # both directions: zero and every spelling of it are refused by the
-        # pattern itself, and leading zeros are allowed because the backend
-        # allows them.
-        if not POSITIVE_ETH_AMOUNT_PATTERN.match(value):
+        # One function, shared with the backend's pattern and with the
+        # conversion that follows, so acceptance is identical in both
+        # directions and the DTO cannot admit a string the parser rejects.
+        # Zero in every spelling is refused by the pattern itself, and leading
+        # zeros are allowed because the backend allows them.
+        if not is_backend_consumable_amount(value):
             raise ValueError(
                 "coverageEth must be a positive decimal with at most "
                 "30 integer digits and 18 fractional digits"

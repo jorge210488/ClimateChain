@@ -13,6 +13,7 @@ import {
 import { normalizeEvmAddress } from "../../../common/utils/evm-address.util";
 import { IsEvmAddress } from "../../../common/validation/is-evm-address.validator";
 import { IsSafeInteger } from "../../../common/validation/is-safe-integer.validator";
+import { IsWellFormedText } from "../../../common/validation/is-well-formed-text.validator";
 import { MaxByteLength } from "../../../common/validation/max-byte-length.validator";
 import {
   ethAmountMessage,
@@ -95,6 +96,9 @@ export class CreatePolicyDto {
   })
   @IsOptional()
   @IsNotEmpty()
+  // Before the byte budget: an unpaired surrogate is not encodable, so
+  // counting its bytes would measure a replacement character instead.
+  @IsWellFormedText()
   @MaxByteLength(POLICY_DOMAIN.maxRegionCodeLength)
   region?: string;
 

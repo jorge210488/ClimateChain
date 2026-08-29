@@ -13,7 +13,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.routes import router
 from app.core.config import Settings, get_settings
@@ -60,6 +62,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+def _serializable(value: object) -> object:
+    """
+    Renders a value that JSON can carry, whatever the client sent.
+
+    Validation errors echo the offending input, which is normally the most
+    useful part of the message — until the input is a string JSON accepts and
+    UTF-8 cannot encode, such as an unpaired surrogate. The error response then
+    fails to serialise and a rejected request becomes a 500. Replacing the
+    unencodable parts keeps the diagnosis and the status code.
+    """
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(value, dict):
+        return {str(key): _serializable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_serializable(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+
+    # Pydantic puts the original exception object in the error context, which
+    # JSON cannot carry either. Rendering it keeps the reason without letting
+    # the response fail for a second, unrelated cause.
+    return _serializable(str(value))
+
+
+async def validation_error_handler(
+    _request: Request, error: RequestValidationError
+) -> JSONResponse:
+    """Returns 422 for an invalid request, including an unencodable one."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _serializable(error.errors())},
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """
     Builds the application.
@@ -87,6 +124,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path=resolved.resolved_model_path,
         expected_provider=resolved.model_provider,
     )
+    # Registered before the router so a request that cannot even be decoded
+    # is still answered with the status its content deserves.
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.include_router(router)
 
     return app

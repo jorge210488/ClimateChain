@@ -103,7 +103,7 @@
     {
       "name": "multibyte region within the character count but over the byte budget",
       "override": {
-        "region": "ññññññññññññññññ"
+        "region": "\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1"
       },
       "expect": "reject",
       "why": "16 characters, 32 UTF-8 bytes. The limit is a byte budget, not a length."
@@ -280,6 +280,107 @@
       },
       "expect": "reject",
       "why": "Both endpoints are checked, not only the start."
+    },
+    {
+      "name": "coverage in Arabic-Indic digits",
+      "override": {
+        "coverageEth": "\u0661.\u0660"
+      },
+      "expect": "reject",
+      "why": "Python's digit class matches every Unicode decimal and int() parses them, so this validated and priced as 1 ETH while the backend refused it outright. JavaScript's digit class is ASCII-only."
+    },
+    {
+      "name": "coverage in fullwidth digits",
+      "override": {
+        "coverageEth": "\uff11.\uff10"
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "coverage with a trailing newline",
+      "override": {
+        "coverageEth": "1.0\n"
+      },
+      "expect": "reject",
+      "why": "Python's end anchor also matches before a trailing newline, so this passed validation and then threw on conversion - a 500 for a malformed request. Matching the whole string closes it."
+    },
+    {
+      "name": "threshold as a boolean",
+      "override": {
+        "rainfallThresholdMm": true
+      },
+      "expect": "reject",
+      "why": "bool subclasses int in Python and Number(true) is 1 in JavaScript, so true arrived as the threshold 1 on both - against an OpenAPI document that publishes an integer."
+    },
+    {
+      "name": "threshold in hexadecimal",
+      "override": {
+        "rainfallThresholdMm": "0x32"
+      },
+      "expect": "reject",
+      "why": "Number() read it as 50 on the backend while the ML service refused it."
+    },
+    {
+      "name": "threshold in exponent form",
+      "override": {
+        "rainfallThresholdMm": "5e1"
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "threshold as a decimal string",
+      "override": {
+        "rainfallThresholdMm": "50"
+      },
+      "expect": "accept",
+      "why": "The one string form both accept: plain ASCII decimal digits."
+    },
+    {
+      "name": "threshold in Arabic-Indic digits",
+      "override": {
+        "rainfallThresholdMm": "\u0665\u0660"
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "threshold with a fractional part",
+      "override": {
+        "rainfallThresholdMm": 50.5
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "date as a Unix timestamp",
+      "override": {
+        "startDate": 0
+      },
+      "expect": "reject",
+      "why": "The backend takes text; a number reaching this field is a request the two services would answer differently."
+    },
+    {
+      "name": "region with an unpaired surrogate",
+      "override": {
+        "region": "\ud800"
+      },
+      "expect": "reject",
+      "why": "Written as a literal escape rather than the character: a lone surrogate cannot be encoded to UTF-8, so a file containing one cannot be written. Both services must refuse it, and the ML service must refuse it as a 422 rather than failing to serialise the rejection."
+    },
+    {
+      "name": "date in the first century",
+      "override": {
+        "startDate": "0001-01-01",
+        "endDate": "0001-06-30"
+      },
+      "expect": "accept",
+      "why": "Date.UTC maps years 0-99 onto 1900-1999, so the backend rejected these while the ML service accepted them. Setting the year explicitly keeps early years themselves."
+    },
+    {
+      "name": "date in year ninety-nine",
+      "override": {
+        "startDate": "0099-12-30",
+        "endDate": "0100-06-25"
+      },
+      "expect": "accept"
     }
   ]
 }

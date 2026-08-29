@@ -15,17 +15,20 @@ import re
 
 from app.core.domain import ETH_DECIMALS, MAX_ETH_INTEGER_DIGITS, WEI_PER_ETH
 
-# Character-for-character the backend's POSITIVE_ETH_AMOUNT_REGEX.
+# The backend's POSITIVE_ETH_AMOUNT_REGEX, translated into a pattern that means
+# the same thing in Python.
 #
-# Copied rather than approximated, because "close enough" is what produced the
-# divergences a review found: this pattern used to reject "01.0" that the
-# backend accepts, and accept 31 integer digits that it rejects. Either
-# direction breaks the quote -> create promise — one refuses business the chain
-# would take, the other quotes a premium that cannot be submitted.
+# Copying the characters was not enough. Python's `\d` matches every Unicode
+# decimal, so Arabic-Indic and fullwidth digits both matched, and worse,
+# `int()` parses them, so the service quoted 1 ETH for a coverage the backend
+# refuses outright. JavaScript's `\d` is ASCII-only. `[0-9]` says so explicitly,
+# in a place where a reader can see it.
 #
-# The leading negative lookahead rejects zero in all its spellings; `\d{1,30}`
-# caps integer digits; the optional group caps fractional digits at 18.
-POSITIVE_ETH_AMOUNT_PATTERN = re.compile(r"^(?!0+(\.0+)?$)\d{1,30}(\.\d{1,18})?$")
+# The end anchor is the other half: Python's `$` also matches before a trailing
+# newline, so an amount ending in one passed validation and then threw on
+# conversion — a 500 for what is a malformed request. `fullmatch` anchors both
+# ends with no exceptions.
+POSITIVE_ETH_AMOUNT_PATTERN = re.compile(r"(?!0+(\.0+)?$)[0-9]{1,30}(\.[0-9]{1,18})?")
 
 
 def is_backend_consumable_amount(amount: str) -> bool:
@@ -36,7 +39,9 @@ def is_backend_consumable_amount(amount: str) -> bool:
     receives. A quote the backend cannot parse is worse than no quote: it looks
     usable and fails at the point of paying gas.
     """
-    return isinstance(amount, str) and bool(POSITIVE_ETH_AMOUNT_PATTERN.match(amount))
+    return isinstance(amount, str) and bool(
+        POSITIVE_ETH_AMOUNT_PATTERN.fullmatch(amount)
+    )
 
 
 class InvalidEthAmountError(ValueError):
@@ -53,7 +58,7 @@ def parse_eth_to_wei(amount: str) -> int:
     :raises InvalidEthAmountError: when the string is malformed, over-precise,
         zero, or has more integer digits than the shared contract carries.
     """
-    if not isinstance(amount, str) or not POSITIVE_ETH_AMOUNT_PATTERN.match(amount):
+    if not is_backend_consumable_amount(amount):
         raise InvalidEthAmountError(
             f"'{amount}' is not a positive ETH amount with at most "
             f"{MAX_ETH_INTEGER_DIGITS} integer digits and {ETH_DECIMALS} decimals"

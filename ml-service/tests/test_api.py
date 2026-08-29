@@ -294,6 +294,27 @@ class TestPredict:
                     assert is_backend_consumable_amount(body["premiumEth"])
                     assert int(body["premiumWei"]) > 0
 
+    def test_an_unencodable_region_is_a_422_not_a_500(self, client: TestClient) -> None:
+        # A lone surrogate is valid JSON and not valid UTF-8. Rejecting it was
+        # never the problem: the rejection itself failed to serialise, because
+        # the validation error echoes the offending input, so a malformed
+        # request came back as a server error.
+        # Raw bytes, so the escape reaches the JSON parser rather than Python:
+        # a source file cannot hold the character itself, which is the whole
+        # point of the case.
+        raw = (
+            rb'{"region":"\ud800","startDate":"2026-04-01",'
+            rb'"endDate":"2026-04-30","coverageEth":"1.0","rainfallThresholdMm":50}'
+        )
+
+        response = client.post(
+            "/predict", content=raw, headers={"content-type": "application/json"}
+        )
+
+        assert response.status_code == 422
+        # And the body must be readable, which is the half that was broken.
+        assert response.json()["detail"]
+
     def test_a_single_day_window_is_priced(self, client: TestClient) -> None:
         response = client.post(
             "/predict",

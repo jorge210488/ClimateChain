@@ -1,8 +1,9 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform } from "class-transformer";
 import { IsInt, IsString, Matches, Min } from "class-validator";
 
 import { IsSafeInteger } from "../../../common/validation/is-safe-integer.validator";
+import { IsWellFormedText } from "../../../common/validation/is-well-formed-text.validator";
 import { MaxByteLength } from "../../../common/validation/max-byte-length.validator";
 import {
   ethAmountMessage,
@@ -14,6 +15,29 @@ import {
   IsRealCalendarDate,
   IsWithinMaxCoverageWindow,
 } from "../validators/date-range.validator";
+
+/** A base-ten integer with no sign, separators, or exponent. */
+const CANONICAL_INTEGER_REGEX = /^\d+$/;
+
+/**
+ * Narrows a threshold to the one representation both services accept.
+ *
+ * A JSON integer passes through. A string passes only if it is plain decimal
+ * digits, so hexadecimal and exponent forms are refused rather than silently
+ * reinterpreted. Everything else — booleans, floats, objects — becomes `NaN`,
+ * which `@IsInt()` then reports as the validation error it is.
+ */
+function toCanonicalInteger(value: unknown): unknown {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string" && CANONICAL_INTEGER_REGEX.test(value)) {
+    return Number(value);
+  }
+  // Deliberately not `undefined`: a missing value and an unparseable one are
+  // different errors, and `NaN` keeps this one reported by @IsInt.
+  return typeof value === "undefined" ? value : Number.NaN;
+}
 
 /** A calendar date with zero-padded month and day, and nothing else. */
 const CALENDAR_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -47,6 +71,9 @@ export class QuoteRequestDto {
   @Matches(NON_BLANK_REGEX, {
     message: "region must contain at least one non-whitespace character",
   })
+  // Before the byte budget: an unpaired surrogate is not encodable, so
+  // counting its bytes would measure a replacement character instead.
+  @IsWellFormedText()
   @MaxByteLength(POLICY_DOMAIN.maxRegionCodeLength)
   region!: string;
 
@@ -112,7 +139,12 @@ export class QuoteRequestDto {
       "silently, so a larger threshold has already been corrupted rather than " +
       "merely being large.",
   })
-  @Type(() => Number)
+  // Not `@Type(() => Number)`: `Number()` accepts far more than the contract
+  // does. It read "0x32" as 50, "5e1" as 50, and `true` as 1 — the last
+  // contradicting the integer this field publishes. The ML service rejects the
+  // first two, so each was a request the backend would price and the pricing
+  // service would refuse.
+  @Transform(({ value }) => toCanonicalInteger(value))
   @IsInt()
   @IsSafeInteger()
   @Min(1)

@@ -86,6 +86,26 @@ def compute_checksum(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """
+    Builds a JSON object, refusing repeated members.
+
+    `json.loads` keeps the last value for a repeated key and discards the rest
+    silently. That defeats the checksum: the digest covers the parsed object, so
+    a file can contain a `premiumLoading` that never participated in its own
+    hash and is invisible to every check that follows.
+    """
+    seen: dict[str, object] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(
+                f"duplicate JSON member {key!r}; the checksum covers the parsed "
+                f"object, so a repeated key hides a value from it"
+            )
+        seen[key] = value
+    return seen
+
+
 def _require_finite(value: object, label: str) -> float:
     """
     Requires a real, finite JSON number.
@@ -103,7 +123,16 @@ def _require_finite(value: object, label: str) -> float:
             f"{label} must be a JSON number, got {type(value).__name__}: {value!r}"
         )
 
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        # A JSON integer with thousands of digits is valid JSON and has no float
+        # to become. Left uncaught it escaped startup as an OverflowError,
+        # losing the artifact path and the field name that make it diagnosable.
+        raise ModelArtifactError(
+            f"{label} is too large to represent as a number"
+        ) from error
+
     if not math.isfinite(number):
         raise ModelArtifactError(f"{label} must be finite, got {number}")
     return number
@@ -148,8 +177,13 @@ def load_artifact(path: Path) -> ModelArtifact:
         )
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
+        )
+    except (OSError, ValueError) as error:
+        # ValueError rather than JSONDecodeError alone: the duplicate-member
+        # hook raises a plain ValueError, and letting it escape would lose the
+        # artifact path that makes the failure actionable.
         raise ModelArtifactError(
             f"Model artifact at {path} could not be read as JSON: {error}"
         ) from error

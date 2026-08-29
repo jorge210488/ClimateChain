@@ -346,6 +346,34 @@ class TestArtifactIntegrity:
         with pytest.raises(ModelArtifactError, match=expected):
             load_artifact(path)
 
+    def test_rejects_duplicate_json_members(self, tmp_path) -> None:
+        # `json.loads` keeps the last value for a repeated key and drops the
+        # rest silently, which defeats the checksum: the digest covers the
+        # parsed object, so a file can hold a premiumLoading that never
+        # participated in its own hash.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload["premiumLoading"] = 0.75
+        payload["checksum"] = compute_checksum(payload)
+        body = json.dumps(payload).replace(
+            '"premiumLoading": 0.75',
+            '"premiumLoading": 99.0, "premiumLoading": 0.75',
+            1,
+        )
+        path = tmp_path / "duplicate.json"
+        path.write_text(body, encoding="utf-8")
+
+        with pytest.raises(ModelArtifactError, match="duplicate JSON member"):
+            load_artifact(path)
+
+    def test_rejects_an_integer_too_large_for_a_float(self, tmp_path) -> None:
+        # Valid JSON with no float to become. Uncaught it escaped startup as an
+        # OverflowError, losing the artifact path and field name that make it
+        # diagnosable.
+        path = self._rewritten(tmp_path, coefficients=[int("1" * 4000), 1.0, 2.0, 3.0])
+
+        with pytest.raises(ModelArtifactError, match="too large to represent"):
+            load_artifact(path)
+
     def test_checksum_ignores_key_order(self, tmp_path) -> None:
         # Canonical serialization: rewriting the file with different key order
         # must not look like tampering.

@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **162 passing** after the review rounds below, comprising
+- Tests: **178 passing** after the review rounds below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -289,6 +289,59 @@ region key that is not blank cannot normalise to nothing, so the second check wa
 dead code.
 
 Gate after the round: ML 162 tests, backend 360, both gates green, 36 shared
+vectors passing identically on both sides.
+
+## Fourth review round
+
+Seven findings; six real, one that did not reproduce.
+
+**The amount pattern was copied but not translated.** Python's `\d` matches
+every Unicode decimal, so Arabic-Indic and fullwidth digits validated *and*
+parsed — the service quoted 1 ETH for a coverage the backend refuses outright.
+Python's `$` also matches before a trailing newline, so an amount ending in one
+passed validation and threw on conversion: a 500 for a malformed request. The
+pattern now says `[0-9]` explicitly and matches the whole string, and the schema
+calls the same function the parser uses so the two cannot disagree.
+
+**The threshold accepted different things on each side.** `Number()` read
+`"0x32"` as 50 and `"5e1"` as 50, both of which the ML service refused; and
+`true` became the threshold 1 on both, against an OpenAPI document that
+publishes an integer. Both now take a JSON integer or plain ASCII decimal
+digits, nothing else.
+
+**A lone surrogate returned 500 instead of 422.** It is valid JSON and not valid
+UTF-8. Rejecting it was never the hard part: the rejection echoes the offending
+input, so the error response could not be serialised either. Both services now
+refuse ill-formed text at the boundary — the backend on policy creation too,
+where the failure previously surfaced inside the bytes32 encoder — and the ML
+service renders unencodable input safely when reporting the rejection.
+
+**The checksum did not cover duplicate JSON members.** `json.loads` keeps the
+last value for a repeated key and drops the rest silently, so a file could hold
+a `premiumLoading` that never participated in its own hash. Repeated members are
+now refused before anything is hashed.
+
+**A huge JSON integer escaped as `OverflowError`.** Valid JSON with no float to
+become, and uncaught it lost the artifact path and field name that make a
+startup failure diagnosable. It is a `ModelArtifactError` now.
+
+**Years 0001-0099 disagreed.** `Date.UTC` maps them onto 1900-1999, so the
+backend rejected dates the ML service accepted. The year is set explicitly now.
+
+**One finding did not reproduce:** numeric Unix dates were already refused by
+the ML service, because the pre-validator leaves non-strings alone and Pydantic
+does not coerce an integer to a date. It is now refused explicitly anyway, with
+a vector, since relying on a library's default is not the same as stating the
+rule.
+
+Thirteen vectors were added, bringing the shared file to 49. Two of them
+required care that is worth recording: writing a lone surrogate into a UTF-8
+file is impossible, so the vector stores the JSON escape and both languages
+decode it — and while adding it, two source files were truncated by exactly the
+bug under repair, because `write()` opens and clears a file before discovering
+it cannot encode the content.
+
+Gate after the round: ML 178 tests, backend 373, both gates green, 49 shared
 vectors passing identically on both sides.
 
 ## Risks or pending items
