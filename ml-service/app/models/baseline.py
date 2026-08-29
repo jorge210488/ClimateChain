@@ -12,7 +12,16 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from app.models.artifact import ModelArtifact
+from app.core.domain import (
+    MAX_DURATION_DAYS,
+    MAX_SAFE_INTEGER,
+    MIN_DURATION_DAYS,
+)
+from app.models.artifact import (
+    PREMIUM_RATE_SCALE,
+    ModelArtifact,
+    ModelArtifactError,
+)
 
 # Bounds on the modelled trigger probability. The logistic cannot leave (0, 1)
 # on its own, but a future artifact with a broken fit could sit at either
@@ -95,3 +104,79 @@ def assess_risk(artifact: ModelArtifact, inputs: PricingInputs) -> RiskAssessmen
         region_risk=region_risk,
         region_known=region_known,
     )
+
+
+def assert_arithmetic_is_stable(artifact: ModelArtifact) -> None:
+    """
+    Proves the model can be evaluated across the whole accepted input range.
+
+    Finite coefficients are not enough. Each term is a coefficient times a
+    feature value, so a large-but-finite coefficient can overflow once
+    multiplied, and a sum of `+inf` and `-inf` is `NaN` — which survives the
+    logistic, survives the clamp, and only fails when the premium is rounded to
+    an integer. Readiness would have reported a ready model that returns 500 on
+    the first quote.
+
+    Rather than capping coefficients at an arbitrary magnitude, this evaluates
+    the real arithmetic at the extremes of what the API accepts. A model that
+    stays finite at the corners stays finite inside them, because every feature
+    is monotonic in its input.
+
+    :raises ModelArtifactError: when any term, log-odds, probability, or scaled
+        rate is not finite.
+    """
+    # The extremes the request schema permits, plus every risk this model knows.
+    thresholds = (1, MAX_SAFE_INTEGER)
+    durations = (MIN_DURATION_DAYS, MAX_DURATION_DAYS)
+    risks = (*artifact.region_risk.values(), artifact.default_region_risk)
+
+    for threshold in thresholds:
+        for duration in durations:
+            for risk in risks:
+                values = {
+                    "intercept": 1.0,
+                    "log_threshold_mm": math.log(threshold),
+                    "log_duration_days": math.log(duration),
+                    "region_risk": risk,
+                }
+
+                log_odds = 0.0
+                for name, coefficient in zip(
+                    artifact.features, artifact.coefficients, strict=True
+                ):
+                    term = coefficient * values[name]
+                    if not math.isfinite(term):
+                        raise ModelArtifactError(
+                            f"Model artifact at {artifact.source_path} overflows: "
+                            f"feature '{name}' with coefficient {coefficient} is "
+                            f"not finite at threshold={threshold}, "
+                            f"duration={duration}, risk={risk}."
+                        )
+                    log_odds += term
+
+                if not math.isfinite(log_odds):
+                    raise ModelArtifactError(
+                        f"Model artifact at {artifact.source_path} produces "
+                        f"non-finite log-odds at threshold={threshold}, "
+                        f"duration={duration}, risk={risk}. Terms of opposing "
+                        f"infinite sign cancel to NaN, which reaches the premium "
+                        f"as a rounding failure rather than a visible error."
+                    )
+
+                probability = _logistic(log_odds)
+                if not math.isfinite(probability):
+                    raise ModelArtifactError(
+                        f"Model artifact at {artifact.source_path} produces a "
+                        f"non-finite probability at threshold={threshold}, "
+                        f"duration={duration}, risk={risk}."
+                    )
+
+                scaled = (
+                    probability * (1.0 + artifact.premium_loading) * PREMIUM_RATE_SCALE
+                )
+                if not math.isfinite(scaled):
+                    raise ModelArtifactError(
+                        f"Model artifact at {artifact.source_path} produces a "
+                        f"non-finite premium rate at threshold={threshold}, "
+                        f"duration={duration}, risk={risk}."
+                    )

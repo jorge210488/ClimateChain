@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **144 passing** after the review rounds below, comprising
+- Tests: **162 passing** after the review rounds below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -240,6 +240,56 @@ pricing DTO had no maximum-duration check, so it accepted windows longer than
 any policy the provider will create. Added.
 
 Gate after the round: ML 144 tests, backend 352, both gates green.
+
+## Third review round
+
+Four findings, all real. Two of them were holes left by the round that was
+supposed to have closed the same class of problem.
+
+**Dates still diverged, in both directions.** The previous round agreed on a
+`YYYY-MM-DD` shape and stopped there. Shape is not a calendar: the backend
+accepted `2026-02-30`, and `Date.parse` then *rolled it forward to 2 March*, so
+the window priced was not the window requested. `2026-13-01` and `2026-00-10`
+parsed to `NaN`, which the range validators pass through expecting some other
+check to catch. Meanwhile the ML service accepted `2026-04-01T00:00:00Z` — the
+midnight timestamp the vectors had not covered — which the backend refuses.
+Both sides now require the shape *and* the date's existence; the ML service
+checks before Pydantic converts, since Pydantic accepts more than the contract
+does. Eight calendar vectors were added, including both leap-day cases.
+
+**Finite coefficients could still produce NaN.** Loading proved each coefficient
+finite and the loading non-overflowing, but never the linear combination they
+form. A coefficient of `1e308` is finite until multiplied by a feature value,
+and terms of opposing infinite sign cancel to NaN — which survives the logistic,
+survives the clamp, and fails only when the premium is rounded, as a 500 from an
+instance readiness had called ready. Rather than capping magnitudes arbitrarily,
+loading now evaluates the real arithmetic at every corner of the accepted input
+range and rejects any non-finite term, log-odds, probability, or scaled rate.
+
+**The loader coerced shapes instead of rejecting them.** `str()` and `float()`
+accepted things the contract does not: a boolean `schemaVersion` (since
+`True == 1`), coefficients written as strings, an empty `modelVersion`. The
+string-coefficient case is the dangerous one — it loaded and priced from numbers
+nobody wrote, past a valid checksum. Shape is now checked strictly, with
+booleans excluded explicitly because `bool` subclasses `int`.
+
+One item in that finding did not hold up: a numeric `regionRisk` key cannot
+reach the loader, because JSON object keys are always strings. `"123"` is an odd
+region name, not a malformed artifact.
+
+**OpenAPI understated what the runtime enforces.** Dates and `coverageEth` were
+published as bare strings and `rainfallThresholdMm` as a number, so a generated
+client would have been looser than the API. The document now carries the date
+format and pattern, the ETH pattern, an integer type with the safe-integer
+maximum, and an explicit note that the region budget is 31 **UTF-8 bytes** and
+that surrounding whitespace is part of the region code.
+
+Removing a now-unreachable branch was part of this: with strict shape checking, a
+region key that is not blank cannot normalise to nothing, so the second check was
+dead code.
+
+Gate after the round: ML 162 tests, backend 360, both gates green, 36 shared
+vectors passing identically on both sides.
 
 ## Risks or pending items
 

@@ -97,3 +97,55 @@ export function IsWithinMaxCoverageWindow(
     });
   };
 }
+
+/**
+ * Validates that the decorated string names a date that exists.
+ *
+ * The shape regex cannot: `2026-02-30` matches `YYYY-MM-DD` perfectly and is
+ * not a day. Worse than being accepted, it was then *normalised* — `Date.parse`
+ * rolls it forward to 2 March, so the window priced and the window requested
+ * were different windows. `2026-13-01` parsed to `NaN`, and the range checks
+ * pass a `NaN` through on the assumption that some other validator rejects it.
+ *
+ * Round-tripping is the check: parse as UTC and re-render. A date that survives
+ * unchanged is real; one that was rolled forward comes back different.
+ */
+export function IsRealCalendarDate(validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string): void {
+    registerDecorator({
+      name: "isRealCalendarDate",
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: unknown): boolean {
+          if (typeof value !== "string") {
+            return true; // Reported by the type and shape validators.
+          }
+          const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+          if (!match) {
+            return true; // Reported by the shape validator.
+          }
+
+          const [, year, month, day] = match;
+          const parsed = new Date(
+            Date.UTC(Number(year), Number(month) - 1, Number(day)),
+          );
+          if (Number.isNaN(parsed.getTime())) {
+            return false;
+          }
+
+          // A rolled-forward date re-renders as a different day.
+          return (
+            parsed.getUTCFullYear() === Number(year) &&
+            parsed.getUTCMonth() === Number(month) - 1 &&
+            parsed.getUTCDate() === Number(day)
+          );
+        },
+        defaultMessage(args: ValidationArguments): string {
+          return `${args.property} must be a date that exists in the calendar`;
+        },
+      },
+    });
+  };
+}

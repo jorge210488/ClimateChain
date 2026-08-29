@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.models.artifact import ModelArtifact, ModelArtifactError, load_artifact
+from app.models.baseline import assert_arithmetic_is_stable
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,17 @@ class ModelRegistry:
         """
         try:
             artifact = load_artifact(self._path)
+        except ModelArtifactError as error:
+            self._artifact = None
+            self._failure = str(error)
+            raise
+
+        try:
+            # Shape and integrity are not the whole contract: a structurally
+            # valid model can still be unevaluable. This is the load path
+            # startup uses, so proving the arithmetic here is what keeps
+            # readiness from advertising a model that fails on first use.
+            assert_arithmetic_is_stable(artifact)
         except ModelArtifactError as error:
             self._artifact = None
             self._failure = str(error)

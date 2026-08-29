@@ -26,6 +26,7 @@ from app.models.artifact import (
     compute_checksum,
     load_artifact,
 )
+from app.models.registry import ModelRegistry
 from tests.conftest_helpers import ARTIFACT_PATH, MODULE_ROOT
 
 
@@ -272,10 +273,77 @@ class TestArtifactIntegrity:
         with pytest.raises(ModelArtifactError, match="more than once"):
             load_artifact(path)
 
-    def test_rejects_a_region_key_that_normalises_to_nothing(self, tmp_path) -> None:
+    def test_rejects_a_blank_region_key(self, tmp_path) -> None:
+        # Caught by the shape check before normalisation runs, which is why
+        # there is no separate post-normalisation branch: a key that is not
+        # blank cannot normalise to nothing.
         path = self._rewritten(tmp_path, regionRisk={"  ": 1.2})
 
-        with pytest.raises(ModelArtifactError, match="blank once normalised"):
+        with pytest.raises(ModelArtifactError, match="non-empty string"):
+            load_artifact(path)
+
+    def test_rejects_coefficients_that_overflow_when_evaluated(self, tmp_path) -> None:
+        # Each coefficient is finite; the terms are not. Opposing infinities
+        # cancel to NaN, which survives the logistic and the clamp and only
+        # fails when the premium is rounded — as a 500, from an instance
+        # readiness had called ready.
+        path = self._rewritten(tmp_path, coefficients=[1e308, -1e308, 1e308, -1e308])
+
+        with pytest.raises(ModelArtifactError, match="not finite"):
+            ModelRegistry(path=path, expected_provider="baseline").load()
+
+    def test_rejects_a_single_overflowing_coefficient(self, tmp_path) -> None:
+        path = self._rewritten(tmp_path, coefficients=[1e308, 1e308, 1e308, 1e308])
+
+        with pytest.raises(ModelArtifactError, match="not finite"):
+            ModelRegistry(path=path, expected_provider="baseline").load()
+
+    def test_the_real_artifact_evaluates_across_the_input_range(self) -> None:
+        # The positive case for the same check: the shipped model stays finite
+        # at every corner of what the API accepts.
+        ModelRegistry(path=ARTIFACT_PATH, expected_provider="baseline").load()
+
+    @pytest.mark.parametrize(
+        ("label", "changes", "expected"),
+        [
+            # `True == 1` in Python, so a boolean satisfied the version check.
+            ("boolean schema version", {"schemaVersion": True}, "non-integer"),
+            # `float("1.5")` succeeds, so a coefficient written as a string used
+            # to load and price from a file that had passed its checksum.
+            (
+                "coefficients as strings",
+                {"coefficients": ["1.5", "2.5", "3.5", "4.5"]},
+                "must be a JSON number",
+            ),
+            # A string is iterable: "abcd" became four single-character features.
+            (
+                "features as a string",
+                {"features": "abcd", "coefficients": [1.0, 2.0, 3.0, 4.0]},
+                "must be a JSON array",
+            ),
+            (
+                "coefficients not an array",
+                {"coefficients": 1.5},
+                "must be a JSON array",
+            ),
+            ("empty model version", {"modelVersion": ""}, "non-empty string"),
+            ("empty provider", {"provider": "   "}, "non-empty string"),
+            (
+                "boolean coefficient",
+                {"coefficients": [True, 1.0, 2.0, 3.0]},
+                "JSON number",
+            ),
+        ],
+    )
+    def test_rejects_shapes_that_do_not_match_the_contract(
+        self, tmp_path, label: str, changes: dict, expected: str
+    ) -> None:
+        # Coercion is counterproductive in a file whose purpose is fail-fast:
+        # an artifact whose shape is wrong is broken, not to be interpreted
+        # generously.
+        path = self._rewritten(tmp_path, **changes)
+
+        with pytest.raises(ModelArtifactError, match=expected):
             load_artifact(path)
 
     def test_checksum_ignores_key_order(self, tmp_path) -> None:

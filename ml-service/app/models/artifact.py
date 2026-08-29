@@ -88,20 +88,47 @@ def compute_checksum(payload: dict[str, Any]) -> str:
 
 def _require_finite(value: object, label: str) -> float:
     """
-    Coerces to a real, finite float or fails the load.
+    Requires a real, finite JSON number.
 
-    NaN and infinity survive JSON round-trips through most writers and then
-    poison arithmetic quietly: a NaN coefficient yields a NaN premium, and an
-    infinite loading overflows. Neither is detectable once it reaches money.
+    Deliberately no coercion. `float("1.5")` succeeds, so a coefficient written
+    as a string used to load and price — silently, from a file that had passed
+    its checksum. An artifact whose shape does not match the contract is a
+    broken artifact, not one to interpret generously.
+
+    Booleans are excluded explicitly: `bool` is a subclass of `int` in Python,
+    so `True` would otherwise pass as the number 1.
     """
-    try:
-        number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError) as error:
-        raise ModelArtifactError(f"{label} is not a number: {value!r}") from error
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ModelArtifactError(
+            f"{label} must be a JSON number, got {type(value).__name__}: {value!r}"
+        )
 
+    number = float(value)
     if not math.isfinite(number):
         raise ModelArtifactError(f"{label} must be finite, got {number}")
     return number
+
+
+def _require_non_empty_string(value: object, label: str) -> str:
+    """Requires a JSON string with at least one non-whitespace character."""
+    if not isinstance(value, str) or not value.strip():
+        raise ModelArtifactError(f"{label} must be a non-empty string, got {value!r}")
+    return value
+
+
+def _require_list(value: object, label: str) -> list:
+    """
+    Requires a JSON array.
+
+    A string is iterable, so `features: "abcd"` would otherwise become four
+    single-character features — a model that loads and evaluates something
+    nobody wrote.
+    """
+    if not isinstance(value, list):
+        raise ModelArtifactError(
+            f"{label} must be a JSON array, got {type(value).__name__}: {value!r}"
+        )
+    return value
 
 
 def load_artifact(path: Path) -> ModelArtifact:
@@ -137,6 +164,13 @@ def load_artifact(path: Path) -> ModelArtifact:
         )
 
     schema_version = payload["schemaVersion"]
+    # `True == 1` in Python, so a boolean would satisfy the equality below and
+    # load as version 1.
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ModelArtifactError(
+            f"Model artifact at {path} has a non-integer schemaVersion: "
+            f"{schema_version!r}"
+        )
     if schema_version != SUPPORTED_SCHEMA_VERSION:
         raise ModelArtifactError(
             f"Model artifact at {path} declares schemaVersion={schema_version}, "
@@ -151,10 +185,15 @@ def load_artifact(path: Path) -> ModelArtifact:
             f"It was modified or truncated after being written."
         )
 
-    features = tuple(str(name) for name in payload["features"])
+    features = tuple(
+        _require_non_empty_string(name, f"feature {index}")
+        for index, name in enumerate(_require_list(payload["features"], "features"))
+    )
     coefficients = tuple(
         _require_finite(value, f"coefficient {index}")
-        for index, value in enumerate(payload["coefficients"])
+        for index, value in enumerate(
+            _require_list(payload["coefficients"], "coefficients")
+        )
     )
 
     if len(features) != len(coefficients):
@@ -213,12 +252,11 @@ def load_artifact(path: Path) -> ModelArtifact:
 
     region_risk: dict[str, float] = {}
     for region, value in region_items:
-        normalized = str(region).strip().lower()
-        if not normalized:
-            raise ModelArtifactError(
-                f"Model artifact at {path} has a regionRisk key that is blank "
-                f"once normalised: {region!r}"
-            )
+        normalized = (
+            _require_non_empty_string(region, f"regionRisk key {region!r}")
+            .strip()
+            .lower()
+        )
         if normalized in region_risk:
             # Two spellings of one region, silently resolved by JSON key order
             # before this check existed. The price would then depend on how the
@@ -231,8 +269,10 @@ def load_artifact(path: Path) -> ModelArtifact:
         region_risk[normalized] = _require_finite(value, f"regionRisk[{region}]")
 
     return ModelArtifact(
-        model_version=str(payload["modelVersion"]),
-        provider=str(payload["provider"]),
+        model_version=_require_non_empty_string(
+            payload["modelVersion"], "modelVersion"
+        ),
+        provider=_require_non_empty_string(payload["provider"], "provider"),
         features=features,
         coefficients=coefficients,
         region_risk=region_risk,
@@ -241,5 +281,5 @@ def load_artifact(path: Path) -> ModelArtifact:
         ),
         premium_loading=premium_loading,
         source_path=path,
-        checksum=str(payload["checksum"]),
+        checksum=_require_non_empty_string(payload["checksum"], "checksum"),
     )

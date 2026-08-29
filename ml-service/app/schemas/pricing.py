@@ -13,6 +13,7 @@ document rather than against a copy of it kept here.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -24,6 +25,10 @@ from app.core.domain import (
     MIN_DURATION_DAYS,
 )
 from app.core.money import POSITIVE_ETH_AMOUNT_PATTERN
+
+# A calendar date and nothing else. Shape only; the calendar itself is checked
+# by parsing, because a regex cannot know that February has no thirtieth.
+CALENDAR_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class QuoteRequest(BaseModel):
@@ -56,6 +61,20 @@ class QuoteRequest(BaseModel):
         le=MAX_SAFE_INTEGER,
         examples=[50],
     )
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _is_a_calendar_date(cls, value: object) -> object:
+        # Runs before pydantic converts, because pydantic accepts more than the
+        # contract does: `2026-04-01T00:00:00Z` parses to a date here and is
+        # refused by the backend. Narrowing the input first is what keeps one
+        # spelling per date across both services.
+        if isinstance(value, str) and not CALENDAR_DATE_PATTERN.match(value):
+            raise ValueError(
+                "dates must be calendar dates in YYYY-MM-DD form, without a "
+                "time component"
+            )
+        return value
 
     @field_validator("region")
     @classmethod

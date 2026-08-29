@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Acceptance vectors for a premium quote request, shared by the backend's QuoteRequestDto and the ML service's QuoteRequest. Both run every vector and must agree. Checking published field names and limits was not enough: a review found the two sides disagreeing on dates and on region whitespace while every schema-shape assertion passed.",
+  "description": "Acceptance vectors for a premium quote request, shared by the backend's QuoteRequestDto and the ML service's QuoteRequest. Both run every vector and must agree. Checking published field names and limits was not enough: a review found the two sides disagreeing on dates and on region whitespace while every schema-shape assertion passed. Calendar validity is included because shape agreement alone let both services accept dates that do not exist, in one case silently rolling them forward to a different day.",
   "base": {
     "region": "Valencia",
     "startDate": "2026-04-01",
@@ -14,156 +14,272 @@
       "override": {},
       "expect": "accept"
     },
-
     {
       "name": "date with a time component",
-      "override": { "startDate": "2026-04-01T12:00:00Z" },
+      "override": {
+        "startDate": "2026-04-01T12:00:00Z"
+      },
       "expect": "reject",
       "why": "Coverage is measured in whole days. A time component has no meaning here and invites two readings of the same window, so both sides take dates only."
     },
     {
       "name": "date without zero padding",
-      "override": { "startDate": "2026-4-1" },
+      "override": {
+        "startDate": "2026-4-1"
+      },
       "expect": "reject",
       "why": "One spelling per date keeps the window unambiguous."
     },
     {
       "name": "end date before start date",
-      "override": { "endDate": "2026-03-01" },
+      "override": {
+        "endDate": "2026-03-01"
+      },
       "expect": "reject"
     },
     {
       "name": "single day window",
-      "override": { "endDate": "2026-04-01" },
+      "override": {
+        "endDate": "2026-04-01"
+      },
       "expect": "accept",
       "why": "Endpoints are inclusive, so this covers one day rather than none."
     },
     {
       "name": "window at the on-chain maximum",
-      "override": { "startDate": "2026-01-01", "endDate": "2026-12-31" },
+      "override": {
+        "startDate": "2026-01-01",
+        "endDate": "2026-12-31"
+      },
       "expect": "accept"
     },
     {
       "name": "window past the on-chain maximum",
-      "override": { "startDate": "2026-01-01", "endDate": "2027-06-30" },
+      "override": {
+        "startDate": "2026-01-01",
+        "endDate": "2027-06-30"
+      },
       "expect": "reject",
       "why": "MAX_DURATION_DAYS. A longer window could be priced but never created."
     },
-
     {
       "name": "region with surrounding whitespace",
-      "override": { "region": "  Valencia  " },
+      "override": {
+        "region": "  Valencia  "
+      },
       "expect": "accept",
       "why": "Accepted, and preserved verbatim. The backend encodes the region into bytes32 as given, so trimming it in one service would quote a different region than the policy would carry."
     },
     {
       "name": "region of only whitespace",
-      "override": { "region": "   " },
+      "override": {
+        "region": "   "
+      },
       "expect": "reject",
       "why": "Not a region. It used to pass the backend because IsNotEmpty only rejects the empty string, and would have been encoded on-chain as a bytes32 of spaces."
     },
     {
       "name": "empty region",
-      "override": { "region": "" },
+      "override": {
+        "region": ""
+      },
       "expect": "reject"
     },
     {
       "name": "region at the byte budget",
-      "override": { "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      "override": {
+        "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
       "expect": "accept",
       "why": "31 bytes: the largest a bytes32 region code carries."
     },
     {
       "name": "region one byte over the budget",
-      "override": { "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      "override": {
+        "region": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
       "expect": "reject"
     },
     {
       "name": "multibyte region within the character count but over the byte budget",
-      "override": { "region": "ññññññññññññññññ" },
+      "override": {
+        "region": "ññññññññññññññññ"
+      },
       "expect": "reject",
       "why": "16 characters, 32 UTF-8 bytes. The limit is a byte budget, not a length."
     },
-
     {
       "name": "coverage with leading zeros",
-      "override": { "coverageEth": "01.0" },
+      "override": {
+        "coverageEth": "01.0"
+      },
       "expect": "accept",
       "why": "The shared amount pattern allows them; refusing would reject coverage the chain would insure."
     },
     {
       "name": "coverage of one wei",
-      "override": { "coverageEth": "0.000000000000000001" },
+      "override": {
+        "coverageEth": "0.000000000000000001"
+      },
       "expect": "accept"
     },
     {
       "name": "coverage at the integer digit limit",
-      "override": { "coverageEth": "999999999999999999999999999999" },
+      "override": {
+        "coverageEth": "999999999999999999999999999999"
+      },
       "expect": "accept",
       "why": "Thirty integer digits."
     },
     {
       "name": "coverage past the integer digit limit",
-      "override": { "coverageEth": "9999999999999999999999999999999" },
+      "override": {
+        "coverageEth": "9999999999999999999999999999999"
+      },
       "expect": "reject"
     },
     {
       "name": "coverage of zero",
-      "override": { "coverageEth": "0" },
+      "override": {
+        "coverageEth": "0"
+      },
       "expect": "reject"
     },
     {
       "name": "coverage of zero written with decimals",
-      "override": { "coverageEth": "0.000" },
+      "override": {
+        "coverageEth": "0.000"
+      },
       "expect": "reject"
     },
     {
       "name": "coverage with nineteen decimals",
-      "override": { "coverageEth": "1.0000000000000000001" },
+      "override": {
+        "coverageEth": "1.0000000000000000001"
+      },
       "expect": "reject",
       "why": "Wei is the smallest unit; a nineteenth decimal cannot be represented."
     },
     {
       "name": "coverage in exponent notation",
-      "override": { "coverageEth": "1e18" },
+      "override": {
+        "coverageEth": "1e18"
+      },
       "expect": "reject"
     },
     {
       "name": "negative coverage",
-      "override": { "coverageEth": "-1.0" },
+      "override": {
+        "coverageEth": "-1.0"
+      },
       "expect": "reject"
     },
-
     {
       "name": "threshold of one millimetre",
-      "override": { "rainfallThresholdMm": 1 },
+      "override": {
+        "rainfallThresholdMm": 1
+      },
       "expect": "accept"
     },
     {
       "name": "threshold of zero",
-      "override": { "rainfallThresholdMm": 0 },
+      "override": {
+        "rainfallThresholdMm": 0
+      },
       "expect": "reject"
     },
     {
       "name": "negative threshold",
-      "override": { "rainfallThresholdMm": -5 },
+      "override": {
+        "rainfallThresholdMm": -5
+      },
       "expect": "reject"
     },
     {
       "name": "threshold at the largest exactly representable integer",
-      "override": { "rainfallThresholdMm": 9007199254740991 },
+      "override": {
+        "rainfallThresholdMm": 9007199254740991
+      },
       "expect": "accept"
     },
     {
       "name": "threshold past exact integer representation",
-      "override": { "rainfallThresholdMm": 9007199254740992 },
+      "override": {
+        "rainfallThresholdMm": 9007199254740992
+      },
       "expect": "reject",
       "why": "Beyond 2^53 JavaScript silently changes the value, so a threshold that arrived corrupted must not be treated as merely large."
     },
     {
       "name": "fractional threshold",
-      "override": { "rainfallThresholdMm": 12.5 },
+      "override": {
+        "rainfallThresholdMm": 12.5
+      },
       "expect": "reject"
+    },
+    {
+      "name": "timestamp at midnight",
+      "override": {
+        "startDate": "2026-04-01T00:00:00Z"
+      },
+      "expect": "reject",
+      "why": "Rejected even though it denotes the same day. Pydantic parsed it to a date while the backend refused it, so one spelling per date is the only way the two agree."
+    },
+    {
+      "name": "date that does not exist",
+      "override": {
+        "startDate": "2026-02-30"
+      },
+      "expect": "reject",
+      "why": "Matches YYYY-MM-DD and is not a day. Worse than accepted, it was normalised: Date.parse rolls it to 2 March, so the window priced differed from the window requested."
+    },
+    {
+      "name": "month out of range",
+      "override": {
+        "startDate": "2026-13-01"
+      },
+      "expect": "reject",
+      "why": "Parsed to NaN, which the range validators passed through on the assumption another check would catch it."
+    },
+    {
+      "name": "month zero",
+      "override": {
+        "startDate": "2026-00-10"
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "day beyond the month",
+      "override": {
+        "startDate": "2026-04-31"
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "leap day in a leap year",
+      "override": {
+        "startDate": "2028-02-29",
+        "endDate": "2028-03-05"
+      },
+      "expect": "accept",
+      "why": "2028 is a leap year, so this is a real day and must be quotable."
+    },
+    {
+      "name": "leap day in a common year",
+      "override": {
+        "startDate": "2026-02-29",
+        "endDate": "2026-03-05"
+      },
+      "expect": "reject",
+      "why": "2026 is not a leap year."
+    },
+    {
+      "name": "end date that does not exist",
+      "override": {
+        "endDate": "2026-06-31"
+      },
+      "expect": "reject",
+      "why": "Both endpoints are checked, not only the start."
     }
   ]
 }
