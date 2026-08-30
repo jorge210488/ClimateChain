@@ -315,6 +315,27 @@ class TestPredict:
         # And the body must be readable, which is the half that was broken.
         assert response.json()["detail"]
 
+    @pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_numbers_are_422_not_500(
+        self, client: TestClient, token: str
+    ) -> None:
+        # Python writes these happily and the response encoder refuses them, so
+        # a request that was correctly rejected came back as a 500 while its
+        # rejection was being serialised.
+        raw = (
+            b'{"region":"Valencia","startDate":"2026-04-01","endDate":'
+            b'"2026-04-30","coverageEth":"1.0","rainfallThresholdMm":'
+            + token.encode()
+            + b"}"
+        )
+
+        response = client.post(
+            "/predict", content=raw, headers={"content-type": "application/json"}
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"]
+
     def test_a_single_day_window_is_priced(self, client: TestClient) -> None:
         response = client.post(
             "/predict",

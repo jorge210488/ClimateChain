@@ -381,6 +381,15 @@
         "endDate": "0100-06-25"
       },
       "expect": "accept"
+    },
+    {
+      "name": "year zero",
+      "override": {
+        "startDate": "0000-01-01",
+        "endDate": "0000-06-30"
+      },
+      "expect": "reject",
+      "why": "Year zero exists in ISO 8601 and not in the proleptic Gregorian calendar Python uses, whose first year is 1. Accepted by the backend and refused by the ML service, so the contract had two readings."
     }
   ]
 }

@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **178 passing** after the review rounds below, comprising
+- Tests: **187 passing** after the review rounds below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -342,6 +342,47 @@ bug under repair, because `write()` opens and clears a file before discovering
 it cannot encode the content.
 
 Gate after the round: ML 178 tests, backend 373, both gates green, 49 shared
+vectors passing identically on both sides.
+
+## Fifth review round
+
+Five findings; four in the code, one in a developer's local file.
+
+**JSON has no NaN or Infinity, and Python writes them anyway.** A threshold sent
+as `NaN` was correctly rejected, and then the rejection itself could not be
+serialised — the response encoder refuses non-finite floats — so a client error
+came back as a 500. The error renderer now converts them to text, keeping both
+the status code and the diagnosis.
+
+**An artifact could start with a `modelVersion` no response could carry.** The
+loader required a non-empty string but not an encodable one, so a lone surrogate
+loaded cleanly and then broke readiness and `/predict` alike, from a service that
+had started successfully. Encodability is now part of what a string field means,
+applied to `modelVersion`, `provider`, `checksum`, feature names, and region
+keys.
+
+**Year zero disagreed.** ISO 8601 has one; the proleptic Gregorian calendar
+Python uses starts at year 1. The backend accepted `0000-01-01` and the ML
+service refused it, so the contract had two readings. Refused on both now.
+
+**The artifact parser accepted `NaN` and `Infinity` as JSON.** Python's parser
+allows them as an extension and the specification does not, so an artifact could
+load here and fail to parse anywhere else — with a checksum blessing values no
+conforming reader can represent. Refused.
+
+**`DEFAULT_PREMIUM` lingers in a local `.env`.** It predates this stage and is
+ignored: the premium comes from the artifact, not from configuration. Not
+removed here, because that file is untracked and belongs to whoever created it,
+but worth deleting so it stops implying a control that does not exist.
+`.env.example` has not carried it since this stage began.
+
+A process note worth keeping: writing a lone surrogate into a UTF-8 file
+truncated a source file for the third time in this stage. `write()` opens and
+clears its target before discovering it cannot encode the content, so a failed
+write is a destroyed file. Tests now build such values with `chr(0xD800)` rather
+than literals, and the vectors file stores JSON escapes.
+
+Gate after the round: ML 187 tests, backend 374, both gates green, 50 shared
 vectors passing identically on both sides.
 
 ## Risks or pending items

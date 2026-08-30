@@ -128,6 +128,13 @@ export function IsRealCalendarDate(validationOptions?: ValidationOptions) {
           }
 
           const [, year, month, day] = match;
+
+          // Year zero exists in ISO 8601 and not in the proleptic Gregorian
+          // calendar Python uses, whose first year is 1. Accepting it here
+          // would give the contract two readings, so it is refused on both.
+          if (Number(year) === 0) {
+            return false;
+          }
           // `Date.UTC` maps years 0-99 onto 1900-1999, so 0001-01-01 became
           // 1901 and failed the round trip below while the ML service accepted
           // it. Setting the year explicitly keeps early years themselves.

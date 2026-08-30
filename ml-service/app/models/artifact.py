@@ -24,15 +24,15 @@ from typing import Any
 # Bumped when the artifact's shape changes in a way this loader cannot read.
 SUPPORTED_SCHEMA_VERSION = 1
 
+# Scale the pricing service multiplies the loaded rate by before converting to
+# an integer. Declared here so loading can prove the multiplication stays finite
+# rather than discovering it at quote time.
+PREMIUM_RATE_SCALE = 10**12
+
 # Features the baseline evaluator can compute. Declared here rather than in the
 # evaluator so loading can reject an artifact the evaluator would choke on:
 # discovering an unknown feature at quote time means readiness reported "ready"
 # for a model that cannot price, which is exactly what fail-fast is for.
-# Scale the pricing service multiplies the loaded rate by before converting to
-# an integer. Declared here so loading can prove the multiplication stays
-# finite rather than discovering it at quote time.
-PREMIUM_RATE_SCALE = 10**12
-
 BASELINE_FEATURES = frozenset(
     {"intercept", "log_threshold_mm", "log_duration_days", "region_risk"}
 )
@@ -84,6 +84,21 @@ def compute_checksum(payload: dict[str, Any]) -> str:
     body = {key: value for key, value in payload.items() if key != "checksum"}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _reject_non_standard_constant(name: str) -> object:
+    """
+    Refuses `NaN`, `Infinity`, and `-Infinity`.
+
+    Python's parser accepts these as an extension; the JSON specification does
+    not, and most other parsers reject them. Allowing them would produce an
+    artifact that loads here and fails to parse anywhere else, with a checksum
+    blessing values no conforming reader can represent.
+    """
+    raise ValueError(
+        f"{name} is not valid JSON; the artifact must be readable by any "
+        f"conforming parser"
+    )
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -139,9 +154,26 @@ def _require_finite(value: object, label: str) -> float:
 
 
 def _require_non_empty_string(value: object, label: str) -> str:
-    """Requires a JSON string with at least one non-whitespace character."""
+    """
+    Requires a JSON string with content that UTF-8 can carry.
+
+    Encodability belongs here rather than at the response boundary. JSON permits
+    an unpaired surrogate, so a `modelVersion` holding one loaded cleanly and
+    then broke every response that named it — readiness and `/predict` both
+    returned 500 from a service that had started successfully. A value this
+    process cannot serialise is not one it can operate on.
+    """
     if not isinstance(value, str) or not value.strip():
         raise ModelArtifactError(f"{label} must be a non-empty string, got {value!r}")
+
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ModelArtifactError(
+            f"{label} must be well-formed UTF-8 text; it contains a character "
+            f"that cannot be encoded, such as an unpaired surrogate"
+        ) from error
+
     return value
 
 
@@ -178,7 +210,9 @@ def load_artifact(path: Path) -> ModelArtifact:
 
     try:
         payload = json.loads(
-            path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_standard_constant,
         )
     except (OSError, ValueError) as error:
         # ValueError rather than JSONDecodeError alone: the duplicate-member

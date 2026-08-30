@@ -374,6 +374,39 @@ class TestArtifactIntegrity:
         with pytest.raises(ModelArtifactError, match="too large to represent"):
             load_artifact(path)
 
+    @pytest.mark.parametrize("field", ["modelVersion", "provider"])
+    def test_rejects_text_that_cannot_be_encoded(self, tmp_path, field: str) -> None:
+        # A lone surrogate is valid JSON. It loaded cleanly and then broke every
+        # response that named it — readiness and /predict both 500 from a
+        # service that had started successfully. Built from a code point rather
+        # than a literal, because a source file cannot hold one either.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload[field] = chr(0xD800)
+        payload["checksum"] = compute_checksum(payload)
+        path = tmp_path / "unencodable.json"
+        path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+
+        with pytest.raises(ModelArtifactError, match="well-formed UTF-8"):
+            load_artifact(path)
+
+    @pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+    def test_rejects_non_standard_json_constants(self, tmp_path, token: str) -> None:
+        # Python's parser accepts these as an extension; the specification does
+        # not. Allowing them would bless, with a checksum, an artifact no other
+        # conforming reader could parse.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload["checksum"] = compute_checksum(payload)
+        body = json.dumps(payload).replace(
+            '"premiumLoading": 0.35',
+            f'"premiumLoading": 0.35, "extra": {token}',
+            1,
+        )
+        path = tmp_path / "constants.json"
+        path.write_text(body, encoding="utf-8")
+
+        with pytest.raises(ModelArtifactError, match="not valid JSON"):
+            load_artifact(path)
+
     def test_checksum_ignores_key_order(self, tmp_path) -> None:
         # Canonical serialization: rewriting the file with different key order
         # must not look like tampering.

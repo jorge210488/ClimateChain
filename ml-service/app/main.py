@@ -10,6 +10,7 @@ itself healthy right up until the first request.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -78,6 +79,13 @@ def _serializable(value: object) -> object:
         return {str(key): _serializable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_serializable(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        # JSON has no NaN or Infinity. Python writes them anyway unless told
+        # otherwise, and the response encoder refuses them — so a request that
+        # was *correctly* rejected came back as a 500 while its rejection was
+        # being written. Rendered as text, the diagnosis survives.
+        return repr(value)
+
     if value is None or isinstance(value, (bool, int, float)):
         return value
 
