@@ -31,6 +31,14 @@
       "why": "One spelling per date keeps the window unambiguous."
     },
     {
+      "name": "date with non-ASCII decimal digits",
+      "override": {
+        "startDate": "\u0662\u0660\u0662\u0666-\u0660\u0664-\u0660\u0661"
+      },
+      "expect": "reject",
+      "why": "Date syntax is ASCII-only on both services; Python's Unicode-aware \\d must not widen the backend contract."
+    },
+    {
       "name": "end date before start date",
       "override": {
         "endDate": "2026-03-01"

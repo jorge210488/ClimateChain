@@ -26,9 +26,11 @@ from app.core.domain import (
 )
 from app.core.money import is_backend_consumable_amount
 
-# A calendar date and nothing else. Shape only; the calendar itself is checked
-# by parsing, because a regex cannot know that February has no thirtieth.
-CALENDAR_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# An ASCII calendar date and nothing else. Shape only; the calendar itself is
+# checked by parsing, because a regex cannot know that February has no thirtieth.
+# JavaScript's `\d` is ASCII-only while Python's is Unicode-aware, so spell out
+# the range rather than relying on Pydantic to reject another numeral system.
+CALENDAR_DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class QuoteRequest(BaseModel):

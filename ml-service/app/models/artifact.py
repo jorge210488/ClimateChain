@@ -153,6 +153,14 @@ def _require_finite(value: object, label: str) -> float:
     return number
 
 
+def _require_non_negative_finite(value: object, label: str) -> float:
+    """Requires a finite JSON number in the non-negative rainfall domain."""
+    number = _require_finite(value, label)
+    if number < 0:
+        raise ModelArtifactError(f"{label} must not be negative, got {number}")
+    return number
+
+
 def _require_non_empty_string(value: object, label: str) -> str:
     """
     Requires a JSON string with content that UTF-8 can carry.
@@ -317,6 +325,11 @@ def load_artifact(path: Path) -> ModelArtifact:
         raise ModelArtifactError(
             f"Model artifact at {path} has a regionRisk that is not a mapping"
         ) from error
+    if not region_items:
+        raise ModelArtifactError(
+            f"Model artifact at {path} has no regionRisk entries. A baseline "
+            "model must define at least one known region."
+        )
 
     region_risk: dict[str, float] = {}
     for region, value in region_items:
@@ -334,7 +347,9 @@ def load_artifact(path: Path) -> ModelArtifact:
                 f"than once (last seen as {region!r}); lookups are "
                 f"case-insensitive, so the risk would be ambiguous."
             )
-        region_risk[normalized] = _require_finite(value, f"regionRisk[{region}]")
+        region_risk[normalized] = _require_non_negative_finite(
+            value, f"regionRisk[{region}]"
+        )
 
     return ModelArtifact(
         model_version=_require_non_empty_string(
@@ -344,7 +359,7 @@ def load_artifact(path: Path) -> ModelArtifact:
         features=features,
         coefficients=coefficients,
         region_risk=region_risk,
-        default_region_risk=_require_finite(
+        default_region_risk=_require_non_negative_finite(
             payload["defaultRegionRisk"], "defaultRegionRisk"
         ),
         premium_loading=premium_loading,

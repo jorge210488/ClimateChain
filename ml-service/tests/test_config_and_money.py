@@ -282,6 +282,31 @@ class TestArtifactIntegrity:
         with pytest.raises(ModelArtifactError, match="non-empty string"):
             load_artifact(path)
 
+    @pytest.mark.parametrize(
+        ("changes", "expected"),
+        [
+            (
+                {"regionRisk": {"valencia": -1.0}},
+                "regionRisk\\[valencia\\] must not be negative",
+            ),
+            (
+                {"defaultRegionRisk": -1.0},
+                "defaultRegionRisk must not be negative",
+            ),
+            ({"regionRisk": {}}, "has no regionRisk entries"),
+        ],
+    )
+    def test_rejects_regional_risk_outside_the_model_domain(
+        self, tmp_path, changes: dict, expected: str
+    ) -> None:
+        # The model treats these values as mean daily rainfall. An empty map or
+        # a negative value would not crash, but would silently erase regional
+        # differentiation or underprice coverage after a bad training export.
+        path = self._rewritten(tmp_path, **changes)
+
+        with pytest.raises(ModelArtifactError, match=expected):
+            ModelRegistry(path=path, expected_provider="baseline").load()
+
     def test_rejects_coefficients_that_overflow_when_evaluated(self, tmp_path) -> None:
         # Each coefficient is finite; the terms are not. Opposing infinities
         # cancel to NaN, which survives the logistic and the clamp and only

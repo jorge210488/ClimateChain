@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.pricing import QuoteRequest
+from app.schemas.pricing import CALENDAR_DATE_PATTERN, QuoteRequest
 
 VECTORS_PATH = (
     Path(__file__).resolve().parents[2]
@@ -65,6 +65,20 @@ def test_the_region_identifier_survives_validation() -> None:
     request = QuoteRequest.model_validate({**BASE, "region": "  Valencia  "})
 
     assert request.region == "  Valencia  "
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\u0662\u0660\u0662\u0666-\u0660\u0664-\u0660\u0661",
+        "\uff12\uff10\uff12\uff16-\uff10\uff14-\uff10\uff11",
+    ],
+)
+def test_date_syntax_is_ascii_only(value: str) -> None:
+    # Python's `\d` includes these numeral systems while the backend's
+    # JavaScript validator does not. Keep this guard independent of whatever
+    # date coercion Pydantic happens to provide.
+    assert CALENDAR_DATE_PATTERN.fullmatch(value) is None
 
 
 def test_every_vector_is_exercised() -> None:

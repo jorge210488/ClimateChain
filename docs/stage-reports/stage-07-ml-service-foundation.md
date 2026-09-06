@@ -120,7 +120,7 @@
 - `python scripts/stage7_check.py`: passed end to end.
 - Lint and format: clean across 29 files.
 - Artifact drift: the committed artifact matches its build script byte for byte.
-- Tests: **187 passing** after the review rounds below, comprising
+- Tests: **193 passing** after the review rounds below, comprising
   - 10 contract tests against the backend's published OpenAPI document and
     domain constants;
   - 24 API tests, including three that assert the service refuses to boot —
@@ -385,6 +385,35 @@ than literals, and the vectors file stores JSON escapes.
 Gate after the round: ML 187 tests, backend 374, both gates green, 50 shared
 vectors passing identically on both sides.
 
+## Sixth pre-Stage 08 hardening review
+
+Two further checks were made before treating the Stage 07 runtime as a stable
+consumer of the first real training export.
+
+**A semantically broken regional model still loaded as ready.** A checksum-valid
+artifact with an empty `regionRisk` map, a negative known-region risk, or a
+negative fallback risk did not crash the evaluator. It instead silently erased
+regional differentiation or reduced the fitted risk factor, exactly the kind of
+bad Stage 08 export that should fail at boot rather than price live requests.
+The loader now requires at least one known region and non-negative finite values
+for both `regionRisk` and `defaultRegionRisk`. These values represent rainfall-
+derived regional risk, whose valid domain starts at zero.
+
+**Date syntax was narrower in practice than in the validator.** Pydantic
+eventually rejected Arabic-Indic and fullwidth date digits, but the service's
+own Python regex accepted them because Python `\d` is Unicode-aware while the
+backend's JavaScript validator is ASCII-only. The date grammar now uses
+`[0-9]`, and a shared rejection vector plus a direct unit test prevent the
+contract from depending accidentally on a downstream parser detail.
+
+**An obsolete local setting implied a control that does not exist.**
+`DEFAULT_PREMIUM` was removed from the local `.env`: premiums are derived from
+the loaded artifact and the on-chain floor, never from configuration.
+
+Gate after the review: lint and format clean, artifact drift clean, **193 ML
+tests passing**, a real startup verified by checksum, and the backend's narrow
+shared-contract spec passing **53 tests**.
+
 ## Risks or pending items
 
 - **The model is not predictive.** It is fitted on synthetic rainfall and must
@@ -425,6 +454,9 @@ vectors passing identically on both sides.
   loader together with it. A new provider means adding a value to the
   `MODEL_PROVIDER` validator, which currently accepts only `baseline` so a typo
   cannot resolve to something unevaluable.
+- The Stage 08 export must retain at least one known region and non-negative,
+  finite regional-risk values. An empty or negative rainfall-derived map is now
+  intentionally rejected at Stage 07 startup rather than being priced through.
 - Stage 09 wires the backend's `PricingService` to this endpoint, replacing its
   501. The field names already match, and `tests/test_backend_contract.py` will
   fail if either side drifts before then. That test is the reason the wiring
