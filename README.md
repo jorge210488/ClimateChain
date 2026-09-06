@@ -42,6 +42,18 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 
 ## Quick Start (Foundation)
 
+Arriving without context — as a person or as an AI assistant? Start with
+`AGENTS.md`: it maps where everything lives and which rules apply.
+
+> **Windows: clone into a short path**, such as `C:\dev\ClimateChain`. Nested
+> `node_modules` under `contracts/` reach ~190 characters below the repository
+> root, and Windows stops resolving files past 260 unless long paths are
+> enabled. A deep clone (OneDrive, Desktop, several folders down) fails the
+> contracts gate with an error that names a missing package rather than the
+> path length. Verified from a fresh clone: the same install passes from a
+> short path. Alternatively, enable long paths
+> (`LongPathsEnabled` under `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`).
+
 1. Copy and configure environment files per module:
    - `contracts/.env.example`
    - `backend/.env.example`
