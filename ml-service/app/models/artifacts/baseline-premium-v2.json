@@ -1,12 +1,12 @@
 {
-  "checksum": "be06eeeb4b0ce448219d74b4d30e89dbe325149ecfdfeb693552115f0e9df3c7",
+  "checksum": "feb6367503a7f02f36bd5a500655265b8f88c121923c2fdec0d778ba3bb49e62",
   "coefficients": [
     3.029113179169,
     -2.378500239676,
     0.645264026312,
     0.272611978983
   ],
-  "createdAt": "2026-09-06T17:45:34Z",
+  "createdAt": "2026-09-06T19:48:14Z",
   "defaultRegionRisk": 2.699934,
   "features": [
     "intercept",
@@ -29,7 +29,7 @@
   },
   "schemaVersion": 1,
   "training": {
-    "configHash": "cb7d992c046edaadf502ff2a2b2f6576a3788e5911643b212fbebbad1ee7f62a",
+    "configHash": "39ddb911b440e8149c138f9714f0c7c58266b4542025e1625d5130d52c9fd54f",
     "datasetChecksum": "e04ea058f60108dd02bfa5d21aa7d4e9b62618d11fe7a9148c82a1f6feba21ab",
     "datasetVersion": "rainfall-history-v1",
     "dateRange": {
@@ -49,6 +49,64 @@
     "metrics": {
       "holdout": {
         "brier": 0.055533,
+        "byRegion": {
+          "bogota": {
+            "brier": 0.041284,
+            "logLoss": 0.137273,
+            "observedTriggerRate": 0.08629,
+            "predictedTriggerRate": 0.095078,
+            "windows": 4960
+          },
+          "buenos aires": {
+            "brier": 0.093668,
+            "logLoss": 0.28747,
+            "observedTriggerRate": 0.165121,
+            "predictedTriggerRate": 0.100955,
+            "windows": 4960
+          },
+          "cartagena": {
+            "brier": 0.064364,
+            "logLoss": 0.200829,
+            "observedTriggerRate": 0.11371,
+            "predictedTriggerRate": 0.124177,
+            "windows": 4960
+          },
+          "lima": {
+            "brier": 0.018737,
+            "logLoss": 0.076635,
+            "observedTriggerRate": 0.001411,
+            "predictedTriggerRate": 0.062738,
+            "windows": 4960
+          },
+          "medellin": {
+            "brier": 0.054412,
+            "logLoss": 0.186764,
+            "observedTriggerRate": 0.158669,
+            "predictedTriggerRate": 0.197848,
+            "windows": 4960
+          },
+          "santiago": {
+            "brier": 0.049009,
+            "logLoss": 0.162571,
+            "observedTriggerRate": 0.065927,
+            "predictedTriggerRate": 0.077438,
+            "windows": 4960
+          },
+          "sevilla": {
+            "brier": 0.057749,
+            "logLoss": 0.188381,
+            "observedTriggerRate": 0.090323,
+            "predictedTriggerRate": 0.077734,
+            "windows": 4960
+          },
+          "valencia": {
+            "brier": 0.065045,
+            "logLoss": 0.218237,
+            "observedTriggerRate": 0.094153,
+            "predictedTriggerRate": 0.073937,
+            "windows": 4960
+          }
+        },
         "logLoss": 0.18227,
         "observedTriggerRate": 0.096951,
         "predictedTriggerRate": 0.101238,
@@ -56,6 +114,64 @@
       },
       "previousModel": {
         "brier": 0.080362,
+        "byRegion": {
+          "bogota": {
+            "brier": 0.062632,
+            "logLoss": 0.18902,
+            "observedTriggerRate": 0.08629,
+            "predictedTriggerRate": 0.039635,
+            "windows": 4960
+          },
+          "buenos aires": {
+            "brier": 0.140378,
+            "logLoss": 0.466207,
+            "observedTriggerRate": 0.165121,
+            "predictedTriggerRate": 0.027868,
+            "windows": 4960
+          },
+          "cartagena": {
+            "brier": 0.097865,
+            "logLoss": 0.326449,
+            "observedTriggerRate": 0.11371,
+            "predictedTriggerRate": 0.022432,
+            "windows": 4960
+          },
+          "lima": {
+            "brier": 0.001386,
+            "logLoss": 0.008926,
+            "observedTriggerRate": 0.001411,
+            "predictedTriggerRate": 0.003634,
+            "windows": 4960
+          },
+          "medellin": {
+            "brier": 0.10137,
+            "logLoss": 0.288467,
+            "observedTriggerRate": 0.158669,
+            "predictedTriggerRate": 0.063296,
+            "windows": 4960
+          },
+          "santiago": {
+            "brier": 0.063284,
+            "logLoss": 0.276034,
+            "observedTriggerRate": 0.065927,
+            "predictedTriggerRate": 0.005778,
+            "windows": 4960
+          },
+          "sevilla": {
+            "brier": 0.086428,
+            "logLoss": 0.370409,
+            "observedTriggerRate": 0.090323,
+            "predictedTriggerRate": 0.00624,
+            "windows": 4960
+          },
+          "valencia": {
+            "brier": 0.089555,
+            "logLoss": 0.38089,
+            "observedTriggerRate": 0.094153,
+            "predictedTriggerRate": 0.007854,
+            "windows": 4960
+          }
+        },
         "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
         "logLoss": 0.2883,
         "modelVersion": "baseline-premium-v1",

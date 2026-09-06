@@ -37,6 +37,10 @@ BASELINE_FEATURES = frozenset(
     {"intercept", "log_threshold_mm", "log_duration_days", "region_risk"}
 )
 
+# What a `training` block may say the model was fitted to. Anything else is a
+# provenance claim the runtime cannot interpret, and so must not accept.
+TRAINING_KINDS = frozenset({"observed", "synthetic"})
+
 # Fields that must be present for the artifact to be usable at all.
 REQUIRED_FIELDS = (
     "schemaVersion",
@@ -70,17 +74,35 @@ class ModelArtifact:
     checksum: str
     # Provenance, surfaced by readiness. Optional because the artifact contract
     # predates it; a model that omits it is still loadable, it just cannot say
-    # what it was trained on.
+    # what it was trained on — and "cannot say" is recorded as None, never as
+    # a reassuring default.
     dataset_version: str | None = None
     training_kind: str | None = None
     # True marks a model that must not be used to price real risk — the
-    # Stage 07 synthetic fit. The runtime reports it; it does not refuse it,
-    # because a deployed profile's operator may need the placeholder to boot.
-    transitional: bool = False
+    # Stage 07 synthetic fit. None means the artifact makes no claim either
+    # way. A deployed profile refuses anything but an explicit False.
+    transitional: bool | None = None
+    # The grid the fit was measured on, when the artifact records it. A quote
+    # outside it is an extrapolation of the model's functional form, not a
+    # frequency anyone counted, and the response says so.
+    trained_duration_days: tuple[int, int] | None = None
+    trained_threshold_mm: tuple[int, int] | None = None
 
     @property
     def known_regions(self) -> tuple[str, ...]:
         return tuple(sorted(self.region_risk))
+
+    def is_within_trained_domain(
+        self, duration_days: int, rainfall_threshold_mm: int
+    ) -> bool:
+        """False outside the recorded grid, and false when no grid is recorded."""
+        if self.trained_duration_days is None or self.trained_threshold_mm is None:
+            return False
+        low, high = self.trained_duration_days
+        if not low <= duration_days <= high:
+            return False
+        low, high = self.trained_threshold_mm
+        return low <= rainfall_threshold_mm <= high
 
 
 def compute_checksum(payload: dict[str, Any]) -> str:
@@ -192,6 +214,29 @@ def _require_non_empty_string(value: object, label: str) -> str:
         ) from error
 
     return value
+
+
+def _require_sha256_hex(value: object, label: str) -> str:
+    """Requires the textual form of a SHA-256 digest, as the trainer writes it."""
+    text = _require_non_empty_string(value, label)
+    if len(text) != 64 or any(c not in "0123456789abcdef" for c in text):
+        raise ModelArtifactError(
+            f"{label} must be 64 hexadecimal characters, got {text!r}"
+        )
+    return text
+
+
+def _grid_range(value: object, label: str) -> tuple[int, int]:
+    """The extent of a training grid: a non-empty array of positive integers."""
+    items = _require_list(value, label)
+    if not items:
+        raise ModelArtifactError(f"{label} must not be empty")
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, int) or item < 1:
+            raise ModelArtifactError(
+                f"{label} must hold positive integers, got {item!r}"
+            )
+    return (min(items), max(items))
 
 
 def _require_list(value: object, label: str) -> list:
@@ -361,29 +406,60 @@ def load_artifact(path: Path) -> ModelArtifact:
         )
 
     # Provenance is optional but, when present, held to the same standard as
-    # the rest: a `training` block that is not an object, or a version that is
-    # not text, is a malformed artifact rather than a missing nicety.
+    # the rest. A block that claims observed training must carry what makes
+    # the claim checkable — the dataset, its checksum, the configuration hash —
+    # or a hand-edited file could announce itself as observed with nothing
+    # behind it.
     training = payload.get("training")
     dataset_version: str | None = None
     training_kind: str | None = None
-    transitional = False
+    transitional: bool | None = None
+    trained_duration_days: tuple[int, int] | None = None
+    trained_threshold_mm: tuple[int, int] | None = None
     if training is not None:
         if not isinstance(training, dict):
             raise ModelArtifactError(
                 f"Model artifact at {path} has a training block that is not an object"
             )
+        if "kind" not in training or "transitional" not in training:
+            raise ModelArtifactError(
+                f"Model artifact at {path} has a training block without both "
+                f"kind and transitional; provenance that cannot say what the "
+                f"model was trained on is not provenance"
+            )
+        training_kind = _require_non_empty_string(training["kind"], "training.kind")
+        if training_kind not in TRAINING_KINDS:
+            raise ModelArtifactError(
+                f"Model artifact at {path}: training.kind must be one of "
+                f"{sorted(TRAINING_KINDS)}, got {training_kind!r}"
+            )
+        if not isinstance(training["transitional"], bool):
+            raise ModelArtifactError(
+                f"Model artifact at {path} has a non-boolean training.transitional"
+            )
+        transitional = training["transitional"]
         if "datasetVersion" in training:
             dataset_version = _require_non_empty_string(
                 training["datasetVersion"], "training.datasetVersion"
             )
-        if "kind" in training:
-            training_kind = _require_non_empty_string(training["kind"], "training.kind")
-        if "transitional" in training:
-            if not isinstance(training["transitional"], bool):
-                raise ModelArtifactError(
-                    f"Model artifact at {path} has a non-boolean training.transitional"
-                )
-            transitional = training["transitional"]
+        if training_kind == "observed":
+            for field in ("datasetVersion", "datasetChecksum", "configHash"):
+                if field not in training:
+                    raise ModelArtifactError(
+                        f"Model artifact at {path} claims observed training but "
+                        f"has no training.{field}; an observed model must name "
+                        f"the data and configuration it was fitted to"
+                    )
+            _require_sha256_hex(training["datasetChecksum"], "training.datasetChecksum")
+            _require_sha256_hex(training["configHash"], "training.configHash")
+        if "durationDaysGrid" in training:
+            trained_duration_days = _grid_range(
+                training["durationDaysGrid"], "training.durationDaysGrid"
+            )
+        if "thresholdMmGrid" in training:
+            trained_threshold_mm = _grid_range(
+                training["thresholdMmGrid"], "training.thresholdMmGrid"
+            )
 
     return ModelArtifact(
         model_version=_require_non_empty_string(
@@ -402,4 +478,6 @@ def load_artifact(path: Path) -> ModelArtifact:
         dataset_version=dataset_version,
         training_kind=training_kind,
         transitional=transitional,
+        trained_duration_days=trained_duration_days,
+        trained_threshold_mm=trained_threshold_mm,
     )

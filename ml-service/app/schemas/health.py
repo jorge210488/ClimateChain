@@ -29,10 +29,11 @@ class ModelStatusResponse(BaseModel):
     checksum: str | None = None
     # Provenance. `transitional` is the one an operator must read: true means
     # the loaded model is the synthetic placeholder and must not price real
-    # risk, however healthy the process looks.
+    # risk, however healthy the process looks; null means the artifact makes
+    # no claim, which a deployed profile treats the same way.
     dataset_version: str | None = Field(default=None, alias="datasetVersion")
     training_kind: str | None = Field(default=None, alias="trainingKind")
-    transitional: bool = False
+    transitional: bool | None = None
     reason: str | None = Field(
         default=None,
         description="Why the model is unavailable; absent when it is loaded.",

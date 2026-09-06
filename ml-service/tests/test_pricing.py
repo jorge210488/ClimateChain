@@ -8,7 +8,7 @@ paying gas.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -237,3 +237,36 @@ class TestRiskAssessment:
                 ),
             )
             assert 0.0 < assessment.trigger_probability < 1.0
+
+
+class TestTrainedDomain:
+    """
+    The API accepts windows from one day and thresholds from 1 mm; the model
+    was measured on 7..365 days and 10..300 mm. Outside that it extrapolates
+    its functional form, and the quote says so rather than looking measured.
+    """
+
+    def _quote(self, artifact, threshold: int, days: int):
+        start = date(2026, 1, 1)
+        return quote_premium(
+            artifact=artifact,
+            region="valencia",
+            coverage_eth="1.0",
+            rainfall_threshold_mm=threshold,
+            start_date=start,
+            end_date=start + timedelta(days=days - 1),
+        )
+
+    @pytest.mark.parametrize(("threshold", "days"), [(50, 30), (10, 7), (300, 365)])
+    def test_inside_the_grid_is_measured(self, artifact, threshold, days) -> None:
+        assert self._quote(artifact, threshold, days).extrapolated is False
+
+    @pytest.mark.parametrize(
+        ("threshold", "days"),
+        [(50, 1), (50, 6), (9, 30), (301, 30), (2**53 - 1, 30)],
+    )
+    def test_outside_the_grid_is_flagged(self, artifact, threshold, days) -> None:
+        quote = self._quote(artifact, threshold, days)
+        assert quote.extrapolated is True
+        # Still a quote: flagged, not refused.
+        assert quote.premium_wei > 0

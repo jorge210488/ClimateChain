@@ -13,3 +13,9 @@ contracts/deployments/*.json text eol=lf
 
 # Shell scripts must keep LF or they will not execute in CI containers.
 *.sh text eol=lf
+
+# The training configuration hash covers the trainer's own source, so a CRLF
+# checkout of scripts/train_rainfall_model.py would change the artifact's
+# checksum without changing a line of logic. The hash also normalises line
+# endings before digesting; this keeps the file itself stable as well.
+*.py text eol=lf

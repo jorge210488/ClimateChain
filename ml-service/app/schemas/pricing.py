@@ -202,3 +202,11 @@ class QuoteResponse(BaseModel):
     duration_days: int = Field(serialization_alias="durationDays")
     region_known: bool = Field(serialization_alias="regionKnown")
     floored_to_minimum: bool = Field(serialization_alias="flooredToMinimum")
+    extrapolated: bool = Field(
+        serialization_alias="extrapolated",
+        description=(
+            "True when the coverage window or threshold lies outside the range "
+            "the model was fitted on, so the estimate extends the model's form "
+            "rather than a measured frequency."
+        ),
+    )

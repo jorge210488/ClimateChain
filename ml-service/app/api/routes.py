@@ -138,4 +138,5 @@ def predict(payload: QuoteRequest, request: Request) -> QuoteResponse:
         duration_days=quote.duration_days,
         region_known=quote.region_known,
         floored_to_minimum=quote.floored_to_minimum,
+        extrapolated=quote.extrapolated,
     )

@@ -70,6 +70,10 @@ and fails in CI is usually a platform difference, and the workflows under
 - **Generated files are checked, not edited.** ABIs, deployment manifests, the
   OpenAPI document, and the ML model artifact are all produced by commands and
   verified for drift by the gates. Edit the source, rerun the generator.
+- **The ML gate never writes an artifact.** `stage8_check.py` runs the trainer
+  in `--check` mode and fails on drift or on a missing file. To produce a new
+  artifact, run `python scripts/train_rainfall_model.py` on purpose and commit
+  the artifact and its metrics together; a dataset refresh is a model release.
 - **`.env` files are yours and stay local.** Copy from `.env.example`; never
   commit one, never read another person's. No stage so far requires secrets
   for local work.

@@ -144,6 +144,7 @@ class TestPredict:
             "startDate",
             "endDate",
             "modelVersion",
+            "extrapolated",
         ):
             assert field in body
 
@@ -344,6 +345,8 @@ class TestPredict:
 
         assert response.status_code == 200
         assert response.json()["durationDays"] == 1
+        # One day is shorter than any window the model was measured on.
+        assert response.json()["extrapolated"] is True
 
     def test_the_maximum_window_is_priced(self, client: TestClient) -> None:
         # 365 days inclusive: the longest policy the provider will create.

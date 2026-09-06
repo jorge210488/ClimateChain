@@ -130,6 +130,7 @@ class TestResponseContract:
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
+            extrapolated=False,
         ).model_dump(mode="json", by_alias=True)
 
         missing = [field for field in required if field not in payload]
@@ -154,6 +155,7 @@ class TestResponseContract:
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
+            extrapolated=False,
         ).model_dump(mode="json", by_alias=True)
 
         assert payload["modelVersion"] == "baseline-premium-v2"
@@ -170,6 +172,7 @@ class TestResponseContract:
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
+            extrapolated=False,
         ).model_dump(mode="json", by_alias=True)
 
         # Premiums are paid in the chain's native asset; anything else would

@@ -9,13 +9,19 @@ for byte. Nothing here reaches the network — the fetch is a deliberate,
 separate act, and a gate that could pass or fail on a remote service's mood is
 not a gate.
 
+The gate writes nothing. Retraining runs in check mode, which compares what the
+trainer would produce against the committed files and refuses to create or
+replace either; a missing artifact is a failure, not something to regenerate
+quietly. Producing a new artifact is a release, done on purpose with
+`python scripts/train_rainfall_model.py`.
+
 Steps, in the order a failure is cheapest to diagnose:
 
 1. Lint and format.
 2. Dataset integrity: checksum, shape, and agreement with the region registry.
-3. Retrain and fail on drift, for the artifact and for the metrics file.
+3. Retrain in check mode and fail on drift, for the artifact and the metrics.
 4. Tests, including the runtime's view of the model's provenance.
-5. A real startup serving a quote from the retrained artifact.
+5. A real startup serving a quote from the committed artifact.
 
 Usage:
     python scripts/stage8_check.py
@@ -32,6 +38,7 @@ MODULE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODULE_ROOT))
 
 from app.data.rainfall import RainfallDatasetError, load_rainfall_dataset  # noqa: E402
+from app.data.regions import RegionRegistryError, load_region_registry  # noqa: E402
 from app.models.artifact import ModelArtifactError, load_artifact  # noqa: E402
 
 DATASET = MODULE_ROOT / "data/rainfall-history-v1.json"
@@ -52,10 +59,10 @@ def check_dataset() -> None:
     print("\n=== dataset integrity ===", flush=True)
     try:
         dataset = load_rainfall_dataset(DATASET)
-    except RainfallDatasetError as error:
+        registry = load_region_registry(REGIONS)
+    except (RainfallDatasetError, RegionRegistryError) as error:
         raise SystemExit(f"stage8:check FAILED: {error}") from error
 
-    registry = json.loads(REGIONS.read_text(encoding="utf-8"))["regions"]
     registered = set(registry)
     covered = set(dataset.regions)
     if registered != covered:
@@ -66,16 +73,13 @@ def check_dataset() -> None:
             "scripts/fetch_rainfall_history.py after changing the registry."
         )
 
-    for key, entry in registry.items():
+    for key, region in registry.items():
         series = dataset.regions[key]
-        if (series.latitude, series.longitude) != (
-            entry["latitude"],
-            entry["longitude"],
-        ):
+        if (series.latitude, series.longitude) != (region.latitude, region.longitude):
             raise SystemExit(
                 f"stage8:check FAILED: region {key!r} was fetched at "
                 f"({series.latitude}, {series.longitude}) but the registry now says "
-                f"({entry['latitude']}, {entry['longitude']}). Refetch."
+                f"({region.latitude}, {region.longitude}). Refetch."
             )
 
     print(
@@ -87,11 +91,22 @@ def check_dataset() -> None:
 
 def check_training_drift() -> None:
     print("\n=== training drift ===", flush=True)
-    before_artifact = ARTIFACT.read_bytes() if ARTIFACT.is_file() else None
-    before_metrics = METRICS.read_bytes() if METRICS.is_file() else None
+    for label, path in (("artifact", ARTIFACT), ("metrics file", METRICS)):
+        if not path.is_file():
+            raise SystemExit(
+                f"stage8:check FAILED: the committed {label} {path.name} is missing. "
+                "The gate does not create artifacts; produce it deliberately with "
+                "`python scripts/train_rainfall_model.py` and commit it."
+            )
+    if not PREVIOUS.is_file():
+        raise SystemExit(
+            "stage8:check FAILED: the archived previous artifact is missing, so "
+            "the holdout comparison cannot be reproduced."
+        )
 
+    before = (ARTIFACT.read_bytes(), METRICS.read_bytes())
     result = subprocess.run(
-        [sys.executable, "scripts/train_rainfall_model.py"],
+        [sys.executable, "scripts/train_rainfall_model.py", "--check"],
         cwd=MODULE_ROOT,
         capture_output=True,
         text=True,
@@ -99,18 +114,18 @@ def check_training_drift() -> None:
     if result.returncode != 0:
         print(result.stdout)
         print(result.stderr)
-        raise SystemExit("stage8:check FAILED at: retraining the model")
-
-    if before_artifact is not None and before_artifact != ARTIFACT.read_bytes():
         raise SystemExit(
-            "stage8:check FAILED: the committed artifact does not match what "
-            "scripts/train_rainfall_model.py produces from the committed dataset. "
-            "Commit the retrained artifact, or revert the change that caused it."
+            "stage8:check FAILED: the committed artifact or metrics do not match "
+            "what scripts/train_rainfall_model.py produces from the committed "
+            "dataset. Retrain deliberately and commit the result, or revert the "
+            "change that caused it."
         )
-    if before_metrics is not None and before_metrics != METRICS.read_bytes():
+    if before != (ARTIFACT.read_bytes(), METRICS.read_bytes()):
+        # Check mode must be read-only; if it ever is not, that is a defect in
+        # the trainer, and the gate is the place to catch it.
         raise SystemExit(
-            "stage8:check FAILED: the committed metrics file does not match a "
-            "fresh evaluation. Commit the regenerated metrics."
+            "stage8:check FAILED: `train_rainfall_model.py --check` modified the "
+            "committed files. Check mode must not write."
         )
 
     # The artifact the runtime will load, checked as the runtime checks it, and
@@ -119,16 +134,11 @@ def check_training_drift() -> None:
         artifact = load_artifact(ARTIFACT)
     except ModelArtifactError as error:
         raise SystemExit(f"stage8:check FAILED: {error}") from error
-    if artifact.transitional or artifact.training_kind != "observed":
+    if artifact.transitional is not False or artifact.training_kind != "observed":
         raise SystemExit(
             "stage8:check FAILED: the current artifact must be trained on observed "
             f"data and not transitional; got kind={artifact.training_kind!r}, "
-            f"transitional={artifact.transitional}"
-        )
-    if not PREVIOUS.is_file():
-        raise SystemExit(
-            "stage8:check FAILED: the archived previous artifact is missing, so "
-            "the holdout comparison cannot be reproduced."
+            f"transitional={artifact.transitional!r}"
         )
 
     metrics = json.loads(METRICS.read_text(encoding="utf-8"))

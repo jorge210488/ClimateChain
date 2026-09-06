@@ -44,6 +44,13 @@ class Settings(BaseSettings):
         default=Path("app/models/artifacts/baseline-premium-v2.json"),
         alias="MODEL_PATH",
     )
+    # The one exception to the deployed-profile rule that observed models only
+    # may price. Named, defaulted off, and logged at startup when on, so using
+    # the synthetic placeholder in an emergency is an act with a fingerprint
+    # rather than a configuration nobody noticed.
+    model_allow_transitional: bool = Field(
+        default=False, alias="MODEL_ALLOW_TRANSITIONAL"
+    )
 
     @field_validator("app_env")
     @classmethod
@@ -68,18 +75,20 @@ class Settings(BaseSettings):
     @field_validator("model_provider")
     @classmethod
     def _known_provider(cls, value: str) -> str:
-        # One provider exists today. Naming it explicitly means Stage 08 adds a
-        # value here rather than discovering the coupling at runtime.
+        # One provider exists today. Naming it explicitly means a new provider
+        # is added here rather than discovered as a coupling at runtime.
         if value != "baseline":
-            raise ValueError(
-                f"MODEL_PROVIDER must be 'baseline' until Stage 08 adds another, "
-                f"got '{value}'"
-            )
+            raise ValueError(f"MODEL_PROVIDER must be 'baseline', got '{value}'")
         return value
 
     @property
     def is_deployed_profile(self) -> bool:
         return self.app_env in DEPLOYED_PROFILES
+
+    @property
+    def requires_observed_model(self) -> bool:
+        """Whether startup must refuse a model not fitted to observed data."""
+        return self.is_deployed_profile and not self.model_allow_transitional
 
     @property
     def resolved_model_path(self) -> Path:

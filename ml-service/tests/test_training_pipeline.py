@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import math
+import subprocess
 import sys
 from datetime import date
 
@@ -24,6 +26,7 @@ from app.data.rainfall import (
     expected_day_count,
     load_rainfall_dataset,
 )
+from app.data.regions import Region, RegionRegistryError, load_region_registry
 from app.main import create_app
 from app.models.artifact import ModelArtifactError, compute_checksum, load_artifact
 from tests.conftest_helpers import ARTIFACT_PATH, MODULE_ROOT
@@ -141,37 +144,167 @@ class TestDataset:
             load_rainfall_dataset(path)
 
 
+class TestRegionRegistry:
+    """The registry decides where thirty years of data are read from."""
+
+    def test_loads_the_committed_registry(self) -> None:
+        registry = load_region_registry(REGIONS_PATH)
+        assert set(registry) == {
+            "valencia",
+            "sevilla",
+            "bogota",
+            "medellin",
+            "cartagena",
+            "lima",
+            "santiago",
+            "buenos aires",
+        }
+        assert isinstance(registry["lima"], Region)
+        assert registry["lima"].country == "PE"
+
+    @pytest.mark.parametrize(
+        ("mutate", "expected"),
+        [
+            # A key the runtime could never resolve to: lookups lowercase first.
+            (
+                lambda p: p["regions"].__setitem__("Lima", p["regions"].pop("lima")),
+                "not canonical",
+            ),
+            (lambda p: p["regions"]["lima"].__setitem__("latitude", 91), "within"),
+            # `true` is an int in Python; as a longitude it would be 1.0 east.
+            (
+                lambda p: p["regions"]["lima"].__setitem__("longitude", True),
+                "must be a number",
+            ),
+            (lambda p: p["regions"]["lima"].__setitem__("name", ""), "non-empty"),
+            (lambda p: p["regions"]["lima"].pop("country"), "non-empty"),
+            (lambda p: p.__setitem__("schemaVersion", 2), "schemaVersion"),
+            (lambda p: p.__setitem__("regions", {}), "at least one region"),
+            (
+                lambda p: p["regions"].__setitem__("x" * 32, p["regions"]["lima"]),
+                "on-chain region budget",
+            ),
+        ],
+    )
+    def test_rejects_a_malformed_registry(self, tmp_path, mutate, expected) -> None:
+        payload = json.loads(REGIONS_PATH.read_text(encoding="utf-8"))
+        mutate(payload)
+        path = tmp_path / "regions.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(RegionRegistryError, match=expected):
+            load_region_registry(path)
+
+    def test_rejects_a_repeated_key(self, tmp_path) -> None:
+        # `json.loads` keeps the last of two entries silently; the region would
+        # then be fetched from whichever coordinates were written last.
+        text = REGIONS_PATH.read_text(encoding="utf-8").replace(
+            '"lima":', '"sevilla":', 1
+        )
+        path = tmp_path / "regions.json"
+        path.write_text(text, encoding="utf-8")
+
+        with pytest.raises(RegionRegistryError, match="duplicate JSON member"):
+            load_region_registry(path)
+
+
 class TestFetchValidation:
-    """The fetch script's own checks, exercised on fabricated payloads."""
+    """The fetch script's own checks, exercised on fabricated payloads. No network."""
+
+    @staticmethod
+    def _region() -> Region:
+        return Region(
+            key="lima", name="Lima", country="PE", latitude=-12.0, longitude=-77.0
+        )
+
+    @staticmethod
+    def _body(fetcher, values: list | None = None) -> dict:
+        dates = fetcher.expected_dates()
+        return {
+            "daily_units": {"precipitation_sum": "mm"},
+            "daily": {
+                "time": dates,
+                "precipitation_sum": (
+                    values if values is not None else [0.0] * len(dates)
+                ),
+            },
+        }
+
+    def test_accepts_a_well_formed_response(self, fetcher) -> None:
+        series = fetcher.parse_series("lima", self._body(fetcher))
+        assert len(series) == expected_day_count(fetcher.START, fetcher.END)
+        assert set(series) == {0.0}
+
+    def test_rounds_to_the_precision_the_source_reports(self, fetcher) -> None:
+        body = self._body(fetcher)
+        body["daily"]["precipitation_sum"][0] = 1.26
+        assert fetcher.parse_series("lima", body)[0] == 1.3
+
+    @pytest.mark.parametrize(
+        ("mutate", "expected"),
+        [
+            # Each of these used to be accepted: a boolean read as 1 mm, a
+            # string coerced, and a NaN passed every `<` check and would have
+            # been written into the committed dataset.
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, True),
+                "not a number",
+            ),
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, "0.5"),
+                "not a number",
+            ),
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, float("nan")),
+                "not a valid precipitation",
+            ),
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, float("inf")),
+                "not a valid precipitation",
+            ),
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, -0.1),
+                "not a valid precipitation",
+            ),
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, None),
+                "missing days",
+            ),
+            (lambda b: b["daily"]["precipitation_sum"].pop(), "expected"),
+            # The calendar is part of the contract, not an assumption.
+            (lambda b: b["daily"].pop("time"), "daily.time"),
+            (lambda b: b["daily"]["time"].__setitem__(0, "1994-12-31"), "daily.time"),
+            (
+                lambda b: b["daily_units"].__setitem__("precipitation_sum", "inch"),
+                "millimetres",
+            ),
+            (lambda b: b.pop("daily"), "no daily block"),
+        ],
+    )
+    def test_refuses_a_response_it_cannot_trust(
+        self, fetcher, mutate, expected
+    ) -> None:
+        body = self._body(fetcher)
+        mutate(body)
+
+        with pytest.raises(fetcher.FetchError, match=expected):
+            fetcher.parse_series("lima", body)
 
     def test_payload_carries_provenance_and_a_checksum(self, fetcher) -> None:
-        regions = {
-            "lima": {
-                "name": "Lima",
-                "country": "PE",
-                "latitude": -12.0,
-                "longitude": -77.0,
-            }
-        }
+        regions = {"lima": self._region()}
         series = {"lima": [0.0] * expected_day_count(fetcher.START, fetcher.END)}
         payload = fetcher.build_payload(regions, series)
 
         assert payload["datasetVersion"] == "rainfall-history-v1"
         assert payload["days"] == len(series["lima"])
+        assert payload["regions"]["lima"]["country"] == "PE"
         assert payload["checksum"] == compute_checksum(payload)
 
     def test_a_refresh_that_changes_nothing_keeps_its_timestamp(
         self, tmp_path, fetcher
     ) -> None:
         # So `git status` reports a real change in the source, never a re-run.
-        regions = {
-            "lima": {
-                "name": "Lima",
-                "country": "PE",
-                "latitude": -12.0,
-                "longitude": -77.0,
-            }
-        }
+        regions = {"lima": self._region()}
         series = {"lima": [0.1] * expected_day_count(fetcher.START, fetcher.END)}
         first = fetcher.build_payload(regions, series)
         first["fetchedAt"] = "2000-01-01T00:00:00Z"
@@ -185,6 +318,39 @@ class TestFetchValidation:
 
         assert second["fetchedAt"] == "2000-01-01T00:00:00Z"
         assert second["checksum"] == first["checksum"]
+
+    def test_writes_a_dataset_the_loader_accepts(self, tmp_path, fetcher) -> None:
+        regions = {"lima": self._region()}
+        days = expected_day_count(fetcher.START, fetcher.END)
+        out = tmp_path / "d.json"
+
+        fetcher.write_dataset(
+            fetcher.build_payload(regions, {"lima": [0.1] * days}), out
+        )
+
+        assert load_rainfall_dataset(out).regions["lima"].mm_per_day[0] == 0.1
+        assert not out.with_name(out.name + ".tmp").exists()
+
+    def test_a_dataset_that_does_not_load_never_replaces_the_old_one(
+        self, tmp_path, fetcher
+    ) -> None:
+        # The failure this guards: a refresh that produced something the trainer
+        # cannot read used to overwrite the good file first and find out second.
+        regions = {"lima": self._region()}
+        days = expected_day_count(fetcher.START, fetcher.END)
+        out = tmp_path / "d.json"
+        fetcher.write_dataset(
+            fetcher.build_payload(regions, {"lima": [0.1] * days}), out
+        )
+        before = out.read_bytes()
+
+        # One value short: a shape the loader refuses.
+        bad = fetcher.build_payload(regions, {"lima": [0.1] * (days - 1)})
+        with pytest.raises(fetcher.FetchError, match="refusing to replace"):
+            fetcher.write_dataset(bad, out)
+
+        assert out.read_bytes() == before
+        assert not out.with_name(out.name + ".tmp").exists()
 
 
 class TestTraining:
@@ -268,6 +434,101 @@ class TestTraining:
         artifact = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
         assert artifact["training"]["configHash"] == trainer.config_hash(dataset)
 
+    def test_the_trainer_fingerprint_ignores_line_endings(self, trainer) -> None:
+        # A CRLF checkout has not changed the training procedure, and must not
+        # change the artifact's checksum.
+        lf = b"a = 1\nb = 2\n"
+        crlf = b"a = 1\r\nb = 2\r\n"
+        assert trainer.source_fingerprint(lf) == trainer.source_fingerprint(crlf)
+        assert trainer.source_fingerprint(lf) != trainer.source_fingerprint(b"a = 2\n")
+
+    def _check(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, "scripts/train_rainfall_model.py", "--check", *args],
+            cwd=MODULE_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_check_mode_passes_on_the_committed_files_and_writes_nothing(self) -> None:
+        before = (ARTIFACT_PATH.read_bytes(), METRICS_PATH.read_bytes())
+
+        result = self._check()
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (ARTIFACT_PATH.read_bytes(), METRICS_PATH.read_bytes()) == before
+
+    def test_check_mode_fails_on_a_drifted_artifact(self, tmp_path) -> None:
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        payload["coefficients"][0] += 0.001
+        payload["checksum"] = compute_checksum(payload)
+        drifted = tmp_path / "drifted.json"
+        drifted.write_text(json.dumps(payload), encoding="utf-8")
+
+        result = self._check("--output", str(drifted))
+
+        assert result.returncode != 0
+        assert "differs" in result.stdout + result.stderr
+        # And it did not "fix" the drift by writing.
+        assert json.loads(drifted.read_text(encoding="utf-8")) == payload
+
+    def test_check_mode_fails_when_the_artifact_is_missing(self, tmp_path) -> None:
+        # The gate must never be what creates an artifact: a deleted one would
+        # be regenerated instead of noticed.
+        absent = tmp_path / "absent.json"
+
+        result = self._check("--output", str(absent))
+
+        assert result.returncode != 0
+        assert "does not exist" in result.stdout + result.stderr
+        assert not absent.exists()
+
+    def test_metrics_are_reported_per_region(self) -> None:
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        by_region = metrics["holdout"]["byRegion"]
+        assert set(by_region) == set(load_artifact(ARTIFACT_PATH).known_regions)
+        assert (
+            sum(r["windows"] for r in by_region.values())
+            == (metrics["holdout"]["windows"])
+        )
+        assert set(metrics["previousModel"]["byRegion"]) == set(by_region)
+
+    def test_no_region_is_underpriced_by_more_than_half(self) -> None:
+        # The solvency-side bound, per region rather than in aggregate: an
+        # aggregate can hide one region priced badly behind seven priced well.
+        # The synthetic model failed this in every wet region.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        for key, region in metrics["holdout"]["byRegion"].items():
+            assert (
+                region["predictedTriggerRate"] >= 0.5 * region["observedTriggerRate"]
+            ), key
+
+    def test_beats_the_synthetic_model_in_every_region_with_measurable_risk(
+        self,
+    ) -> None:
+        # Where triggers actually occur on the grid, real data must price
+        # better. Lima is excluded on purpose and tested next: its observed
+        # rate is near zero and the model family cannot reach it.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        holdout, previous = metrics["holdout"], metrics["previousModel"]
+        compared = 0
+        for key, region in holdout["byRegion"].items():
+            if region["observedTriggerRate"] < 0.01:
+                continue
+            assert region["logLoss"] < previous["byRegion"][key]["logLoss"], key
+            compared += 1
+        assert compared >= 7
+
+    def test_the_driest_region_errs_on_the_safe_side(self) -> None:
+        # Lima: a known limitation, recorded in the stage report. The model
+        # overstates a near-zero risk rather than understating it, which costs
+        # the buyer margin and never the pool its solvency. Guarded so a change
+        # that flips it to under-pricing fails here rather than in production.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        lima = metrics["holdout"]["byRegion"]["lima"]
+        assert lima["observedTriggerRate"] < 0.01
+        assert lima["predictedTriggerRate"] > lima["observedTriggerRate"]
+
 
 class TestProvenanceInTheRuntime:
     def test_current_artifact_is_observed_and_not_transitional(self) -> None:
@@ -304,9 +565,52 @@ class TestProvenanceInTheRuntime:
         ("training", "expected"),
         [
             ("not-an-object", "not an object"),
-            ({"transitional": "yes"}, "non-boolean"),
-            ({"kind": ""}, "non-empty string"),
-            ({"datasetVersion": 3}, "non-empty string"),
+            ({"kind": "observed"}, "without both kind and transitional"),
+            ({"transitional": False}, "without both kind and transitional"),
+            ({"kind": "observed", "transitional": "yes"}, "non-boolean"),
+            ({"kind": "", "transitional": False}, "non-empty string"),
+            (
+                {"kind": "guessed", "transitional": False},
+                "training.kind must be one of",
+            ),
+            # An observed claim must carry what makes it checkable.
+            ({"kind": "observed", "transitional": False}, "no training.datasetVersion"),
+            (
+                {"kind": "observed", "transitional": False, "datasetVersion": 3},
+                "non-empty string",
+            ),
+            (
+                {
+                    "kind": "observed",
+                    "transitional": False,
+                    "datasetVersion": "d",
+                    "datasetChecksum": "abc",
+                    "configHash": "f" * 64,
+                },
+                "64 hexadecimal",
+            ),
+            (
+                {
+                    "kind": "observed",
+                    "transitional": False,
+                    "datasetVersion": "d",
+                    "datasetChecksum": "a" * 64,
+                    "configHash": "b" * 64,
+                    "durationDaysGrid": [0],
+                },
+                "positive integers",
+            ),
+            (
+                {
+                    "kind": "observed",
+                    "transitional": False,
+                    "datasetVersion": "d",
+                    "datasetChecksum": "a" * 64,
+                    "configHash": "b" * 64,
+                    "thresholdMmGrid": [],
+                },
+                "must not be empty",
+            ),
         ],
     )
     def test_rejects_malformed_provenance(
@@ -323,7 +627,8 @@ class TestProvenanceInTheRuntime:
 
     def test_an_artifact_without_provenance_still_loads(self, tmp_path) -> None:
         # The contract predates the field; an older artifact is loadable, it
-        # simply cannot say what it was trained on.
+        # simply cannot say what it was trained on — and "cannot say" is
+        # recorded as unknown, not as a reassuring default.
         payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
         del payload["training"]
         payload["checksum"] = compute_checksum(payload)
@@ -332,4 +637,82 @@ class TestProvenanceInTheRuntime:
 
         artifact = load_artifact(path)
         assert artifact.dataset_version is None
-        assert artifact.transitional is False
+        assert artifact.training_kind is None
+        assert artifact.transitional is None
+        assert artifact.is_within_trained_domain(30, 50) is False
+
+    def test_the_current_artifact_records_its_training_grid(self) -> None:
+        artifact = load_artifact(ARTIFACT_PATH)
+        assert artifact.trained_duration_days == (7, 365)
+        assert artifact.trained_threshold_mm == (10, 300)
+
+
+class TestDeployedProfiles:
+    """
+    A deployed profile prices real coverage, so it may only serve a model
+    fitted to observed data that says so. Development and test may load
+    anything, which is how the archived synthetic artifact stays testable.
+    """
+
+    @staticmethod
+    def _settings(profile: str, path, **extra) -> Settings:
+        return Settings(
+            _env_file=None,
+            APP_ENV=profile,
+            MODEL_PROVIDER="baseline",
+            MODEL_PATH=str(path),
+            **extra,
+        )
+
+    @pytest.mark.parametrize("profile", ["staging", "testnet", "production"])
+    def test_refuses_the_transitional_model(self, profile: str) -> None:
+        with (
+            pytest.raises(
+                ModelArtifactError, match="not an observed, non-transitional"
+            ),
+            TestClient(create_app(self._settings(profile, PREVIOUS_PATH))),
+        ):
+            pass
+
+    def test_refuses_an_artifact_that_makes_no_claim(self, tmp_path) -> None:
+        # Unknown provenance is not the same as clean provenance.
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        del payload["training"]
+        payload["checksum"] = compute_checksum(payload)
+        path = tmp_path / "bare.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with (
+            pytest.raises(ModelArtifactError, match="transitional=None"),
+            TestClient(create_app(self._settings("production", path))),
+        ):
+            pass
+
+    @pytest.mark.parametrize("profile", ["staging", "testnet", "production"])
+    def test_serves_the_observed_model(self, profile: str) -> None:
+        with TestClient(create_app(self._settings(profile, ARTIFACT_PATH))) as client:
+            body = client.get("/health/ready").json()
+        assert body["status"] == "ready"
+        assert body["model"]["trainingKind"] == "observed"
+        assert body["model"]["transitional"] is False
+
+    def test_development_still_loads_the_archive(self) -> None:
+        with TestClient(create_app(self._settings("development", PREVIOUS_PATH))) as c:
+            body = c.get("/health/ready").json()["model"]
+        assert body["trainingKind"] == "synthetic"
+        assert body["transitional"] is True
+
+    def test_the_override_is_explicit_and_stays_visible(self, caplog) -> None:
+        # The one way to serve a placeholder in production: named, logged, and
+        # still reported by readiness as what it is.
+        settings = self._settings(
+            "production", PREVIOUS_PATH, MODEL_ALLOW_TRANSITIONAL="true"
+        )
+        with (
+            caplog.at_level(logging.WARNING, logger="climatechain.ml"),
+            TestClient(create_app(settings)) as client,
+        ):
+            body = client.get("/health/ready").json()["model"]
+
+        assert body["transitional"] is True
+        assert any("MODEL_ALLOW_TRANSITIONAL" in r.getMessage() for r in caplog.records)

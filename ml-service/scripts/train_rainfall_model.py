@@ -19,8 +19,14 @@ describe the deployed code path rather than a re-implementation of it. The
 previous artifact is scored on the same holdout, which is what makes the
 numbers comparable rather than merely reported.
 
+Two modes. Without flags it *releases*: writes the artifact and its metrics.
+With `--check` it writes nothing and fails if what it would produce differs
+from the committed files — which is what the gate runs, so the gate can never
+create or replace an artifact as a side effect of verifying one.
+
 Usage:
     python scripts/train_rainfall_model.py [--dataset PATH] [--output PATH]
+    python scripts/train_rainfall_model.py --check
 """
 
 from __future__ import annotations
@@ -177,8 +183,22 @@ def in_memory_artifact(
         checksum="",
         dataset_version=None,
         training_kind=None,
-        transitional=False,
+        transitional=None,
     )
+
+
+def _score(predicted: list[float], observed: list[float]) -> dict:
+    """Proper scores plus the two rates that make calibration visible."""
+    p = np.asarray(predicted, dtype=float)
+    y = np.asarray(observed, dtype=float)
+    losses = -(y * np.log(p) + (1 - y) * np.log(1 - p))
+    return {
+        "windows": len(p),
+        "logLoss": round(float(np.mean(losses)), 6),
+        "brier": round(float(np.mean((p - y) ** 2)), 6),
+        "observedTriggerRate": round(float(np.mean(y)), 6),
+        "predictedTriggerRate": round(float(np.mean(p)), 6),
+    }
 
 
 def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> dict:
@@ -188,14 +208,17 @@ def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> 
     Log-loss and Brier score over every holdout window in the grid; both are
     proper scoring rules, so a model cannot improve them by hedging. The
     observed and predicted trigger rates are reported alongside so a
-    miscalibrated model is visible even when its ranking is fine.
+    miscalibrated model is visible even when its ranking is fine — and they
+    are reported per region as well as in aggregate, because an aggregate can
+    hide one region priced badly behind seven priced well.
     """
-    losses: list[float] = []
-    briers: list[float] = []
-    observed: list[float] = []
-    predicted: list[float] = []
+    all_predicted: list[float] = []
+    all_observed: list[float] = []
+    by_region: dict[str, dict] = {}
 
     for key, series in dataset.regions.items():
+        predicted: list[float] = []
+        observed: list[float] = []
         for duration in DURATION_DAYS_GRID:
             for threshold in THRESHOLD_MM_GRID:
                 outcomes = window_outcomes(series.mm_per_day, test, duration, threshold)
@@ -209,25 +232,14 @@ def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> 
                         duration_days=duration,
                     ),
                 ).trigger_probability
-                for outcome in outcomes:
-                    y = 1.0 if outcome else 0.0
-                    losses.append(
-                        -(
-                            y * math.log(probability)
-                            + (1 - y) * math.log(1 - probability)
-                        )
-                    )
-                    briers.append((probability - y) ** 2)
-                    observed.append(y)
-                    predicted.append(probability)
+                predicted.extend([probability] * len(outcomes))
+                observed.extend(1.0 if outcome else 0.0 for outcome in outcomes)
+        if predicted:
+            by_region[key] = _score(predicted, observed)
+            all_predicted.extend(predicted)
+            all_observed.extend(observed)
 
-    return {
-        "windows": len(losses),
-        "logLoss": round(float(np.mean(losses)), 6),
-        "brier": round(float(np.mean(briers)), 6),
-        "observedTriggerRate": round(float(np.mean(observed)), 6),
-        "predictedTriggerRate": round(float(np.mean(predicted)), 6),
-    }
+    return {**_score(all_predicted, all_observed), "byRegion": by_region}
 
 
 def previous_model_metrics(dataset: RainfallDataset, test: Split) -> dict | None:
@@ -247,6 +259,17 @@ def previous_model_metrics(dataset: RainfallDataset, test: Split) -> dict | None
         "checksum": previous.checksum,
         **metrics,
     }
+
+
+def source_fingerprint(raw: bytes) -> str:
+    """
+    Hash of source text, indifferent to line endings.
+
+    A checkout that converts LF to CRLF has not changed the training procedure,
+    and must not change the artifact. `.gitattributes` pins LF for Python as
+    well; this is the half that holds even where that is overridden.
+    """
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def config_hash(dataset: RainfallDataset) -> str:
@@ -269,7 +292,7 @@ def config_hash(dataset: RainfallDataset) -> str:
         "frequencyFloor": FREQUENCY_FLOOR,
         "frequencyCeiling": FREQUENCY_CEILING,
         "features": list(FEATURES),
-        "trainerSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "trainerSha256": source_fingerprint(Path(__file__).read_bytes()),
     }
     canonical = json.dumps(config, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -344,10 +367,43 @@ def _preserve_created_at(payload: dict, output: Path) -> dict:
     return payload
 
 
+def render_json(payload: dict) -> bytes:
+    """The exact bytes a file holds, so check mode compares what release writes."""
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.write_bytes(render_json(payload))
+
+
+def check_against_committed(
+    artifact_payload: dict, metrics_payload: dict, output: Path, metrics: Path
+) -> None:
+    """
+    Fails when the committed files are not what this run would write.
+
+    A missing file is a failure too: the gate must never be the thing that
+    creates an artifact, because then a deleted artifact would be silently
+    regenerated instead of noticed.
+    """
+    problems: list[str] = []
+    for label, path, rendered in (
+        ("artifact", output, render_json(artifact_payload)),
+        ("metrics", metrics, render_json(metrics_payload)),
+    ):
+        if not path.is_file():
+            problems.append(
+                f"{label} {path} does not exist; produce it deliberately by "
+                f"running this script without --check"
+            )
+        elif path.read_bytes() != rendered:
+            problems.append(
+                f"{label} {path} differs from what the committed dataset and this "
+                f"trainer produce"
+            )
+    if problems:
+        raise SystemExit("training drift:\n  " + "\n  ".join(problems))
 
 
 def main() -> None:
@@ -355,6 +411,11 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--metrics", type=Path, default=DEFAULT_METRICS)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing; fail unless the committed files match a fresh run",
+    )
     args = parser.parse_args()
 
     dataset = load_rainfall_dataset(args.dataset)
@@ -375,17 +436,24 @@ def main() -> None:
         build_payload(dataset, coefficients, risks, train, test, holdout, previous),
         args.output,
     )
+    metrics_payload = {
+        "modelVersion": MODEL_VERSION,
+        "datasetVersion": dataset.dataset_version,
+        "split": payload["training"]["split"],
+        "holdout": holdout,
+        "previousModel": previous,
+    }
+
+    if args.check:
+        check_against_committed(payload, metrics_payload, args.output, args.metrics)
+        print(
+            f"check OK: {args.output.name} and {args.metrics.name} match a fresh "
+            f"run (checksum {payload['checksum'][:12]}...)"
+        )
+        return
+
     write_json(args.output, payload)
-    write_json(
-        args.metrics,
-        {
-            "modelVersion": MODEL_VERSION,
-            "datasetVersion": dataset.dataset_version,
-            "split": payload["training"]["split"],
-            "holdout": holdout,
-            "previousModel": previous,
-        },
-    )
+    write_json(args.metrics, metrics_payload)
 
     # Prove the file on disk is what the runtime will accept, not just the dict.
     load_artifact(args.output)

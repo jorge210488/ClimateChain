@@ -48,12 +48,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise
 
     logger.info(
-        "Model loaded: version=%s provider=%s regions=%d checksum=%s",
+        "Model loaded: version=%s provider=%s regions=%d checksum=%s "
+        "training=%s transitional=%s",
         artifact.model_version,
         artifact.provider,
         len(artifact.region_risk),
         artifact.checksum[:12],
+        artifact.training_kind,
+        artifact.transitional,
     )
+    if settings.is_deployed_profile and settings.model_allow_transitional:
+        # Loud on purpose. The override exists for an incident, and the log
+        # line is the audit trail that it was used.
+        logger.warning(
+            "MODEL_ALLOW_TRANSITIONAL is set on profile %s: a model that is not "
+            "observed and non-transitional will be served (training=%s, "
+            "transitional=%s). Quotes from it do not reflect measured risk.",
+            settings.app_env,
+            artifact.training_kind,
+            artifact.transitional,
+        )
     logger.info(
         "ClimateChain ML service ready (profile=%s, port=%d)",
         settings.app_env,
@@ -131,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.model_registry = ModelRegistry(
         path=resolved.resolved_model_path,
         expected_provider=resolved.model_provider,
+        require_observed=resolved.requires_observed_model,
     )
     # Registered before the router so a request that cannot even be decoded
     # is still answered with the status its content deserves.

@@ -14,6 +14,10 @@ sums. It requires no key and no account, which is why the credentials reserved
 for a weather provider stay empty. The model is therefore trained on real
 climate rather than the synthetic history Stage 07 was fitted to.
 
+The committed dataset is never overwritten with something that has not passed
+the loader: the new file is written beside it, verified as the trainer would
+read it, and only then moved into place.
+
 Usage:
     python scripts/fetch_rainfall_history.py [--output PATH]
 """
@@ -22,11 +26,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
@@ -34,9 +40,11 @@ sys.path.insert(0, str(MODULE_ROOT))
 
 from app.data.rainfall import (  # noqa: E402
     SUPPORTED_DATASET_SCHEMA_VERSION,
+    RainfallDatasetError,
     expected_day_count,
     load_rainfall_dataset,
 )
+from app.data.regions import Region, load_region_registry  # noqa: E402
 from app.models.artifact import compute_checksum  # noqa: E402
 
 DATASET_VERSION = "rainfall-history-v1"
@@ -62,19 +70,20 @@ class FetchError(RuntimeError):
     """Raised when the source does not return a usable series."""
 
 
-def load_regions() -> dict[str, dict]:
-    document = json.loads(REGIONS_PATH.read_text(encoding="utf-8"))
-    return document["regions"]
+def load_regions() -> dict[str, Region]:
+    return load_region_registry(REGIONS_PATH)
 
 
-def fetch_region(key: str, latitude: float, longitude: float) -> list[float]:
-    """
-    Fetches one region's full series and validates it before accepting it.
+def expected_dates(start: date = START, end: date = END) -> list[str]:
+    """Every calendar day the source is asked for, in the order it must answer."""
+    return [
+        (start + timedelta(days=offset)).isoformat()
+        for offset in range(expected_day_count(start, end))
+    ]
 
-    A short or gappy series is refused rather than patched: interpolating a
-    missing day would invent rainfall the source never observed, and the model
-    would then be trained on a value nobody measured.
-    """
+
+def download(latitude: float, longitude: float) -> dict:
+    """One archive request. The only function here that reaches the network."""
     query = urllib.parse.urlencode(
         {
             "latitude": latitude,
@@ -86,38 +95,88 @@ def fetch_region(key: str, latitude: float, longitude: float) -> list[float]:
         }
     )
     url = f"{ARCHIVE_URL}?{query}"
-
     try:
         with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            body = json.load(response)
+            return json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise FetchError(f"{key}: request failed: {error}") from error
+        raise FetchError(f"request failed: {error}") from error
+
+
+def parse_series(
+    key: str, body: object, start: date = START, end: date = END
+) -> list[float]:
+    """
+    Turns one response into a validated series, or refuses it.
+
+    Every value is checked before anything is built from it. A short or gappy
+    series is refused rather than patched — interpolating a missing day would
+    invent rainfall the source never observed — and so is anything that is not
+    a finite, non-negative number: a boolean would read as 1 mm, a string would
+    coerce, and a NaN would pass every `<` comparison and poison the fit.
+    """
+    if not isinstance(body, dict):
+        raise FetchError(f"{key}: response is not a JSON object")
 
     units = body.get("daily_units", {}).get(VARIABLE)
     if units != "mm":
         raise FetchError(f"{key}: expected millimetres, source reports {units!r}")
 
-    values = body.get("daily", {}).get(VARIABLE)
-    expected = expected_day_count(START, END)
-    if not isinstance(values, list) or len(values) != expected:
+    daily = body.get("daily")
+    if not isinstance(daily, dict):
+        raise FetchError(f"{key}: response has no daily block")
+
+    # The calendar is checked, not assumed: a series of the right length that
+    # starts a day late would silently shift every window the model measures.
+    dates = expected_dates(start, end)
+    if daily.get("time") != dates:
+        received = daily.get("time")
+        summary = (
+            f"{len(received)} entries, {received[0]!r}..{received[-1]!r}"
+            if isinstance(received, list) and received
+            else repr(received)
+        )
+        raise FetchError(
+            f"{key}: daily.time does not cover exactly {dates[0]}..{dates[-1]} "
+            f"({len(dates)} days); got {summary}"
+        )
+
+    values = daily.get(VARIABLE)
+    if not isinstance(values, list) or len(values) != len(dates):
         received = len(values) if isinstance(values, list) else "no"
-        raise FetchError(f"{key}: expected {expected} daily values, got {received}")
+        raise FetchError(f"{key}: expected {len(dates)} daily values, got {received}")
 
     missing = [index for index, value in enumerate(values) if value is None]
     if missing:
         raise FetchError(
-            f"{key}: {len(missing)} missing days (first at index {missing[0]}); "
+            f"{key}: {len(missing)} missing days (first {dates[missing[0]]}); "
             f"refusing to fabricate values for them"
         )
 
-    negatives = [value for value in values if value < 0]
-    if negatives:
-        raise FetchError(f"{key}: {len(negatives)} negative precipitation values")
+    series: list[float] = []
+    for index, value in enumerate(values):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise FetchError(
+                f"{key}: value for {dates[index]} is not a number: {value!r}"
+            )
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise FetchError(
+                f"{key}: value for {dates[index]} is not a valid precipitation "
+                f"amount: {number}"
+            )
+        series.append(round(number, DECIMALS))
+    return series
 
-    return [round(float(value), DECIMALS) for value in values]
+
+def fetch_region(region: Region) -> list[float]:
+    try:
+        body = download(region.latitude, region.longitude)
+    except FetchError as error:
+        raise FetchError(f"{region.key}: {error}") from error
+    return parse_series(region.key, body)
 
 
-def build_payload(regions: dict[str, dict], series: dict[str, list[float]]) -> dict:
+def build_payload(regions: dict[str, Region], series: dict[str, list[float]]) -> dict:
     payload = {
         "schemaVersion": SUPPORTED_DATASET_SCHEMA_VERSION,
         "datasetVersion": DATASET_VERSION,
@@ -136,10 +195,10 @@ def build_payload(regions: dict[str, dict], series: dict[str, list[float]]) -> d
         "fetchedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "regions": {
             key: {
-                "name": regions[key]["name"],
-                "country": regions[key]["country"],
-                "latitude": regions[key]["latitude"],
-                "longitude": regions[key]["longitude"],
+                "name": regions[key].name,
+                "country": regions[key].country,
+                "latitude": regions[key].latitude,
+                "longitude": regions[key].longitude,
                 "mmPerDay": series[key],
             }
             for key in sorted(series)
@@ -177,6 +236,38 @@ def _preserve_fetched_at(payload: dict, output: Path) -> dict:
     return payload
 
 
+def write_dataset(payload: dict, output: Path) -> None:
+    """
+    Writes the dataset without ever leaving a bad file at `output`.
+
+    The payload goes to a sibling temporary file, is flushed to disk, and is
+    read back through the same loader the trainer uses. Only a file that
+    passed replaces the previous one, atomically, so a refresh that produced
+    something unloadable cannot destroy the dataset the gate depends on.
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(output.name + ".tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True)
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            load_rainfall_dataset(temporary)
+        except RainfallDatasetError as error:
+            raise FetchError(
+                f"refusing to replace {output.name}: the fetched dataset does not "
+                f"load: {error}"
+            ) from error
+        os.replace(temporary, output)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -185,8 +276,8 @@ def main() -> None:
     regions = load_regions()
     series: dict[str, list[float]] = {}
     for key, region in regions.items():
-        print(f"Fetching {key:<14} ({region['latitude']}, {region['longitude']})...")
-        series[key] = fetch_region(key, region["latitude"], region["longitude"])
+        print(f"Fetching {key:<14} ({region.latitude}, {region.longitude})...")
+        series[key] = fetch_region(region)
         mean = sum(series[key]) / len(series[key])
         print(
             f"  {len(series[key])} days, mean {mean:.2f} mm/day, "
@@ -194,16 +285,9 @@ def main() -> None:
         )
 
     payload = _preserve_fetched_at(build_payload(regions, series), args.output)
+    write_dataset(payload, args.output)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(
-            json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True)
-        )
-        handle.write("\n")
-
-    # Read it back through the same loader training uses: the file on disk is
-    # what counts, not the dict in memory.
+    # Report from the file on disk, which is what counts, not the dict.
     dataset = load_rainfall_dataset(args.output)
     size_kb = args.output.stat().st_size / 1024
     print(f"\nDataset:   {dataset.dataset_version}")
@@ -214,4 +298,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FetchError as error:
+        raise SystemExit(f"fetch failed: {error}") from error

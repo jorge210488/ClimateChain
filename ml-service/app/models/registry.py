@@ -34,17 +34,24 @@ class ModelStatus:
     # Provenance: which data the loaded model was fitted to, and whether it is
     # the transitional synthetic fit that must not price real risk. Readiness
     # is where an operator looks during an incident, so it is reported there.
+    # `transitional` is None when the artifact makes no claim.
     dataset_version: str | None = None
     training_kind: str | None = None
-    transitional: bool = False
+    transitional: bool | None = None
 
 
 class ModelRegistry:
     """Holds the single loaded model and reports on its availability."""
 
-    def __init__(self, path: Path, expected_provider: str) -> None:
+    def __init__(
+        self, path: Path, expected_provider: str, require_observed: bool = False
+    ) -> None:
         self._path = path
         self._expected_provider = expected_provider
+        # Deployed profiles set this. A model fitted to invented data, or one
+        # that cannot say what it was fitted to, may boot a developer's laptop;
+        # it may not price real coverage.
+        self._require_observed = require_observed
         self._artifact: ModelArtifact | None = None
         self._failure: str | None = None
 
@@ -81,6 +88,20 @@ class ModelRegistry:
                 f"Model artifact at {self._path} was produced by provider "
                 f"'{artifact.provider}', but MODEL_PROVIDER is "
                 f"'{self._expected_provider}'"
+            )
+            raise ModelArtifactError(self._failure)
+
+        if self._require_observed and not (
+            artifact.training_kind == "observed" and artifact.transitional is False
+        ):
+            self._artifact = None
+            self._failure = (
+                f"Model artifact at {self._path} is not an observed, "
+                f"non-transitional model (training.kind="
+                f"{artifact.training_kind!r}, transitional="
+                f"{artifact.transitional!r}). This profile refuses to price real "
+                f"risk with it. Point MODEL_PATH at an observed artifact, or set "
+                f"MODEL_ALLOW_TRANSITIONAL=true as a deliberate, logged exception."
             )
             raise ModelArtifactError(self._failure)
 

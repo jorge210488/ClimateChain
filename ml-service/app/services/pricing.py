@@ -36,6 +36,10 @@ class Quote:
     duration_days: int
     region_known: bool
     floored_to_minimum: bool
+    # True when the window or threshold lies outside the grid the model was
+    # fitted on. The number is still the model's best estimate; it is just not
+    # one backed by a frequency anybody counted.
+    extrapolated: bool
     model_version: str
 
 
@@ -112,5 +116,8 @@ def quote_premium(
         duration_days=duration_days,
         region_known=assessment.region_known,
         floored_to_minimum=premium_wei > expected_premium_wei,
+        extrapolated=not artifact.is_within_trained_domain(
+            duration_days, rainfall_threshold_mm
+        ),
         model_version=artifact.model_version,
     )

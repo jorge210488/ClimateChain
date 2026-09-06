@@ -92,7 +92,11 @@ cannot drift apart before Stage 09 connects them.
   "triggerProbability": 0.0042,
   "durationDays": 30,
   "regionKnown": true,
-  "flooredToMinimum": true
+  "flooredToMinimum": true,
+  // True when the window or threshold lies outside the grid the model was
+  // fitted on (7..365 days, 10..300 mm): the estimate extends the model's
+  // form rather than a frequency anyone counted.
+  "extrapolated": false
 }
 ```
 
@@ -108,6 +112,18 @@ region risk factors, the premium loading, and a `training` block recording
 where the numbers came from. It is committed, and the stage gate retrains it
 from the committed dataset and fails if the result differs — the same drift
 guarantee the contracts module enforces for its ABIs.
+
+Two commands, two intents. `python scripts/train_rainfall_model.py` is a
+**release**: it writes the artifact and its metrics. The same script with
+`--check` writes nothing and fails unless the committed files match a fresh
+run; that is what the gate runs, so the gate can never create or replace an
+artifact as a side effect of verifying one. A missing artifact fails the gate
+instead of being regenerated quietly.
+
+A `training` block that claims observed data must carry what makes the claim
+checkable — dataset version and checksum, and the configuration hash — or the
+artifact does not load. An artifact with no block still loads, and reports
+`trainingKind: null, transitional: null`: unknown, never mistaken for clean.
 
 **It is JSON, not a pickle.** Unpickling executes whatever the file contains,
 which is not an acceptable property for something read at every boot from an
@@ -166,6 +182,29 @@ never fitted to. That is the number this stage exists to produce, and it is
 regenerated — and checked for drift — on every gate run; the full figures are
 in `app/models/artifacts/baseline-premium-v2.metrics.json`.
 
+The same scores are reported **per region**, because an aggregate can hide one
+region priced badly behind seven priced well. The tests hold every region to a
+solvency-side bound — predicted trigger rate at least half the observed one —
+and require the observed model to beat the synthetic one in every region where
+triggers actually occur on the grid. Two limitations are visible there and
+recorded rather than hidden: Buenos Aires is under-predicted (0.10 against
+0.17 observed) and Lima, where a 10 mm day essentially never happens, is
+over-predicted (0.06 against 0.001). The first costs the pool margin, the
+second costs the buyer margin; neither is silent. Both are the shape of a
+model with one wetness feature, and a richer one belongs to a stage with a
+reason to need it — widening the training grid was measured and rejected,
+because it degraded calibration on the domain most policies live in.
+
+### Which models a deployment may serve
+
+`staging`, `testnet`, and `production` refuse to start on anything but an
+artifact that says `kind: "observed", transitional: false` with the evidence
+behind it. The archived synthetic model, or an artifact with no provenance,
+boots a laptop and never a deployment. The one override is
+`MODEL_ALLOW_TRANSITIONAL=true`: named, defaulted off, logged as a warning at
+startup, and readiness keeps reporting the model's real provenance while it is
+in effect.
+
 ### The dataset
 
 `data/regions.json` is the registry: the eight regions the model knows, with the
@@ -179,9 +218,14 @@ python scripts/fetch_rainfall_history.py
 ```
 
 A refresh that returns the same observations leaves the file byte-identical, so
-`git status` reports a change in the source and never a mere re-run. Adding a
-region means adding it to the registry, refetching, and retraining; the gate
-fails if the registry and the dataset disagree.
+`git status` reports a change in the source and never a mere re-run. A refresh
+that returns something the loader refuses — a boolean, a NaN, a shifted
+calendar, a missing day — is rejected value by value before anything is
+built, and the new file is written beside the old one and verified before it
+replaces it, so a bad fetch cannot destroy the dataset the gate depends on.
+Adding a region means adding it to the registry, refetching, and retraining;
+the registry is validated on load (canonical keys, coordinates in range) and
+the gate fails if it and the dataset disagree.
 
 No key is needed: Open-Meteo's archive endpoint is open, which is why the
 `WEATHER_API_*` variables remain empty.
@@ -197,6 +241,7 @@ Copy `.env.example` to `.env`. No secrets are required for this stage.
 | `LOG_LEVEL` | `debug` … `critical`. |
 | `MODEL_PROVIDER` | Must match the artifact's own provider, or startup aborts. |
 | `MODEL_PATH` | Artifact location, absolute or relative to `ml-service/`. |
+| `MODEL_ALLOW_TRANSITIONAL` | Deployed profiles only: serve a non-observed model anyway. Off by default; logged when on. |
 | `WEATHER_API_*` | Reserved. The Stage 08 source needs no key; left for a provider that does. |
 
 Validation is fail-fast: an unknown profile, an out-of-range port, or a provider
@@ -208,7 +253,8 @@ that does not exist is rejected at startup rather than at the first request.
 python -m venv .venv                          # once
 pip install -r requirements.txt
 
-python scripts/train_rainfall_model.py        # retrain the artifact from data/
+python scripts/train_rainfall_model.py        # release: retrain the artifact from data/
+python scripts/train_rainfall_model.py --check  # verify only; writes nothing
 python scripts/fetch_rainfall_history.py      # refresh the dataset (network)
 python serve.py                               # run locally
 python -m pytest                              # tests
@@ -223,9 +269,9 @@ python scripts/stage8_check.py
 ```
 
 Runs lint, format, dataset integrity (checksum, shape, and agreement with the
-region registry), a full retrain that must reproduce the committed artifact and
-metrics byte for byte, the test suite, and a real startup that binds a socket
-and serves a quote. The test suite alone would not prove the packaged entrypoint
+region registry), a retrain in check mode that must reproduce the committed
+artifact and metrics byte for byte without writing either, the test suite, and
+a real startup that binds a socket and serves a quote. The test suite alone would not prove the packaged entrypoint
 boots, which is why the last step exists. `scripts/stage7_check.py` is the
 Stage 07 subset and still runs, but the gate is `stage8_check.py`.
 
