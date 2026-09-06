@@ -125,12 +125,13 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v2",
+            model_version="baseline-premium-v3",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
             extrapolated=False,
+            priced_from_evidence=False,
         ).model_dump(mode="json", by_alias=True)
 
         missing = [field for field in required if field not in payload]
@@ -150,15 +151,16 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v2",
+            model_version="baseline-premium-v3",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
             extrapolated=False,
+            priced_from_evidence=False,
         ).model_dump(mode="json", by_alias=True)
 
-        assert payload["modelVersion"] == "baseline-premium-v2"
+        assert payload["modelVersion"] == "baseline-premium-v3"
 
     def test_currency_defaults_to_the_chain_native_asset(self) -> None:
         payload = QuoteResponse(
@@ -167,12 +169,13 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v2",
+            model_version="baseline-premium-v3",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
             extrapolated=False,
+            priced_from_evidence=False,
         ).model_dump(mode="json", by_alias=True)
 
         # Premiums are paid in the chain's native asset; anything else would

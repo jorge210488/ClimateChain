@@ -1,0 +1,4638 @@
+{
+  "checksum": "d0e595a8e0db9e80f231407052d846fe657141ce4a907b4aa25a8892d9966381",
+  "coefficients": [
+    1.31173694011,
+    -2.382738329663,
+    0.646525613404,
+    1.0,
+    1.0
+  ],
+  "createdAt": "2026-09-06T23:11:28Z",
+  "defaultRegionRisk": 2.482996,
+  "evidenceFloor": {
+    "bogota": [
+      [
+        7,
+        10,
+        0.240793
+      ],
+      [
+        7,
+        20,
+        0.0529
+      ],
+      [
+        7,
+        30,
+        0.011925
+      ],
+      [
+        7,
+        50,
+        0.000284
+      ],
+      [
+        14,
+        10,
+        0.380914
+      ],
+      [
+        14,
+        20,
+        0.093161
+      ],
+      [
+        14,
+        30,
+        0.019965
+      ],
+      [
+        14,
+        50,
+        0.000568
+      ],
+      [
+        30,
+        10,
+        0.549834
+      ],
+      [
+        30,
+        20,
+        0.186267
+      ],
+      [
+        30,
+        30,
+        0.048694
+      ],
+      [
+        30,
+        50,
+        0.001218
+      ],
+      [
+        60,
+        10,
+        0.7392
+      ],
+      [
+        60,
+        20,
+        0.296693
+      ],
+      [
+        60,
+        30,
+        0.092667
+      ],
+      [
+        60,
+        50,
+        0.002439
+      ],
+      [
+        90,
+        10,
+        0.843677
+      ],
+      [
+        90,
+        20,
+        0.447697
+      ],
+      [
+        90,
+        30,
+        0.149894
+      ],
+      [
+        90,
+        50,
+        0.003676
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.695609
+      ],
+      [
+        180,
+        30,
+        0.221515
+      ],
+      [
+        180,
+        50,
+        0.001068
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.817108
+      ],
+      [
+        365,
+        30,
+        0.396785
+      ],
+      [
+        365,
+        50,
+        0.015012
+      ]
+    ],
+    "buenos aires": [
+      [
+        7,
+        10,
+        0.438966
+      ],
+      [
+        7,
+        20,
+        0.242347
+      ],
+      [
+        7,
+        30,
+        0.124655
+      ],
+      [
+        7,
+        50,
+        0.031248
+      ],
+      [
+        7,
+        80,
+        0.003755
+      ],
+      [
+        14,
+        10,
+        0.664812
+      ],
+      [
+        14,
+        20,
+        0.409293
+      ],
+      [
+        14,
+        30,
+        0.227016
+      ],
+      [
+        14,
+        50,
+        0.061329
+      ],
+      [
+        14,
+        80,
+        0.00752
+      ],
+      [
+        30,
+        10,
+        0.882473
+      ],
+      [
+        30,
+        20,
+        0.651369
+      ],
+      [
+        30,
+        30,
+        0.406332
+      ],
+      [
+        30,
+        50,
+        0.117305
+      ],
+      [
+        30,
+        80,
+        0.016172
+      ],
+      [
+        60,
+        10,
+        0.97969
+      ],
+      [
+        60,
+        20,
+        0.85416
+      ],
+      [
+        60,
+        30,
+        0.608717
+      ],
+      [
+        60,
+        50,
+        0.20746
+      ],
+      [
+        60,
+        80,
+        0.032532
+      ],
+      [
+        90,
+        10,
+        0.969588
+      ],
+      [
+        90,
+        20,
+        0.922005
+      ],
+      [
+        90,
+        30,
+        0.714664
+      ],
+      [
+        90,
+        50,
+        0.289173
+      ],
+      [
+        90,
+        80,
+        0.0417
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.939497
+      ],
+      [
+        180,
+        30,
+        0.846311
+      ],
+      [
+        180,
+        50,
+        0.475243
+      ],
+      [
+        180,
+        80,
+        0.085729
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.882654
+      ],
+      [
+        365,
+        30,
+        0.882654
+      ],
+      [
+        365,
+        50,
+        0.658193
+      ],
+      [
+        365,
+        80,
+        0.145686
+      ]
+    ],
+    "cartagena": [
+      [
+        7,
+        10,
+        0.392984
+      ],
+      [
+        7,
+        20,
+        0.081731
+      ],
+      [
+        7,
+        30,
+        0.019352
+      ],
+      [
+        7,
+        50,
+        0.003755
+      ],
+      [
+        7,
+        80,
+        0.001092
+      ],
+      [
+        7,
+        120,
+        4.1e-05
+      ],
+      [
+        14,
+        10,
+        0.517492
+      ],
+      [
+        14,
+        20,
+        0.151074
+      ],
+      [
+        14,
+        30,
+        0.038829
+      ],
+      [
+        14,
+        50,
+        0.00752
+      ],
+      [
+        14,
+        80,
+        0.002185
+      ],
+      [
+        14,
+        120,
+        8.2e-05
+      ],
+      [
+        30,
+        10,
+        0.619623
+      ],
+      [
+        30,
+        20,
+        0.260403
+      ],
+      [
+        30,
+        30,
+        0.077898
+      ],
+      [
+        30,
+        50,
+        0.016172
+      ],
+      [
+        30,
+        80,
+        0.004692
+      ],
+      [
+        30,
+        120,
+        0.000176
+      ],
+      [
+        60,
+        10,
+        0.724385
+      ],
+      [
+        60,
+        20,
+        0.402118
+      ],
+      [
+        60,
+        30,
+        0.13386
+      ],
+      [
+        60,
+        50,
+        0.032532
+      ],
+      [
+        60,
+        80,
+        0.009411
+      ],
+      [
+        60,
+        120,
+        0.000351
+      ],
+      [
+        90,
+        10,
+        0.771916
+      ],
+      [
+        90,
+        20,
+        0.509472
+      ],
+      [
+        90,
+        30,
+        0.176854
+      ],
+      [
+        90,
+        50,
+        0.0417
+      ],
+      [
+        90,
+        80,
+        0.014206
+      ],
+      [
+        90,
+        120,
+        0.000529
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.695609
+      ],
+      [
+        180,
+        30,
+        0.353869
+      ],
+      [
+        180,
+        50,
+        0.085729
+      ],
+      [
+        180,
+        80,
+        0.028966
+      ],
+      [
+        180,
+        120,
+        0.001068
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.882654
+      ],
+      [
+        365,
+        30,
+        0.610861
+      ],
+      [
+        365,
+        50,
+        0.145686
+      ],
+      [
+        365,
+        80,
+        0.059008
+      ],
+      [
+        365,
+        120,
+        0.002135
+      ]
+    ],
+    "lima": [
+      [
+        7,
+        10,
+        0.001092
+      ],
+      [
+        14,
+        10,
+        0.002185
+      ],
+      [
+        30,
+        10,
+        0.004692
+      ],
+      [
+        60,
+        10,
+        0.009411
+      ],
+      [
+        90,
+        10,
+        0.014206
+      ],
+      [
+        180,
+        10,
+        0.028966
+      ],
+      [
+        365,
+        10,
+        0.059008
+      ]
+    ],
+    "medellin": [
+      [
+        7,
+        10,
+        0.720865
+      ],
+      [
+        7,
+        20,
+        0.218293
+      ],
+      [
+        7,
+        30,
+        0.044166
+      ],
+      [
+        7,
+        50,
+        0.006152
+      ],
+      [
+        7,
+        80,
+        0.000284
+      ],
+      [
+        14,
+        10,
+        0.865283
+      ],
+      [
+        14,
+        20,
+        0.349515
+      ],
+      [
+        14,
+        30,
+        0.087316
+      ],
+      [
+        14,
+        50,
+        0.012326
+      ],
+      [
+        14,
+        80,
+        0.000568
+      ],
+      [
+        30,
+        10,
+        0.946832
+      ],
+      [
+        30,
+        20,
+        0.556769
+      ],
+      [
+        30,
+        30,
+        0.173565
+      ],
+      [
+        30,
+        50,
+        0.029215
+      ],
+      [
+        30,
+        80,
+        0.001218
+      ],
+      [
+        60,
+        10,
+        0.97969
+      ],
+      [
+        60,
+        20,
+        0.761607
+      ],
+      [
+        60,
+        30,
+        0.290219
+      ],
+      [
+        60,
+        50,
+        0.058907
+      ],
+      [
+        60,
+        80,
+        0.002439
+      ],
+      [
+        90,
+        10,
+        0.969588
+      ],
+      [
+        90,
+        20,
+        0.856109
+      ],
+      [
+        90,
+        30,
+        0.397185
+      ],
+      [
+        90,
+        50,
+        0.089417
+      ],
+      [
+        90,
+        80,
+        0.003676
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.939497
+      ],
+      [
+        180,
+        30,
+        0.649307
+      ],
+      [
+        180,
+        50,
+        0.168251
+      ],
+      [
+        180,
+        80,
+        0.007454
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.882654
+      ],
+      [
+        365,
+        30,
+        0.817108
+      ],
+      [
+        365,
+        50,
+        0.282356
+      ],
+      [
+        365,
+        80,
+        0.015012
+      ]
+    ],
+    "santiago": [
+      [
+        7,
+        10,
+        0.182773
+      ],
+      [
+        7,
+        20,
+        0.085465
+      ],
+      [
+        7,
+        30,
+        0.039113
+      ],
+      [
+        7,
+        50,
+        0.009313
+      ],
+      [
+        7,
+        80,
+        0.001092
+      ],
+      [
+        14,
+        10,
+        0.293371
+      ],
+      [
+        14,
+        20,
+        0.136089
+      ],
+      [
+        14,
+        30,
+        0.067053
+      ],
+      [
+        14,
+        50,
+        0.018666
+      ],
+      [
+        14,
+        80,
+        0.002185
+      ],
+      [
+        30,
+        10,
+        0.446926
+      ],
+      [
+        30,
+        20,
+        0.237659
+      ],
+      [
+        30,
+        30,
+        0.132766
+      ],
+      [
+        30,
+        50,
+        0.034668
+      ],
+      [
+        30,
+        80,
+        0.004692
+      ],
+      [
+        60,
+        10,
+        0.55943
+      ],
+      [
+        60,
+        20,
+        0.342399
+      ],
+      [
+        60,
+        30,
+        0.220011
+      ],
+      [
+        60,
+        50,
+        0.069958
+      ],
+      [
+        60,
+        80,
+        0.009411
+      ],
+      [
+        90,
+        10,
+        0.67004
+      ],
+      [
+        90,
+        20,
+        0.447697
+      ],
+      [
+        90,
+        30,
+        0.270019
+      ],
+      [
+        90,
+        50,
+        0.097805
+      ],
+      [
+        90,
+        80,
+        0.014206
+      ],
+      [
+        180,
+        10,
+        0.846311
+      ],
+      [
+        180,
+        20,
+        0.604271
+      ],
+      [
+        180,
+        30,
+        0.413657
+      ],
+      [
+        180,
+        50,
+        0.185741
+      ],
+      [
+        180,
+        80,
+        0.028966
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.817108
+      ],
+      [
+        365,
+        30,
+        0.707727
+      ],
+      [
+        365,
+        50,
+        0.319421
+      ],
+      [
+        365,
+        80,
+        0.059008
+      ]
+    ],
+    "sevilla": [
+      [
+        7,
+        10,
+        0.189705
+      ],
+      [
+        7,
+        20,
+        0.07726
+      ],
+      [
+        7,
+        30,
+        0.027712
+      ],
+      [
+        7,
+        50,
+        0.003183
+      ],
+      [
+        14,
+        10,
+        0.30736
+      ],
+      [
+        14,
+        20,
+        0.142073
+      ],
+      [
+        14,
+        30,
+        0.051397
+      ],
+      [
+        14,
+        50,
+        0.006375
+      ],
+      [
+        30,
+        10,
+        0.487844
+      ],
+      [
+        30,
+        20,
+        0.266928
+      ],
+      [
+        30,
+        30,
+        0.108101
+      ],
+      [
+        30,
+        50,
+        0.013704
+      ],
+      [
+        60,
+        10,
+        0.673206
+      ],
+      [
+        60,
+        20,
+        0.449279
+      ],
+      [
+        60,
+        30,
+        0.194983
+      ],
+      [
+        60,
+        50,
+        0.022715
+      ],
+      [
+        90,
+        10,
+        0.737346
+      ],
+      [
+        90,
+        20,
+        0.509472
+      ],
+      [
+        90,
+        30,
+        0.232205
+      ],
+      [
+        90,
+        50,
+        0.034357
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.719319
+      ],
+      [
+        180,
+        30,
+        0.454511
+      ],
+      [
+        180,
+        50,
+        0.0705
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.882654
+      ],
+      [
+        365,
+        30,
+        0.707727
+      ],
+      [
+        365,
+        50,
+        0.114911
+      ]
+    ],
+    "valencia": [
+      [
+        7,
+        10,
+        0.140631
+      ],
+      [
+        7,
+        20,
+        0.052169
+      ],
+      [
+        7,
+        30,
+        0.014591
+      ],
+      [
+        7,
+        50,
+        0.002089
+      ],
+      [
+        7,
+        80,
+        0.000284
+      ],
+      [
+        14,
+        10,
+        0.239297
+      ],
+      [
+        14,
+        20,
+        0.094626
+      ],
+      [
+        14,
+        30,
+        0.029263
+      ],
+      [
+        14,
+        50,
+        0.004182
+      ],
+      [
+        14,
+        80,
+        0.000568
+      ],
+      [
+        30,
+        10,
+        0.46053
+      ],
+      [
+        30,
+        20,
+        0.192642
+      ],
+      [
+        30,
+        30,
+        0.060224
+      ],
+      [
+        30,
+        50,
+        0.008986
+      ],
+      [
+        30,
+        80,
+        0.001218
+      ],
+      [
+        60,
+        10,
+        0.651558
+      ],
+      [
+        60,
+        20,
+        0.316199
+      ],
+      [
+        60,
+        30,
+        0.116013
+      ],
+      [
+        60,
+        50,
+        0.018046
+      ],
+      [
+        60,
+        80,
+        0.002439
+      ],
+      [
+        90,
+        10,
+        0.79539
+      ],
+      [
+        90,
+        20,
+        0.417285
+      ],
+      [
+        90,
+        30,
+        0.158821
+      ],
+      [
+        90,
+        50,
+        0.027278
+      ],
+      [
+        90,
+        80,
+        0.003676
+      ],
+      [
+        180,
+        10,
+        0.939497
+      ],
+      [
+        180,
+        20,
+        0.626644
+      ],
+      [
+        180,
+        30,
+        0.295877
+      ],
+      [
+        180,
+        50,
+        0.041951
+      ],
+      [
+        180,
+        80,
+        0.001068
+      ],
+      [
+        365,
+        10,
+        0.882654
+      ],
+      [
+        365,
+        20,
+        0.882654
+      ],
+      [
+        365,
+        30,
+        0.437107
+      ],
+      [
+        365,
+        50,
+        0.114911
+      ],
+      [
+        365,
+        80,
+        0.015012
+      ]
+    ]
+  },
+  "features": [
+    "intercept",
+    "log_threshold_mm",
+    "log_duration_days",
+    "region_risk",
+    "season_risk"
+  ],
+  "modelVersion": "baseline-premium-v3",
+  "premiumLoading": 0.35,
+  "provider": "baseline",
+  "regionRisk": {
+    "bogota": 2.144517,
+    "buenos aires": 3.748775,
+    "cartagena": 2.946259,
+    "lima": 0.0,
+    "medellin": 3.261008,
+    "santiago": 2.8125,
+    "sevilla": 2.451183,
+    "valencia": 2.499725
+  },
+  "schemaVersion": 1,
+  "seasonRisk": {
+    "bogota": [
+      -0.064904,
+      0.225976,
+      0.541689,
+      0.71984,
+      0.210506,
+      0.017986,
+      -0.730901,
+      -1.112421,
+      -0.868286,
+      0.389767,
+      0.699658,
+      -0.049592
+    ],
+    "buenos aires": [
+      0.244608,
+      0.428305,
+      0.342304,
+      -0.05265,
+      -0.325327,
+      -0.33527,
+      -0.443254,
+      -0.147388,
+      -0.184287,
+      0.323575,
+      0.2223,
+      -0.119099
+    ],
+    "cartagena": [
+      -1.140184,
+      -1.431971,
+      -1.216043,
+      -0.467342,
+      0.877536,
+      0.152914,
+      0.076579,
+      0.033873,
+      0.172248,
+      1.08959,
+      1.951151,
+      -0.194564
+    ],
+    "lima": [
+      -0.057921,
+      0.353801,
+      0.198764,
+      -0.077779,
+      -0.01805,
+      -0.069246,
+      -0.029278,
+      -0.029688,
+      -0.067112,
+      -0.020138,
+      -0.061805,
+      -0.02252
+    ],
+    "medellin": [
+      -0.811295,
+      -0.194901,
+      0.256521,
+      0.457347,
+      0.84867,
+      -0.243373,
+      -0.651861,
+      -0.657315,
+      -0.425334,
+      0.681062,
+      0.694254,
+      0.01379
+    ],
+    "santiago": [
+      -1.751059,
+      -0.839022,
+      -1.238232,
+      0.1385,
+      0.853257,
+      1.442806,
+      1.236569,
+      1.085809,
+      0.465808,
+      0.13465,
+      -0.510017,
+      -1.110339
+    ],
+    "sevilla": [
+      0.336599,
+      0.283862,
+      0.058252,
+      0.442677,
+      -0.019715,
+      -1.137133,
+      -1.060192,
+      -1.131719,
+      0.103547,
+      0.908188,
+      0.53854,
+      0.643636
+    ],
+    "valencia": [
+      -0.217633,
+      -0.082902,
+      0.034743,
+      0.162851,
+      0.119111,
+      -0.678109,
+      -1.054139,
+      -0.286608,
+      0.838364,
+      0.848127,
+      0.142996,
+      0.122966
+    ]
+  },
+  "training": {
+    "cellConfidence": 0.95,
+    "configHash": "1cc5ad274879677a56337bf694d3d7f66f9318c020c5a22700d97d4854b94009",
+    "datasetChecksum": "95de0733d62cc2fb5a5c8cce78260932475f479c4751d20dd644a66e1e4444c6",
+    "datasetVersion": "rainfall-history-1996-2025",
+    "dateRange": {
+      "end": "2025-12-31",
+      "start": "1996-01-01"
+    },
+    "durationDaysGrid": [
+      7,
+      14,
+      30,
+      60,
+      90,
+      180,
+      365
+    ],
+    "kind": "observed",
+    "metrics": {
+      "holdout": {
+        "brier": 0.050634,
+        "byDuration": {
+          "14": {
+            "brier": 0.053244,
+            "loadedPremiumRate": 0.162103,
+            "logLoss": 0.17111,
+            "observedTriggerRate": 0.092448,
+            "predictedTriggerRate": 0.120077,
+            "windows": 9984
+          },
+          "180": {
+            "brier": 0.065161,
+            "loadedPremiumRate": 0.371984,
+            "logLoss": 0.215394,
+            "observedTriggerRate": 0.309896,
+            "predictedTriggerRate": 0.275544,
+            "windows": 768
+          },
+          "30": {
+            "brier": 0.060593,
+            "loadedPremiumRate": 0.214227,
+            "logLoss": 0.193502,
+            "observedTriggerRate": 0.144692,
+            "predictedTriggerRate": 0.158687,
+            "windows": 4672
+          },
+          "365": {
+            "brier": 0.061143,
+            "loadedPremiumRate": 0.438782,
+            "logLoss": 0.210391,
+            "observedTriggerRate": 0.361979,
+            "predictedTriggerRate": 0.325023,
+            "windows": 384
+          },
+          "60": {
+            "brier": 0.065201,
+            "loadedPremiumRate": 0.271452,
+            "logLoss": 0.209068,
+            "observedTriggerRate": 0.194444,
+            "predictedTriggerRate": 0.201076,
+            "windows": 2304
+          },
+          "7": {
+            "brier": 0.0435,
+            "loadedPremiumRate": 0.12384,
+            "logLoss": 0.142146,
+            "observedTriggerRate": 0.059704,
+            "predictedTriggerRate": 0.091733,
+            "windows": 20032
+          },
+          "90": {
+            "brier": 0.064668,
+            "loadedPremiumRate": 0.305662,
+            "logLoss": 0.208754,
+            "observedTriggerRate": 0.239583,
+            "predictedTriggerRate": 0.226417,
+            "windows": 1536
+          }
+        },
+        "byRegion": {
+          "bogota": {
+            "brier": 0.038315,
+            "loadedPremiumRate": 0.123473,
+            "logLoss": 0.127675,
+            "observedTriggerRate": 0.089516,
+            "predictedTriggerRate": 0.091461,
+            "windows": 4960
+          },
+          "buenos aires": {
+            "brier": 0.084519,
+            "loadedPremiumRate": 0.27786,
+            "logLoss": 0.257241,
+            "observedTriggerRate": 0.165121,
+            "predictedTriggerRate": 0.205823,
+            "windows": 4960
+          },
+          "cartagena": {
+            "brier": 0.057534,
+            "loadedPremiumRate": 0.195864,
+            "logLoss": 0.183296,
+            "observedTriggerRate": 0.125,
+            "predictedTriggerRate": 0.145084,
+            "windows": 4960
+          },
+          "lima": {
+            "brier": 0.002412,
+            "loadedPremiumRate": 0.02026,
+            "logLoss": 0.017987,
+            "observedTriggerRate": 0.001411,
+            "predictedTriggerRate": 0.015007,
+            "windows": 4960
+          },
+          "medellin": {
+            "brier": 0.048264,
+            "loadedPremiumRate": 0.250514,
+            "logLoss": 0.163196,
+            "observedTriggerRate": 0.154234,
+            "predictedTriggerRate": 0.185566,
+            "windows": 4960
+          },
+          "santiago": {
+            "brier": 0.053611,
+            "loadedPremiumRate": 0.18436,
+            "logLoss": 0.174076,
+            "observedTriggerRate": 0.074395,
+            "predictedTriggerRate": 0.136563,
+            "windows": 4960
+          },
+          "sevilla": {
+            "brier": 0.05776,
+            "loadedPremiumRate": 0.147771,
+            "logLoss": 0.18535,
+            "observedTriggerRate": 0.09879,
+            "predictedTriggerRate": 0.10946,
+            "windows": 4960
+          },
+          "valencia": {
+            "brier": 0.062653,
+            "loadedPremiumRate": 0.140456,
+            "logLoss": 0.203363,
+            "observedTriggerRate": 0.095565,
+            "predictedTriggerRate": 0.104042,
+            "windows": 4960
+          }
+        },
+        "byStartMonth": {
+          "1": {
+            "brier": 0.045243,
+            "loadedPremiumRate": 0.126512,
+            "logLoss": 0.147223,
+            "observedTriggerRate": 0.052859,
+            "predictedTriggerRate": 0.093713,
+            "windows": 3008
+          },
+          "10": {
+            "brier": 0.061475,
+            "loadedPremiumRate": 0.185338,
+            "logLoss": 0.199075,
+            "observedTriggerRate": 0.117354,
+            "predictedTriggerRate": 0.137287,
+            "windows": 3008
+          },
+          "11": {
+            "brier": 0.057842,
+            "loadedPremiumRate": 0.171185,
+            "logLoss": 0.18641,
+            "observedTriggerRate": 0.101562,
+            "predictedTriggerRate": 0.126804,
+            "windows": 2944
+          },
+          "12": {
+            "brier": 0.038436,
+            "loadedPremiumRate": 0.129345,
+            "logLoss": 0.129337,
+            "observedTriggerRate": 0.042969,
+            "predictedTriggerRate": 0.095811,
+            "windows": 2816
+          },
+          "2": {
+            "brier": 0.042993,
+            "loadedPremiumRate": 0.132757,
+            "logLoss": 0.141468,
+            "observedTriggerRate": 0.0625,
+            "predictedTriggerRate": 0.098338,
+            "windows": 2624
+          },
+          "3": {
+            "brier": 0.05092,
+            "loadedPremiumRate": 0.137049,
+            "logLoss": 0.162265,
+            "observedTriggerRate": 0.097486,
+            "predictedTriggerRate": 0.101518,
+            "windows": 2944
+          },
+          "4": {
+            "brier": 0.044259,
+            "loadedPremiumRate": 0.151651,
+            "logLoss": 0.144335,
+            "observedTriggerRate": 0.085417,
+            "predictedTriggerRate": 0.112334,
+            "windows": 2880
+          },
+          "5": {
+            "brier": 0.052521,
+            "loadedPremiumRate": 0.161389,
+            "logLoss": 0.16754,
+            "observedTriggerRate": 0.087296,
+            "predictedTriggerRate": 0.119548,
+            "windows": 2944
+          },
+          "6": {
+            "brier": 0.044899,
+            "loadedPremiumRate": 0.141635,
+            "logLoss": 0.145787,
+            "observedTriggerRate": 0.086617,
+            "predictedTriggerRate": 0.104915,
+            "windows": 2944
+          },
+          "7": {
+            "brier": 0.039643,
+            "loadedPremiumRate": 0.133795,
+            "logLoss": 0.131718,
+            "observedTriggerRate": 0.063519,
+            "predictedTriggerRate": 0.099107,
+            "windows": 2944
+          },
+          "8": {
+            "brier": 0.053814,
+            "loadedPremiumRate": 0.138385,
+            "logLoss": 0.169435,
+            "observedTriggerRate": 0.088778,
+            "predictedTriggerRate": 0.102507,
+            "windows": 2816
+          },
+          "9": {
+            "brier": 0.050177,
+            "loadedPremiumRate": 0.152537,
+            "logLoss": 0.160963,
+            "observedTriggerRate": 0.07706,
+            "predictedTriggerRate": 0.112991,
+            "windows": 2816
+          }
+        },
+        "cells": {
+          "chanceAllowance": 30,
+          "confidence": 0.95,
+          "total": 448,
+          "underpriced": 43,
+          "underpricedWithConfidence": 6,
+          "underpricedWithConfidenceCells": [
+            {
+              "deficit": 0.424085,
+              "durationDays": 365,
+              "loadedPremiumRate": 0.075915,
+              "observedLowerBound": 0.153161,
+              "observedTriggerRate": 0.5,
+              "predictedTriggerRate": 0.056233,
+              "region": "valencia",
+              "thresholdMm": 80,
+              "triggers": 3,
+              "underpricedWithConfidence": true,
+              "windows": 6
+            },
+            {
+              "deficit": 0.350097,
+              "durationDays": 180,
+              "loadedPremiumRate": 0.399903,
+              "observedLowerBound": 0.472673,
+              "observedTriggerRate": 0.75,
+              "predictedTriggerRate": 0.296225,
+              "region": "valencia",
+              "thresholdMm": 30,
+              "triggers": 9,
+              "underpricedWithConfidence": true,
+              "windows": 12
+            },
+            {
+              "deficit": 0.200941,
+              "durationDays": 180,
+              "loadedPremiumRate": 0.049059,
+              "observedLowerBound": 0.07187,
+              "observedTriggerRate": 0.25,
+              "predictedTriggerRate": 0.03634,
+              "region": "valencia",
+              "thresholdMm": 80,
+              "triggers": 3,
+              "underpricedWithConfidence": true,
+              "windows": 12
+            },
+            {
+              "deficit": 0.409906,
+              "durationDays": 365,
+              "loadedPremiumRate": 0.590094,
+              "observedLowerBound": 0.606962,
+              "observedTriggerRate": 1.0,
+              "predictedTriggerRate": 0.437107,
+              "region": "valencia",
+              "thresholdMm": 30,
+              "triggers": 6,
+              "underpricedWithConfidence": true,
+              "windows": 6
+            },
+            {
+              "deficit": 0.199393,
+              "durationDays": 90,
+              "loadedPremiumRate": 0.342274,
+              "observedLowerBound": 0.357564,
+              "observedTriggerRate": 0.541667,
+              "predictedTriggerRate": 0.253536,
+              "region": "sevilla",
+              "thresholdMm": 30,
+              "triggers": 13,
+              "underpricedWithConfidence": true,
+              "windows": 24
+            },
+            {
+              "deficit": 0.091356,
+              "durationDays": 90,
+              "loadedPremiumRate": 0.033644,
+              "observedLowerBound": 0.034953,
+              "observedTriggerRate": 0.125,
+              "predictedTriggerRate": 0.024921,
+              "region": "valencia",
+              "thresholdMm": 80,
+              "triggers": 3,
+              "underpricedWithConfidence": true,
+              "windows": 24
+            }
+          ],
+          "withinChanceAllowance": true
+        },
+        "loadedPremiumRate": 0.16757,
+        "logLoss": 0.164023,
+        "observedTriggerRate": 0.100504,
+        "predictedTriggerRate": 0.124126,
+        "pricedFromEvidenceShare": 0.121043,
+        "windows": 39680
+      },
+      "previousModels": [
+        {
+          "brier": 0.083687,
+          "byDuration": {
+            "14": {
+              "brier": 0.077365,
+              "loadedPremiumRate": 0.029247,
+              "logLoss": 0.280013,
+              "observedTriggerRate": 0.092448,
+              "predictedTriggerRate": 0.021665,
+              "windows": 9984
+            },
+            "180": {
+              "brier": 0.254347,
+              "loadedPremiumRate": 0.055118,
+              "logLoss": 0.908658,
+              "observedTriggerRate": 0.309896,
+              "predictedTriggerRate": 0.040828,
+              "windows": 768
+            },
+            "30": {
+              "brier": 0.119311,
+              "loadedPremiumRate": 0.035531,
+              "logLoss": 0.42454,
+              "observedTriggerRate": 0.144692,
+              "predictedTriggerRate": 0.026319,
+              "windows": 4672
+            },
+            "365": {
+              "brier": 0.293386,
+              "loadedPremiumRate": 0.06502,
+              "logLoss": 1.045505,
+              "observedTriggerRate": 0.361979,
+              "predictedTriggerRate": 0.048163,
+              "windows": 384
+            },
+            "60": {
+              "brier": 0.159006,
+              "loadedPremiumRate": 0.042246,
+              "logLoss": 0.562516,
+              "observedTriggerRate": 0.194444,
+              "predictedTriggerRate": 0.031294,
+              "windows": 2304
+            },
+            "7": {
+              "brier": 0.050644,
+              "loadedPremiumRate": 0.024417,
+              "logLoss": 0.187061,
+              "observedTriggerRate": 0.059704,
+              "predictedTriggerRate": 0.018087,
+              "windows": 20032
+            },
+            "90": {
+              "brier": 0.196613,
+              "loadedPremiumRate": 0.046662,
+              "logLoss": 0.697107,
+              "observedTriggerRate": 0.239583,
+              "predictedTriggerRate": 0.034564,
+              "windows": 1536
+            }
+          },
+          "byRegion": {
+            "bogota": {
+              "brier": 0.064778,
+              "loadedPremiumRate": 0.053508,
+              "logLoss": 0.194078,
+              "observedTriggerRate": 0.089516,
+              "predictedTriggerRate": 0.039635,
+              "windows": 4960
+            },
+            "buenos aires": {
+              "brier": 0.140649,
+              "loadedPremiumRate": 0.037621,
+              "logLoss": 0.469772,
+              "observedTriggerRate": 0.165121,
+              "predictedTriggerRate": 0.027868,
+              "windows": 4960
+            },
+            "cartagena": {
+              "brier": 0.107606,
+              "loadedPremiumRate": 0.030284,
+              "logLoss": 0.357372,
+              "observedTriggerRate": 0.125,
+              "predictedTriggerRate": 0.022432,
+              "windows": 4960
+            },
+            "lima": {
+              "brier": 0.001386,
+              "loadedPremiumRate": 0.004906,
+              "logLoss": 0.008926,
+              "observedTriggerRate": 0.001411,
+              "predictedTriggerRate": 0.003634,
+              "windows": 4960
+            },
+            "medellin": {
+              "brier": 0.098004,
+              "loadedPremiumRate": 0.08545,
+              "logLoss": 0.279024,
+              "observedTriggerRate": 0.154234,
+              "predictedTriggerRate": 0.063296,
+              "windows": 4960
+            },
+            "santiago": {
+              "brier": 0.071525,
+              "loadedPremiumRate": 0.0078,
+              "logLoss": 0.313845,
+              "observedTriggerRate": 0.074395,
+              "predictedTriggerRate": 0.005778,
+              "windows": 4960
+            },
+            "sevilla": {
+              "brier": 0.094705,
+              "loadedPremiumRate": 0.008424,
+              "logLoss": 0.409685,
+              "observedTriggerRate": 0.09879,
+              "predictedTriggerRate": 0.00624,
+              "windows": 4960
+            },
+            "valencia": {
+              "brier": 0.090841,
+              "loadedPremiumRate": 0.010603,
+              "logLoss": 0.385124,
+              "observedTriggerRate": 0.095565,
+              "predictedTriggerRate": 0.007854,
+              "windows": 4960
+            }
+          },
+          "byStartMonth": {
+            "1": {
+              "brier": 0.045589,
+              "loadedPremiumRate": 0.027408,
+              "logLoss": 0.175647,
+              "observedTriggerRate": 0.052859,
+              "predictedTriggerRate": 0.020302,
+              "windows": 3008
+            },
+            "10": {
+              "brier": 0.099565,
+              "loadedPremiumRate": 0.027511,
+              "logLoss": 0.373586,
+              "observedTriggerRate": 0.117354,
+              "predictedTriggerRate": 0.020379,
+              "windows": 3008
+            },
+            "11": {
+              "brier": 0.085538,
+              "loadedPremiumRate": 0.027337,
+              "logLoss": 0.31129,
+              "observedTriggerRate": 0.101562,
+              "predictedTriggerRate": 0.020249,
+              "windows": 2944
+            },
+            "12": {
+              "brier": 0.035526,
+              "loadedPremiumRate": 0.027107,
+              "logLoss": 0.134455,
+              "observedTriggerRate": 0.042969,
+              "predictedTriggerRate": 0.020079,
+              "windows": 2816
+            },
+            "2": {
+              "brier": 0.052205,
+              "loadedPremiumRate": 0.027186,
+              "logLoss": 0.189269,
+              "observedTriggerRate": 0.0625,
+              "predictedTriggerRate": 0.020138,
+              "windows": 2624
+            },
+            "3": {
+              "brier": 0.082579,
+              "loadedPremiumRate": 0.027368,
+              "logLoss": 0.298249,
+              "observedTriggerRate": 0.097486,
+              "predictedTriggerRate": 0.020273,
+              "windows": 2944
+            },
+            "4": {
+              "brier": 0.06883,
+              "loadedPremiumRate": 0.027294,
+              "logLoss": 0.228175,
+              "observedTriggerRate": 0.085417,
+              "predictedTriggerRate": 0.020218,
+              "windows": 2880
+            },
+            "5": {
+              "brier": 0.072396,
+              "loadedPremiumRate": 0.027337,
+              "logLoss": 0.253331,
+              "observedTriggerRate": 0.087296,
+              "predictedTriggerRate": 0.020249,
+              "windows": 2944
+            },
+            "6": {
+              "brier": 0.072664,
+              "loadedPremiumRate": 0.027337,
+              "logLoss": 0.265855,
+              "observedTriggerRate": 0.086617,
+              "predictedTriggerRate": 0.020249,
+              "windows": 2944
+            },
+            "7": {
+              "brier": 0.052648,
+              "loadedPremiumRate": 0.027232,
+              "logLoss": 0.191192,
+              "observedTriggerRate": 0.063519,
+              "predictedTriggerRate": 0.020172,
+              "windows": 2944
+            },
+            "8": {
+              "brier": 0.076135,
+              "loadedPremiumRate": 0.02725,
+              "logLoss": 0.285184,
+              "observedTriggerRate": 0.088778,
+              "predictedTriggerRate": 0.020185,
+              "windows": 2816
+            },
+            "9": {
+              "brier": 0.064302,
+              "loadedPremiumRate": 0.02725,
+              "logLoss": 0.231847,
+              "observedTriggerRate": 0.07706,
+              "predictedTriggerRate": 0.020185,
+              "windows": 2816
+            }
+          },
+          "cells": {
+            "chanceAllowance": 30,
+            "confidence": 0.95,
+            "total": 448,
+            "underpriced": 193,
+            "underpricedWithConfidence": 167,
+            "underpricedWithConfidenceCells": [
+              {
+                "deficit": 0.895837,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.062497,
+                "observedLowerBound": 0.817108,
+                "observedTriggerRate": 0.958333,
+                "predictedTriggerRate": 0.046294,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 23,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.971677,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.028323,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.02098,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.929787,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.070213,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.052009,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.924373,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.075627,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.05602,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.905688,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.094312,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.069861,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.898357,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.101643,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.075291,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.811721,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.104945,
+                "observedLowerBound": 0.760199,
+                "observedTriggerRate": 0.916667,
+                "predictedTriggerRate": 0.077737,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 22,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.740202,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.23202,
+                "observedLowerBound": 0.874884,
+                "observedTriggerRate": 0.972222,
+                "predictedTriggerRate": 0.171867,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 35,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.890441,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.026226,
+                "observedLowerBound": 0.661319,
+                "observedTriggerRate": 0.916667,
+                "predictedTriggerRate": 0.019426,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.796863,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.078137,
+                "observedLowerBound": 0.707727,
+                "observedTriggerRate": 0.875,
+                "predictedTriggerRate": 0.057879,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 21,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.744516,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.255484,
+                "observedLowerBound": 0.882654,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.189248,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 24,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.682642,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.317358,
+                "observedLowerBound": 0.920153,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.23508,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 36,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.773407,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.059927,
+                "observedLowerBound": 0.658193,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.04439,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 20,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.982147,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.017853,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.013224,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.844119,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.072547,
+                "observedLowerBound": 0.661319,
+                "observedTriggerRate": 0.916667,
+                "predictedTriggerRate": 0.053739,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.98071,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.01929,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.014289,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.667102,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.195912,
+                "observedLowerBound": 0.778724,
+                "observedTriggerRate": 0.863014,
+                "predictedTriggerRate": 0.14512,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 63,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.975678,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.024322,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.018016,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.967951,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.032049,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.02374,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.9654,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.0346,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.02563,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.956505,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.043495,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.032218,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.694147,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.055853,
+                "observedLowerBound": 0.604293,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.041372,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.817576,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.015757,
+                "observedLowerBound": 0.561895,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.011672,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.929526,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.070474,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.052203,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.653224,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.346776,
+                "observedLowerBound": 0.882654,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.256871,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 24,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.790547,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.12612,
+                "observedLowerBound": 0.661319,
+                "observedTriggerRate": 0.916667,
+                "predictedTriggerRate": 0.093422,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.68008,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.06992,
+                "observedLowerBound": 0.604293,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.051793,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.751609,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.248391,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.183993,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.797686,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.035648,
+                "observedLowerBound": 0.561895,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.026406,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.914824,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.085176,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.063093,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.676618,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.240048,
+                "observedLowerBound": 0.760199,
+                "observedTriggerRate": 0.916667,
+                "predictedTriggerRate": 0.177814,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 22,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.912026,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.087974,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.065166,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.908339,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.091661,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.067897,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.655882,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.094118,
+                "observedLowerBound": 0.604293,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.069717,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.563007,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.409596,
+                "observedLowerBound": 0.916259,
+                "observedTriggerRate": 0.972603,
+                "predictedTriggerRate": 0.303404,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 71,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.685078,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.023256,
+                "observedLowerBound": 0.521272,
+                "observedTriggerRate": 0.708333,
+                "predictedTriggerRate": 0.017226,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.664786,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.210214,
+                "observedLowerBound": 0.707727,
+                "observedTriggerRate": 0.875,
+                "predictedTriggerRate": 0.155714,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 21,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.717698,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.282302,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.209113,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.886047,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.113953,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.08441,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.679034,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.029299,
+                "observedLowerBound": 0.521272,
+                "observedTriggerRate": 0.708333,
+                "predictedTriggerRate": 0.021703,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.578125,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.27119,
+                "observedLowerBound": 0.762928,
+                "observedTriggerRate": 0.849315,
+                "predictedTriggerRate": 0.200882,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 62,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.877337,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.122663,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.090861,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.665705,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.084295,
+                "observedLowerBound": 0.565309,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.062441,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 18,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.700279,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.299721,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.222016,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.650353,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.05798,
+                "observedLowerBound": 0.521272,
+                "observedTriggerRate": 0.708333,
+                "predictedTriggerRate": 0.042948,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.73542,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.01458,
+                "observedLowerBound": 0.472673,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.0108,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.848414,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.151586,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.112286,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.730119,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.019881,
+                "observedLowerBound": 0.472673,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.014727,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.530919,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.469081,
+                "observedLowerBound": 0.920153,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.347467,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 36,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.591197,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.075469,
+                "observedLowerBound": 0.516585,
+                "observedTriggerRate": 0.666667,
+                "predictedTriggerRate": 0.055903,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 24,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.496741,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.349413,
+                "observedLowerBound": 0.790515,
+                "observedTriggerRate": 0.846154,
+                "predictedTriggerRate": 0.258824,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 132,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.529311,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.046032,
+                "observedLowerBound": 0.472353,
+                "observedTriggerRate": 0.575342,
+                "predictedTriggerRate": 0.034097,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 42,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.525274,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.159657,
+                "observedLowerBound": 0.584047,
+                "observedTriggerRate": 0.684932,
+                "predictedTriggerRate": 0.118265,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 50,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.560058,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.21772,
+                "observedLowerBound": 0.634627,
+                "observedTriggerRate": 0.777778,
+                "predictedTriggerRate": 0.161274,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 28,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.692025,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.057975,
+                "observedLowerBound": 0.472673,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.042945,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.559815,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.190185,
+                "observedLowerBound": 0.604293,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.140878,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.557567,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.053544,
+                "observedLowerBound": 0.460489,
+                "observedTriggerRate": 0.611111,
+                "predictedTriggerRate": 0.039662,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 22,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.497369,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.077974,
+                "observedLowerBound": 0.472353,
+                "observedTriggerRate": 0.575342,
+                "predictedTriggerRate": 0.057758,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 42,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.490209,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.057736,
+                "observedLowerBound": 0.445178,
+                "observedTriggerRate": 0.547945,
+                "predictedTriggerRate": 0.042767,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 40,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.598972,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.401028,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.297058,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.494325,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.505675,
+                "observedLowerBound": 0.882654,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.374574,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 24,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.415719,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.299936,
+                "observedLowerBound": 0.670699,
+                "observedTriggerRate": 0.715655,
+                "predictedTriggerRate": 0.222175,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 224,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.439433,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.131079,
+                "observedLowerBound": 0.501527,
+                "observedTriggerRate": 0.570513,
+                "predictedTriggerRate": 0.097096,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 89,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.434428,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.161726,
+                "observedLowerBound": 0.527361,
+                "observedTriggerRate": 0.596154,
+                "predictedTriggerRate": 0.119797,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 93,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.503759,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.051796,
+                "observedLowerBound": 0.406095,
+                "observedTriggerRate": 0.555556,
+                "predictedTriggerRate": 0.038368,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 20,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.528751,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.012916,
+                "observedLowerBound": 0.357564,
+                "observedTriggerRate": 0.541667,
+                "predictedTriggerRate": 0.009567,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 13,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.707357,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.292643,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.216772,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.451506,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.020716,
+                "observedLowerBound": 0.327541,
+                "observedTriggerRate": 0.472222,
+                "predictedTriggerRate": 0.015345,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.44611,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.026112,
+                "observedLowerBound": 0.327541,
+                "observedTriggerRate": 0.472222,
+                "predictedTriggerRate": 0.019343,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.478473,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.021527,
+                "observedLowerBound": 0.319421,
+                "observedTriggerRate": 0.5,
+                "predictedTriggerRate": 0.015946,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.380542,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.044115,
+                "observedLowerBound": 0.326396,
+                "observedTriggerRate": 0.424658,
+                "predictedTriggerRate": 0.032678,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 31,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.548087,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.035246,
+                "observedLowerBound": 0.315238,
+                "observedTriggerRate": 0.583333,
+                "predictedTriggerRate": 0.026108,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 7,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.375991,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.062365,
+                "observedLowerBound": 0.339309,
+                "observedTriggerRate": 0.438356,
+                "predictedTriggerRate": 0.046196,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 32,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.669219,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.330781,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.245023,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.378172,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.183472,
+                "observedLowerBound": 0.45873,
+                "observedTriggerRate": 0.561644,
+                "predictedTriggerRate": 0.135905,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 41,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.322164,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.109146,
+                "observedLowerBound": 0.3843,
+                "observedTriggerRate": 0.43131,
+                "predictedTriggerRate": 0.080849,
+                "region": "cartagena",
+                "thresholdMm": 10,
+                "triggers": 135,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.344066,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.226447,
+                "observedLowerBound": 0.501527,
+                "observedTriggerRate": 0.570513,
+                "predictedTriggerRate": 0.167738,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 89,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.368294,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.042665,
+                "observedLowerBound": 0.313556,
+                "observedTriggerRate": 0.410959,
+                "predictedTriggerRate": 0.031604,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 30,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.328227,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.037157,
+                "observedLowerBound": 0.301113,
+                "observedTriggerRate": 0.365385,
+                "predictedTriggerRate": 0.027524,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 57,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.649789,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.350211,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.259415,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.308555,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.06324,
+                "observedLowerBound": 0.307203,
+                "observedTriggerRate": 0.371795,
+                "predictedTriggerRate": 0.046845,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 58,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.410539,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.047795,
+                "observedLowerBound": 0.282356,
+                "observedTriggerRate": 0.458333,
+                "predictedTriggerRate": 0.035404,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.325473,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.016992,
+                "observedLowerBound": 0.250501,
+                "observedTriggerRate": 0.342466,
+                "predictedTriggerRate": 0.012587,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 25,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.369715,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.019174,
+                "observedLowerBound": 0.252652,
+                "observedTriggerRate": 0.388889,
+                "predictedTriggerRate": 0.014203,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 14,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.400361,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.016306,
+                "observedLowerBound": 0.246389,
+                "observedTriggerRate": 0.416667,
+                "predictedTriggerRate": 0.012078,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.623659,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.043008,
+                "observedLowerBound": 0.271338,
+                "observedTriggerRate": 0.666667,
+                "predictedTriggerRate": 0.031858,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 4,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.307333,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.021434,
+                "observedLowerBound": 0.238131,
+                "observedTriggerRate": 0.328767,
+                "predictedTriggerRate": 0.015877,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 24,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.273827,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.046686,
+                "observedLowerBound": 0.258827,
+                "observedTriggerRate": 0.320513,
+                "predictedTriggerRate": 0.034582,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 50,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.487932,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.178735,
+                "observedLowerBound": 0.390862,
+                "observedTriggerRate": 0.666667,
+                "predictedTriggerRate": 0.132396,
+                "region": "bogota",
+                "thresholdMm": 20,
+                "triggers": 8,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.429353,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.570647,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.422701,
+                "region": "medellin",
+                "thresholdMm": 10,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.620357,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.212976,
+                "observedLowerBound": 0.418197,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.15776,
+                "region": "bogota",
+                "thresholdMm": 20,
+                "triggers": 5,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.363051,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.011949,
+                "observedLowerBound": 0.211566,
+                "observedTriggerRate": 0.375,
+                "predictedTriggerRate": 0.008851,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.241763,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.135234,
+                "observedLowerBound": 0.331355,
+                "observedTriggerRate": 0.376997,
+                "predictedTriggerRate": 0.100173,
+                "region": "buenos aires",
+                "thresholdMm": 10,
+                "triggers": 118,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.321837,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.011496,
+                "observedLowerBound": 0.204906,
+                "observedTriggerRate": 0.333333,
+                "predictedTriggerRate": 0.008515,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.318449,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.042662,
+                "observedLowerBound": 0.228548,
+                "observedTriggerRate": 0.361111,
+                "predictedTriggerRate": 0.031601,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 13,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.346033,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.028967,
+                "observedLowerBound": 0.211566,
+                "observedTriggerRate": 0.375,
+                "predictedTriggerRate": 0.021457,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.258249,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.015724,
+                "observedLowerBound": 0.189543,
+                "observedTriggerRate": 0.273973,
+                "predictedTriggerRate": 0.011647,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 20,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.291039,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.014517,
+                "observedLowerBound": 0.181754,
+                "observedTriggerRate": 0.305556,
+                "predictedTriggerRate": 0.010753,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.208304,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.191057,
+                "observedLowerBound": 0.353086,
+                "observedTriggerRate": 0.399361,
+                "predictedTriggerRate": 0.141524,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 125,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.215577,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.034423,
+                "observedLowerBound": 0.193726,
+                "observedTriggerRate": 0.25,
+                "predictedTriggerRate": 0.025498,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 39,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.189901,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.030546,
+                "observedLowerBound": 0.182404,
+                "observedTriggerRate": 0.220447,
+                "predictedTriggerRate": 0.022627,
+                "region": "sevilla",
+                "thresholdMm": 10,
+                "triggers": 69,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.267143,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.010635,
+                "observedLowerBound": 0.159129,
+                "observedTriggerRate": 0.277778,
+                "predictedTriggerRate": 0.007877,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.494165,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.005835,
+                "observedLowerBound": 0.153161,
+                "observedTriggerRate": 0.5,
+                "predictedTriggerRate": 0.004322,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.201579,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.0356,
+                "observedLowerBound": 0.182091,
+                "observedTriggerRate": 0.237179,
+                "predictedTriggerRate": 0.026371,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 37,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.538909,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.461091,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.341549,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.490825,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.009175,
+                "observedLowerBound": 0.153161,
+                "observedTriggerRate": 0.5,
+                "predictedTriggerRate": 0.006796,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.199536,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.050464,
+                "observedLowerBound": 0.193726,
+                "observedTriggerRate": 0.25,
+                "predictedTriggerRate": 0.037381,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 39,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.488409,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.011591,
+                "observedLowerBound": 0.153161,
+                "observedTriggerRate": 0.5,
+                "predictedTriggerRate": 0.008586,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.251961,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.025816,
+                "observedLowerBound": 0.159129,
+                "observedTriggerRate": 0.277778,
+                "predictedTriggerRate": 0.019123,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.168275,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.052173,
+                "observedLowerBound": 0.182404,
+                "observedTriggerRate": 0.220447,
+                "predictedTriggerRate": 0.038646,
+                "region": "buenos aires",
+                "thresholdMm": 20,
+                "triggers": 69,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.17224,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.013658,
+                "observedLowerBound": 0.1363,
+                "observedTriggerRate": 0.185897,
+                "predictedTriggerRate": 0.010117,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 29,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.196062,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.009418,
+                "observedLowerBound": 0.131139,
+                "observedTriggerRate": 0.205479,
+                "predictedTriggerRate": 0.006976,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 15,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.175751,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.151172,
+                "observedLowerBound": 0.264829,
+                "observedTriggerRate": 0.326923,
+                "predictedTriggerRate": 0.11198,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 51,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.323875,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.009458,
+                "observedLowerBound": 0.122851,
+                "observedTriggerRate": 0.333333,
+                "predictedTriggerRate": 0.007006,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 4,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.146875,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.038429,
+                "observedLowerBound": 0.14992,
+                "observedTriggerRate": 0.185304,
+                "predictedTriggerRate": 0.028466,
+                "region": "valencia",
+                "thresholdMm": 10,
+                "triggers": 58,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.155838,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.017239,
+                "observedLowerBound": 0.125066,
+                "observedTriggerRate": 0.173077,
+                "predictedTriggerRate": 0.01277,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.266859,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.149808,
+                "observedLowerBound": 0.246389,
+                "observedTriggerRate": 0.416667,
+                "predictedTriggerRate": 0.110969,
+                "region": "bogota",
+                "thresholdMm": 20,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.170382,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.035097,
+                "observedLowerBound": 0.131139,
+                "observedTriggerRate": 0.205479,
+                "predictedTriggerRate": 0.025998,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 15,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.1348,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.012636,
+                "observedLowerBound": 0.10291,
+                "observedTriggerRate": 0.147436,
+                "predictedTriggerRate": 0.00936,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 23,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.118677,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.028288,
+                "observedLowerBound": 0.115049,
+                "observedTriggerRate": 0.146965,
+                "predictedTriggerRate": 0.020954,
+                "region": "santiago",
+                "thresholdMm": 10,
+                "triggers": 46,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.152486,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.011897,
+                "observedLowerBound": 0.097681,
+                "observedTriggerRate": 0.164384,
+                "predictedTriggerRate": 0.008813,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.141974,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.008711,
+                "observedLowerBound": 0.086863,
+                "observedTriggerRate": 0.150685,
+                "predictedTriggerRate": 0.006453,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.1086,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.04156,
+                "observedLowerBound": 0.117929,
+                "observedTriggerRate": 0.15016,
+                "predictedTriggerRate": 0.030785,
+                "region": "cartagena",
+                "thresholdMm": 20,
+                "triggers": 47,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.245242,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.004758,
+                "observedLowerBound": 0.07187,
+                "observedTriggerRate": 0.25,
+                "predictedTriggerRate": 0.003524,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.461844,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.204822,
+                "observedLowerBound": 0.271338,
+                "observedTriggerRate": 0.666667,
+                "predictedTriggerRate": 0.15172,
+                "region": "medellin",
+                "thresholdMm": 30,
+                "triggers": 4,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.095341,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.02926,
+                "observedLowerBound": 0.095053,
+                "observedTriggerRate": 0.124601,
+                "predictedTriggerRate": 0.021674,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 39,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.242516,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.007484,
+                "observedLowerBound": 0.07187,
+                "observedTriggerRate": 0.25,
+                "predictedTriggerRate": 0.005544,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.091044,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.011192,
+                "observedLowerBound": 0.075383,
+                "observedTriggerRate": 0.102236,
+                "predictedTriggerRate": 0.00829,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 32,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.084908,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.014134,
+                "observedLowerBound": 0.072604,
+                "observedTriggerRate": 0.099042,
+                "predictedTriggerRate": 0.01047,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 31,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.095003,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.007561,
+                "observedLowerBound": 0.065398,
+                "observedTriggerRate": 0.102564,
+                "predictedTriggerRate": 0.005601,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 16,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.115796,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.02119,
+                "observedLowerBound": 0.076244,
+                "observedTriggerRate": 0.136986,
+                "predictedTriggerRate": 0.015697,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.324847,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.008487,
+                "observedLowerBound": 0.06285,
+                "observedTriggerRate": 0.333333,
+                "predictedTriggerRate": 0.006286,
+                "region": "santiago",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.15892,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.007746,
+                "observedLowerBound": 0.059008,
+                "observedTriggerRate": 0.166667,
+                "predictedTriggerRate": 0.005738,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 4,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.075909,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.010353,
+                "observedLowerBound": 0.061585,
+                "observedTriggerRate": 0.086262,
+                "predictedTriggerRate": 0.007669,
+                "region": "santiago",
+                "thresholdMm": 20,
+                "triggers": 27,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.170702,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.134853,
+                "observedLowerBound": 0.181754,
+                "observedTriggerRate": 0.305556,
+                "predictedTriggerRate": 0.099891,
+                "region": "bogota",
+                "thresholdMm": 20,
+                "triggers": 11,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.07634,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.006993,
+                "observedLowerBound": 0.049996,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.00518,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 13,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.073778,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.009555,
+                "observedLowerBound": 0.049996,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.007078,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 13,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.074279,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.028285,
+                "observedLowerBound": 0.065398,
+                "observedTriggerRate": 0.102564,
+                "predictedTriggerRate": 0.020952,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 16,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.104219,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.006892,
+                "observedLowerBound": 0.038855,
+                "observedTriggerRate": 0.111111,
+                "predictedTriggerRate": 0.005105,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 4,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.121106,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.003894,
+                "observedLowerBound": 0.034953,
+                "observedTriggerRate": 0.125,
+                "predictedTriggerRate": 0.002884,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.065468,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.126225,
+                "observedLowerBound": 0.155792,
+                "observedTriggerRate": 0.191693,
+                "predictedTriggerRate": 0.0935,
+                "region": "medellin",
+                "thresholdMm": 20,
+                "triggers": 60,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.118872,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.006128,
+                "observedLowerBound": 0.034953,
+                "observedTriggerRate": 0.125,
+                "predictedTriggerRate": 0.004539,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.299123,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.03421,
+                "observedLowerBound": 0.06285,
+                "observedTriggerRate": 0.333333,
+                "predictedTriggerRate": 0.025341,
+                "region": "cartagena",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.044927,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.006191,
+                "observedLowerBound": 0.032323,
+                "observedTriggerRate": 0.051118,
+                "predictedTriggerRate": 0.004586,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 16,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.159745,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.006922,
+                "observedLowerBound": 0.03046,
+                "observedTriggerRate": 0.166667,
+                "predictedTriggerRate": 0.005127,
+                "region": "santiago",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.062851,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.005642,
+                "observedLowerBound": 0.027374,
+                "observedTriggerRate": 0.068493,
+                "predictedTriggerRate": 0.00418,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 5,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.039003,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.005725,
+                "observedLowerBound": 0.027241,
+                "observedTriggerRate": 0.044728,
+                "predictedTriggerRate": 0.004241,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 14,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.07987,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.003463,
+                "observedLowerBound": 0.023099,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.002565,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.036902,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.007826,
+                "observedLowerBound": 0.027241,
+                "observedTriggerRate": 0.044728,
+                "predictedTriggerRate": 0.005797,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 14,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.093133,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.112347,
+                "observedLowerBound": 0.131139,
+                "observedTriggerRate": 0.205479,
+                "predictedTriggerRate": 0.08322,
+                "region": "bogota",
+                "thresholdMm": 20,
+                "triggers": 15,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.04706,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.017043,
+                "observedLowerBound": 0.035187,
+                "observedTriggerRate": 0.064103,
+                "predictedTriggerRate": 0.012624,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.077882,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.005451,
+                "observedLowerBound": 0.023099,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.004038,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.034283,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.023225,
+                "observedLowerBound": 0.037496,
+                "observedTriggerRate": 0.057508,
+                "predictedTriggerRate": 0.017203,
+                "region": "cartagena",
+                "thresholdMm": 30,
+                "triggers": 18,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.033934,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.004528,
+                "observedLowerBound": 0.01688,
+                "observedTriggerRate": 0.038462,
+                "predictedTriggerRate": 0.003354,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.077666,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.005667,
+                "observedLowerBound": 0.015012,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.004198,
+                "region": "santiago",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.038262,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.002834,
+                "observedLowerBound": 0.011293,
+                "observedTriggerRate": 0.041096,
+                "predictedTriggerRate": 0.002099,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.036634,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.004462,
+                "observedLowerBound": 0.011293,
+                "observedTriggerRate": 0.041096,
+                "predictedTriggerRate": 0.003305,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.050515,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.005041,
+                "observedLowerBound": 0.009961,
+                "observedTriggerRate": 0.055556,
+                "predictedTriggerRate": 0.003734,
+                "region": "santiago",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.015464,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.003706,
+                "observedLowerBound": 0.00838,
+                "observedTriggerRate": 0.019169,
+                "predictedTriggerRate": 0.002745,
+                "region": "valencia",
+                "thresholdMm": 50,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.162052,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.004615,
+                "observedLowerBound": 0.008512,
+                "observedTriggerRate": 0.166667,
+                "predictedTriggerRate": 0.003418,
+                "region": "sevilla",
+                "thresholdMm": 80,
+                "triggers": 1,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.017977,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.013972,
+                "observedLowerBound": 0.017434,
+                "observedTriggerRate": 0.031949,
+                "predictedTriggerRate": 0.01035,
+                "region": "buenos aires",
+                "thresholdMm": 50,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.016958,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.002273,
+                "observedLowerBound": 0.005262,
+                "observedTriggerRate": 0.019231,
+                "predictedTriggerRate": 0.001684,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.138664,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.028002,
+                "observedLowerBound": 0.03046,
+                "observedTriggerRate": 0.166667,
+                "predictedTriggerRate": 0.020742,
+                "region": "cartagena",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.015651,
+                "durationDays": 14,
+                "loadedPremiumRate": 0.00358,
+                "observedLowerBound": 0.005262,
+                "observedTriggerRate": 0.019231,
+                "predictedTriggerRate": 0.002652,
+                "region": "sevilla",
+                "thresholdMm": 50,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 156
+              },
+              {
+                "deficit": 0.023271,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.004126,
+                "observedLowerBound": 0.00489,
+                "observedTriggerRate": 0.027397,
+                "predictedTriggerRate": 0.003056,
+                "region": "santiago",
+                "thresholdMm": 50,
+                "triggers": 2,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.007725,
+                "durationDays": 7,
+                "loadedPremiumRate": 0.00186,
+                "observedLowerBound": 0.002617,
+                "observedTriggerRate": 0.009585,
+                "predictedTriggerRate": 0.001378,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 313
+              },
+              {
+                "deficit": 0.079572,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.003762,
+                "observedLowerBound": 0.004265,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.002787,
+                "region": "sevilla",
+                "thresholdMm": 80,
+                "triggers": 1,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              }
+            ],
+            "withinChanceAllowance": false
+          },
+          "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
+          "loadedPremiumRate": 0.029824,
+          "logLoss": 0.302228,
+          "modelVersion": "baseline-premium-v1",
+          "observedTriggerRate": 0.100504,
+          "predictedTriggerRate": 0.022092,
+          "pricedFromEvidenceShare": 0.0,
+          "trainingKind": "synthetic",
+          "windows": 39680
+        },
+        {
+          "brier": 0.055085,
+          "byDuration": {
+            "14": {
+              "brier": 0.05724,
+              "loadedPremiumRate": 0.143766,
+              "logLoss": 0.181497,
+              "observedTriggerRate": 0.092448,
+              "predictedTriggerRate": 0.106493,
+              "windows": 9984
+            },
+            "180": {
+              "brier": 0.082651,
+              "loadedPremiumRate": 0.310493,
+              "logLoss": 0.261272,
+              "observedTriggerRate": 0.309896,
+              "predictedTriggerRate": 0.229994,
+              "windows": 768
+            },
+            "30": {
+              "brier": 0.068937,
+              "loadedPremiumRate": 0.186769,
+              "logLoss": 0.215567,
+              "observedTriggerRate": 0.144692,
+              "predictedTriggerRate": 0.138347,
+              "windows": 4672
+            },
+            "365": {
+              "brier": 0.084602,
+              "loadedPremiumRate": 0.366721,
+              "logLoss": 0.270976,
+              "observedTriggerRate": 0.361979,
+              "predictedTriggerRate": 0.271645,
+              "windows": 384
+            },
+            "60": {
+              "brier": 0.076477,
+              "loadedPremiumRate": 0.231076,
+              "logLoss": 0.239374,
+              "observedTriggerRate": 0.194444,
+              "predictedTriggerRate": 0.171167,
+              "windows": 2304
+            },
+            "7": {
+              "brier": 0.044851,
+              "loadedPremiumRate": 0.110168,
+              "logLoss": 0.146357,
+              "observedTriggerRate": 0.059704,
+              "predictedTriggerRate": 0.081606,
+              "windows": 20032
+            },
+            "90": {
+              "brier": 0.079163,
+              "loadedPremiumRate": 0.259143,
+              "logLoss": 0.248927,
+              "observedTriggerRate": 0.239583,
+              "predictedTriggerRate": 0.191958,
+              "windows": 1536
+            }
+          },
+          "byRegion": {
+            "bogota": {
+              "brier": 0.043248,
+              "loadedPremiumRate": 0.105932,
+              "logLoss": 0.138442,
+              "observedTriggerRate": 0.089516,
+              "predictedTriggerRate": 0.078468,
+              "windows": 4960
+            },
+            "buenos aires": {
+              "brier": 0.087752,
+              "loadedPremiumRate": 0.253478,
+              "logLoss": 0.265431,
+              "observedTriggerRate": 0.165121,
+              "predictedTriggerRate": 0.187762,
+              "windows": 4960
+            },
+            "cartagena": {
+              "brier": 0.065793,
+              "loadedPremiumRate": 0.17568,
+              "logLoss": 0.204783,
+              "observedTriggerRate": 0.125,
+              "predictedTriggerRate": 0.130134,
+              "windows": 4960
+            },
+            "lima": {
+              "brier": 0.002412,
+              "loadedPremiumRate": 0.019954,
+              "logLoss": 0.017975,
+              "observedTriggerRate": 0.001411,
+              "predictedTriggerRate": 0.01478,
+              "windows": 4960
+            },
+            "medellin": {
+              "brier": 0.052087,
+              "loadedPremiumRate": 0.203838,
+              "logLoss": 0.174317,
+              "observedTriggerRate": 0.154234,
+              "predictedTriggerRate": 0.150991,
+              "windows": 4960
+            },
+            "santiago": {
+              "brier": 0.061398,
+              "loadedPremiumRate": 0.161109,
+              "logLoss": 0.192518,
+              "observedTriggerRate": 0.074395,
+              "predictedTriggerRate": 0.11934,
+              "windows": 4960
+            },
+            "sevilla": {
+              "brier": 0.063141,
+              "loadedPremiumRate": 0.131134,
+              "logLoss": 0.201686,
+              "observedTriggerRate": 0.09879,
+              "predictedTriggerRate": 0.097136,
+              "windows": 4960
+            },
+            "valencia": {
+              "brier": 0.064849,
+              "loadedPremiumRate": 0.123179,
+              "logLoss": 0.214041,
+              "observedTriggerRate": 0.095565,
+              "predictedTriggerRate": 0.091243,
+              "windows": 4960
+            }
+          },
+          "byStartMonth": {
+            "1": {
+              "brier": 0.047951,
+              "loadedPremiumRate": 0.13087,
+              "logLoss": 0.155048,
+              "observedTriggerRate": 0.052859,
+              "predictedTriggerRate": 0.09694,
+              "windows": 3008
+            },
+            "10": {
+              "brier": 0.065026,
+              "loadedPremiumRate": 0.131585,
+              "logLoss": 0.211938,
+              "observedTriggerRate": 0.117354,
+              "predictedTriggerRate": 0.09747,
+              "windows": 3008
+            },
+            "11": {
+              "brier": 0.060871,
+              "loadedPremiumRate": 0.130385,
+              "logLoss": 0.193263,
+              "observedTriggerRate": 0.101562,
+              "predictedTriggerRate": 0.096581,
+              "windows": 2944
+            },
+            "12": {
+              "brier": 0.041282,
+              "loadedPremiumRate": 0.128799,
+              "logLoss": 0.137818,
+              "observedTriggerRate": 0.042969,
+              "predictedTriggerRate": 0.095407,
+              "windows": 2816
+            },
+            "2": {
+              "brier": 0.047826,
+              "loadedPremiumRate": 0.129343,
+              "logLoss": 0.153859,
+              "observedTriggerRate": 0.0625,
+              "predictedTriggerRate": 0.09581,
+              "windows": 2624
+            },
+            "3": {
+              "brier": 0.059564,
+              "loadedPremiumRate": 0.130589,
+              "logLoss": 0.183784,
+              "observedTriggerRate": 0.097486,
+              "predictedTriggerRate": 0.096733,
+              "windows": 2944
+            },
+            "4": {
+              "brier": 0.046708,
+              "loadedPremiumRate": 0.130087,
+              "logLoss": 0.147793,
+              "observedTriggerRate": 0.085417,
+              "predictedTriggerRate": 0.096361,
+              "windows": 2880
+            },
+            "5": {
+              "brier": 0.052836,
+              "loadedPremiumRate": 0.130385,
+              "logLoss": 0.165903,
+              "observedTriggerRate": 0.087296,
+              "predictedTriggerRate": 0.096581,
+              "windows": 2944
+            },
+            "6": {
+              "brier": 0.051186,
+              "loadedPremiumRate": 0.130385,
+              "logLoss": 0.162475,
+              "observedTriggerRate": 0.086617,
+              "predictedTriggerRate": 0.096581,
+              "windows": 2944
+            },
+            "7": {
+              "brier": 0.042083,
+              "loadedPremiumRate": 0.129654,
+              "logLoss": 0.139603,
+              "observedTriggerRate": 0.063519,
+              "predictedTriggerRate": 0.09604,
+              "windows": 2944
+            },
+            "8": {
+              "brier": 0.054909,
+              "loadedPremiumRate": 0.129777,
+              "logLoss": 0.175542,
+              "observedTriggerRate": 0.088778,
+              "predictedTriggerRate": 0.096131,
+              "windows": 2816
+            },
+            "9": {
+              "brier": 0.048506,
+              "loadedPremiumRate": 0.129777,
+              "logLoss": 0.158938,
+              "observedTriggerRate": 0.07706,
+              "predictedTriggerRate": 0.096131,
+              "windows": 2816
+            }
+          },
+          "cells": {
+            "chanceAllowance": 30,
+            "confidence": 0.95,
+            "total": 448,
+            "underpriced": 78,
+            "underpricedWithConfidence": 16,
+            "underpricedWithConfidenceCells": [
+              {
+                "deficit": 0.464148,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.369186,
+                "observedLowerBound": 0.561895,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.273471,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.528713,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.471287,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.349102,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.407551,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.342449,
+                "observedLowerBound": 0.472673,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.253666,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.329281,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.670719,
+                "observedLowerBound": 0.779078,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.496829,
+                "region": "sevilla",
+                "thresholdMm": 20,
+                "triggers": 12,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.49694,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.50306,
+                "observedLowerBound": 0.606962,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.372637,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 6,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.279792,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.261875,
+                "observedLowerBound": 0.357564,
+                "observedTriggerRate": 0.541667,
+                "predictedTriggerRate": 0.193981,
+                "region": "sevilla",
+                "thresholdMm": 30,
+                "triggers": 13,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.433231,
+                "durationDays": 365,
+                "loadedPremiumRate": 0.066769,
+                "observedLowerBound": 0.153161,
+                "observedTriggerRate": 0.5,
+                "predictedTriggerRate": 0.049459,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 6
+              },
+              {
+                "deficit": 0.132003,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.867997,
+                "observedLowerBound": 0.920153,
+                "observedTriggerRate": 1.0,
+                "predictedTriggerRate": 0.642961,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 36,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.126814,
+                "durationDays": 30,
+                "loadedPremiumRate": 0.722501,
+                "observedLowerBound": 0.762928,
+                "observedTriggerRate": 0.849315,
+                "predictedTriggerRate": 0.535186,
+                "region": "bogota",
+                "thresholdMm": 10,
+                "triggers": 62,
+                "underpricedWithConfidence": true,
+                "windows": 73
+              },
+              {
+                "deficit": 0.212789,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.620544,
+                "observedLowerBound": 0.658193,
+                "observedTriggerRate": 0.833333,
+                "predictedTriggerRate": 0.459662,
+                "region": "buenos aires",
+                "thresholdMm": 30,
+                "triggers": 20,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.218174,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.490159,
+                "observedLowerBound": 0.521272,
+                "observedTriggerRate": 0.708333,
+                "predictedTriggerRate": 0.363081,
+                "region": "valencia",
+                "thresholdMm": 20,
+                "triggers": 17,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.206907,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.043093,
+                "observedLowerBound": 0.07187,
+                "observedTriggerRate": 0.25,
+                "predictedTriggerRate": 0.031921,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              },
+              {
+                "deficit": 0.097126,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.027874,
+                "observedLowerBound": 0.034953,
+                "observedTriggerRate": 0.125,
+                "predictedTriggerRate": 0.020647,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.175667,
+                "durationDays": 90,
+                "loadedPremiumRate": 0.241,
+                "observedLowerBound": 0.246389,
+                "observedTriggerRate": 0.416667,
+                "predictedTriggerRate": 0.178519,
+                "region": "valencia",
+                "thresholdMm": 30,
+                "triggers": 10,
+                "underpricedWithConfidence": true,
+                "windows": 24
+              },
+              {
+                "deficit": 0.061774,
+                "durationDays": 60,
+                "loadedPremiumRate": 0.021559,
+                "observedLowerBound": 0.023099,
+                "observedTriggerRate": 0.083333,
+                "predictedTriggerRate": 0.01597,
+                "region": "valencia",
+                "thresholdMm": 80,
+                "triggers": 3,
+                "underpricedWithConfidence": true,
+                "windows": 36
+              },
+              {
+                "deficit": 0.278682,
+                "durationDays": 180,
+                "loadedPremiumRate": 0.471318,
+                "observedLowerBound": 0.472673,
+                "observedTriggerRate": 0.75,
+                "predictedTriggerRate": 0.349124,
+                "region": "santiago",
+                "thresholdMm": 30,
+                "triggers": 9,
+                "underpricedWithConfidence": true,
+                "windows": 12
+              }
+            ],
+            "withinChanceAllowance": true
+          },
+          "checksum": "6a083c8e91c85e3a6e078f0b856d3a6cd1571e81f4e9efb2f21bcfd628e11a36",
+          "loadedPremiumRate": 0.146788,
+          "logLoss": 0.176149,
+          "modelVersion": "baseline-premium-v2",
+          "observedTriggerRate": 0.100504,
+          "predictedTriggerRate": 0.108732,
+          "pricedFromEvidenceShare": 0.0,
+          "trainingKind": "observed",
+          "windows": 39680
+        }
+      ]
+    },
+    "modelForm": "log-odds linear in log(threshold), log(duration); one effect per region; monthly seasonal offsets per region; evidence floor per region and grid cell",
+    "note": "Fitted to ERA5 daily precipitation for the listed regions; evaluated on the most recent complete years, which the fit never saw. regionRisk is the fitted per-region effect in log-odds with the driest region at zero; seasonRisk holds twelve monthly log-odds offsets per region, centred at zero, applied by the share of the coverage window in each month; evidenceFloor holds, per region, the one-sided lower confidence bound of the trigger frequency observed in training for each grid cell, and a quote is never priced below the bound of a cell it dominates. regionMeanMmPerDay describes the same regions in plain units.",
+    "regionMeanMmPerDay": {
+      "bogota": 2.574994,
+      "buenos aires": 2.97958,
+      "cartagena": 4.1188,
+      "lima": 0.235056,
+      "medellin": 7.602955,
+      "santiago": 1.345768,
+      "sevilla": 1.381314,
+      "valencia": 1.144627
+    },
+    "source": {
+      "licence": "CC BY 4.0 (Open-Meteo); ERA5 via Copernicus C3S",
+      "product": "ERA5 reanalysis, daily precipitation sum",
+      "provider": "Open-Meteo Historical Weather API",
+      "timezone": "UTC",
+      "units": "mm",
+      "url": "https://archive-api.open-meteo.com/v1/archive",
+      "variable": "precipitation_sum"
+    },
+    "split": {
+      "testDays": 2192,
+      "testStart": "2020-01-01",
+      "trainDays": 8766,
+      "trainEnd": "2019-12-31"
+    },
+    "thresholdMmGrid": [
+      10,
+      20,
+      30,
+      50,
+      80,
+      120,
+      200,
+      300
+    ],
+    "transitional": false
+  }
+}

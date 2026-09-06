@@ -210,3 +210,10 @@ class QuoteResponse(BaseModel):
             "rather than a measured frequency."
         ),
     )
+    priced_from_evidence: bool = Field(
+        serialization_alias="pricedFromEvidence",
+        description=(
+            "True when the observed trigger frequency of a comparable training "
+            "cell, not the fitted model, set the probability behind this price."
+        ),
+    )

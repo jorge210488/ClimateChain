@@ -20,7 +20,7 @@
   on 2019-2024, which it never saw, and the synthetic model turns out to have
   under-priced that period by more than four times.
 - **Functional result:** `python scripts/train_rainfall_model.py` retrains
-  `baseline-premium-v2` from `data/rainfall-history-v1.json` in under a second
+  `baseline-premium-v3` from `data/rainfall-history.json` in a few seconds
   and produces the committed artifact and metrics file unchanged.
   `GET /health/ready` now reports `datasetVersion`, `trainingKind`, and
   `transitional` alongside the model version and checksum. `POST /predict`
@@ -61,9 +61,12 @@ New:
 - `ml-service/data/regions.json` — the region registry: eight regions with
   the coordinates they are fetched at, keyed by the canonical form the
   pricing code matches on.
-- `ml-service/data/rainfall-history-v1.json` — the dataset: 8 regions ×
-  10,958 days (1995-01-01 to 2024-12-31), one decimal of millimetres,
-  provenance block, SHA-256 checksum. 351 KB, committed.
+- `ml-service/data/rainfall-history.json` — the dataset: 8 regions ×
+  10,958 days over the thirty most recent complete years (currently
+  1996-01-01 to 2025-12-31, named `rainfall-history-1996-2025` inside), one
+  decimal of millimetres, provenance block, SHA-256 checksum. 351 KB,
+  committed. The filename is stable; the version and checksum inside identify
+  the content.
 - `ml-service/app/data/__init__.py`, `ml-service/app/data/rainfall.py` —
   dataset loader: checksum verification, shape and day-count validation,
   rejection of negatives, missing days, duplicate keys, and non-standard JSON
@@ -186,10 +189,14 @@ Modified:
 - `cd ml-service && python scripts/fetch_rainfall_history.py` — once, on
   2026-09-06, to produce the committed dataset (checksum
   `e04ea058f60108dd02bfa5d21aa7d4e9b62618d11fe7a9148c82a1f6feba21ab`).
+- `cd ml-service && python scripts/fetch_rainfall_history.py` — the refresh,
+  run again on 2026-09-06 after the third review round to roll the window to
+  1996–2025 (dataset checksum
+  `95de0733d62cc2fb5a5c8cce78260932475f479c4751d20dd644a66e1e4444c6`).
 - `cd ml-service && python scripts/train_rainfall_model.py` — the release:
   produces the committed artifact (checksum
-  `6a083c8e91c85e3a6e078f0b856d3a6cd1571e81f4e9efb2f21bcfd628e11a36` at the
-  close of the second review round) and its metrics as one unit.
+  `d0e595a8e0db9e80f231407052d846fe657141ce4a907b4aa25a8892d9966381` at the
+  close of the third review round) and its metrics as one unit.
 - `cd ml-service && python scripts/train_rainfall_model.py --check` — what
   the gate runs: verifies without writing.
 - `cd ml-service && python scripts/stage8_check.py` — the gate.
@@ -204,34 +211,40 @@ Modified:
 
 - `python scripts/stage8_check.py`: **OK.**
   - lint: all checks passed; format: 35 files already formatted.
-  - dataset integrity: `rainfall-history-v1`, 8 regions, 10,958 days,
-    checksum verified, registry consistent.
+  - dataset integrity: `rainfall-history-1996-2025`, 8 regions, 10,958 days,
+    checksum verified, registry consistent, zero complete years behind the
+    latest.
   - training drift: `--check` mode reproduced `baseline-premium-v2` from
     `rainfall-history-v1`, artifact and metrics byte-identical, nothing
     written.
-  - tests: **302 passed** after two review rounds (226 before them).
+  - tests: **330 passed** after three review rounds (226 before them).
   - runtime startup: `/health` 200, `/health/ready` 200 with the v2 checksum
     verified, `/predict` 200 pricing from `baseline-premium-v2`.
 - Holdout metrics (2019-2024, 39,680 windows, from
   `baseline-premium-v2.metrics.json`):
 
-  | Model | Data | Log-loss | Brier | Predicted trigger rate | Observed |
-  | --- | --- | --- | --- | --- | --- |
-  | `baseline-premium-v2` | observed | 0.172695 | 0.053820 | 0.108732 | 0.096951 |
-  | `baseline-premium-v1` | synthetic | 0.28830 | 0.080362 | 0.022092 | 0.096951 |
+  Holdout 2020–2024, 39,680 windows, every archived model scored on the same
+  windows:
 
-  The new model is better on both proper scores and slightly conservative in
-  aggregate. The synthetic model predicted a trigger rate of 2.2% against
-  9.7% observed: it would have collected roughly a quarter of the premium the
-  risk warranted. Per region (log-loss v2 / v1; loaded premium rate against
-  observed): Bogotá 0.137 / 0.189, 0.106 vs 0.086; Buenos Aires 0.260 / 0.466,
-  0.253 vs 0.165; Cartagena 0.202 / 0.326, 0.176 vs 0.114; Lima 0.018 / 0.009,
-  0.020 vs 0.001; Medellín 0.178 / 0.289, 0.204 vs 0.159; Santiago
-  0.185 / 0.276, 0.161 vs 0.066; Sevilla 0.187 / 0.370, 0.131 vs 0.090;
-  Valencia 0.214 / 0.381, 0.123 vs 0.094. Every region's loaded premium covers
-  its observed payouts. Per cell: 11 of the 192 cells with at least fifty
-  holdout windows are under-priced (the synthetic model: most of them), the
-  worst by 0.11.
+  | Model | Data | Log-loss | Brier | Predicted trigger rate | Observed | Cells under-priced with 95% confidence |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | `baseline-premium-v3` | observed, seasonal, evidence floor | 0.164023 | 0.050634 | 0.1241 | 0.1005 | 6 of 448 (chance allows 30) |
+  | `baseline-premium-v2` | observed, region effects | 0.176149 | 0.0551 | 0.107 | 0.1005 | 16 |
+  | `baseline-premium-v1` | synthetic | 0.302228 | 0.0837 | 0.022 | 0.1005 | 167 |
+
+  The current model is better than both on both proper scores and is
+  deliberately conservative in aggregate: the evidence floor only ever raises
+  a price, and the tests bound the margin (predicted minus observed between 0
+  and 0.05). The synthetic model predicted a trigger rate of 2.2% against
+  10.0% observed: it would have collected roughly a quarter of the premium the
+  risk warranted. Per region (loaded premium rate against observed; log-loss):
+  Bogotá 0.123 vs 0.090, 0.128; Buenos Aires 0.278 vs 0.165, 0.257;
+  Cartagena 0.196 vs 0.125, 0.183; Lima 0.020 vs 0.001, 0.018; Medellín
+  0.251 vs 0.154, 0.163; Santiago 0.184 vs 0.074, 0.174; Sevilla 0.148 vs
+  0.099, 0.185; Valencia 0.140 vs 0.096, 0.203. Every region's, every
+  duration's, and every start month's loaded premium covers its observed
+  payouts. Twelve percent of holdout windows were priced from the evidence
+  floor rather than the fitted model.
 - New tests in `tests/test_training_pipeline.py`:
   - Dataset: loads and verifies the committed history; covers exactly the
     registered regions; records where the data came from; looks like real
@@ -379,6 +392,74 @@ A second review of the hardened stage produced eight findings.
   at the close of this round, and `requirements.txt` no longer names the
   removed synthetic build script.
 
+### Third review round
+
+A third review produced five findings. Two were about the model and were
+measured before being answered; three were about the pipeline and were fixed.
+
+- **P1 — the quote ignored the start date.** Confirmed, and the largest
+  actuarial gap the stage had: Sevilla at 30 days and 20 mm observed 0.00 in
+  April and 0.78 in November on the holdout and was priced identically for
+  both, which a product sold by dates cannot survive — it would be bought only
+  for the wet months. Fixed by fitting twelve monthly log-odds offsets per
+  region (`seasonRisk`) on the residuals of the linear model, centred at zero,
+  and applying them at quote time in proportion to the share of the window in
+  each month. `PricingInputs` carries the start date; the runtime refuses to
+  price a seasonal model without it. Holdout log-loss improved from 0.1727 to
+  0.1628 on the previous dataset before anything else changed, and the
+  by-start-month calibration for short windows now covers observed payouts in
+  every month. A 365-day window sees almost no seasonal term, as it should.
+- **P1 — 57% of the grid had no per-cell criterion.** Confirmed: the sample
+  floor of fifty windows excluded every duration of sixty days and above,
+  where the holdout offers 6–36 windows per cell, and 55 of the 66 point
+  under-priced cells lived there — Valencia at 365 days and 30 mm observed
+  6 of 6 against a loaded premium of 0.47. Two answers, both measured. The
+  model side: the cloglog link, per-region threshold slopes, a
+  threshold×duration interaction, and quadratic terms were each fitted and
+  scored; none reached those cells and most made the aggregate worse. What
+  did reach them is the **evidence floor**: the one-sided 95% lower confidence
+  bound of each training cell's observed frequency, applied to every quote
+  that dominates the cell (same region, at least as long, threshold at least
+  as low) — a bound that holds because the true probability is monotone in
+  both, and that twenty-four years support far better than a fitted slope.
+  The criterion side: the sample floor is gone. Every cell is judged by
+  whether the loaded premium falls below the exact Clopper–Pearson lower
+  bound of its observed frequency, so six windows are judged by what six
+  windows can prove (six of six proves 0.607, not 1.0). The acceptance bar is
+  to stay within the number of flags chance alone would raise for a
+  calibrated model — 30 for 448 cells at 95% — because zero is a promise no
+  honest model can make about six years of weather. This release flags 6 (the
+  previous observed one 16, the synthetic 167), all in Valencia and Sevilla
+  at 90–365 days and 30–80 mm, where 2020–2025 was wetter than the training
+  record the floor was built from; the report's risks name them. Long windows
+  are additionally judged pooled by duration, where the sample is real, and
+  every duration's loaded premium covers its observed payouts.
+- **P2 — the refresh was frozen at 2024.** Fixed. The fetch window is now the
+  thirty complete years ending at the most recent complete year at the time
+  of the fetch; the dataset names its range in `datasetVersion` under a stable
+  filename; the split is derived from the dataset (last six complete years
+  held out); and the gate enforces a freshness policy — more than two complete
+  years behind the latest fails it, with the refresh command in the message.
+  The dataset was refreshed to 1996–2025 in this round, so the holdout is now
+  2020–2025 and every archived model is rescored on it.
+- **P2 — the release could publish metrics without the artifact.** Fixed. If
+  the second rename fails, the previous metrics are restored, so the pair on
+  disk stays a pair; a test injects the failure between the two renames. A
+  power loss at exactly that instant is the one case a rollback cannot cover,
+  and the gate catches it because the metrics would no longer match the
+  artifact.
+- **P3 — loader edges.** Fixed: `schemaVersion` must be an integer (`1.0` and
+  `true` are refused), coordinate overflow is a `RainfallDatasetError`, and
+  dates must be spelled `YYYY-MM-DD` in both the dataset and the artifact's
+  `training.dateRange` — `fromisoformat` alone accepts `19950101`.
+
+The runtime grew for the first time in this stage: `PricingInputs` carries a
+start date, `assess_risk` applies the seasonal term and the evidence floor,
+the artifact loader validates `seasonRisk` and `evidenceFloor`, and the
+response carries `pricedFromEvidence`. Older artifacts — the archived v1 and
+v2 — load and price without either term, which is how the comparison on the
+shared holdout is possible.
+
 ### Declined, with reasons
 
 - **P1 — metrics are calibrated against a settlement semantics Stage 10 has
@@ -401,16 +482,23 @@ A second review of the hardened stage produced eight findings.
 
 ## Risks or pending items
 
-- **Lima is still over-predicted, and eleven cells are under-priced.** With
-  per-region effects the Lima holdout rate is 0.015 predicted against 0.001
-  observed — a fortieth of the earlier gap, but still a buyer paying for
-  risk that is not there once above the floor. Eleven of 192 well-sampled
-  cells remain under-priced, the worst (Bogotá, 30 days, 10 mm, triggering
-  84% of the time) by 0.11. Both are the ceiling of a model that is linear in
-  log threshold with a single slope for every region; a per-region threshold
-  slope is the next step and is not expressible in the current artifact
-  contract. It should wait for Stage 10's settlement data, which decides what
-  "trigger" means before it is worth fitting more closely.
+- **Six cells are under-priced with confidence, all in Valencia and Sevilla
+  at long windows.** Valencia at 365 days / 30 and 80 mm, 180 days / 30 and
+  80 mm, 90 days / 80 mm, and Sevilla at 90 days / 30 mm: the holdout years
+  2020–2025 were wetter at those extremes than the 1996–2019 record the
+  evidence floor was built from (the 2024 Valencia DANA is in the holdout).
+  Six flags against a chance allowance of 30 is within what a calibrated
+  model would show, and the margins are small in four of the six, but the
+  direction is consistent with a wetting trend at Mediterranean extremes
+  that a stationary model cannot follow. The evidence floor will absorb it at
+  the next refresh, when those years enter the training record; a trend term
+  is the modelling step beyond that, and should wait for Stage 10's
+  settlement data.
+- **Lima is still over-predicted.** 0.015 predicted against 0.001 observed on
+  the holdout — a buyer paying for risk that is not there once above the
+  minimum premium. The ceiling of a model with one threshold slope for every
+  region; a per-region slope was measured and did not pay for itself
+  elsewhere.
 
 - **Reanalysis is not a rain gauge.** ERA5 is a model constrained by
   observations at ~10 km; local convective extremes can be smoothed relative

@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -33,10 +33,16 @@ PREMIUM_RATE_SCALE = 10**12
 # Features the baseline evaluator can compute. Declared here rather than in the
 # evaluator so loading can reject an artifact the evaluator would choke on:
 # discovering an unknown feature at quote time means readiness reported "ready"
-# for a model that cannot price, which is exactly what fail-fast is for.
-BASELINE_FEATURES = frozenset(
+# for a model that cannot price, which is exactly what fail-fast is for. The
+# required four are the model every artifact has carried; the seasonal term is
+# optional so an older artifact still loads and an artifact that uses it must
+# also carry the offsets it needs.
+REQUIRED_FEATURES = frozenset(
     {"intercept", "log_threshold_mm", "log_duration_days", "region_risk"}
 )
+OPTIONAL_FEATURES = frozenset({"season_risk"})
+BASELINE_FEATURES = REQUIRED_FEATURES | OPTIONAL_FEATURES
+MONTHS_PER_YEAR = 12
 
 # What a `training` block may say the model was fitted to. Anything else is a
 # provenance claim the runtime cannot interpret, and so must not accept.
@@ -88,6 +94,14 @@ class ModelArtifact:
     # frequency anyone counted, and the response says so.
     trained_duration_days: tuple[int, int] | None = None
     trained_threshold_mm: tuple[int, int] | None = None
+    # Twelve monthly log-odds offsets per known region, January first; present
+    # exactly when `season_risk` is a feature.
+    season_risk: dict[str, tuple[float, ...]] = field(default_factory=dict)
+    # Per region: (durationDays, thresholdMm, lower bound of the observed
+    # trigger frequency) for the training cells that proved a floor.
+    evidence_floor: dict[str, tuple[tuple[int, int, float], ...]] = field(
+        default_factory=dict
+    )
 
     @property
     def known_regions(self) -> tuple[str, ...]:
@@ -339,13 +353,13 @@ def load_artifact(path: Path) -> ModelArtifact:
             f"feature contributes once, so a duplicate silently doubles it."
         )
 
-    # Exactly the supported set, in any order. Order is free because features
-    # and coefficients travel together; membership is not, because a missing
-    # feature changes the model without looking like an error, and an unknown
-    # one cannot be computed at all.
-    if set(features) != BASELINE_FEATURES:
-        unknown = sorted(set(features) - BASELINE_FEATURES)
-        missing = sorted(BASELINE_FEATURES - set(features))
+    # The required set plus any of the optional ones, in any order. Order is
+    # free because features and coefficients travel together; membership is
+    # not, because a missing required feature changes the model without
+    # looking like an error, and an unknown one cannot be computed at all.
+    unknown = sorted(set(features) - BASELINE_FEATURES)
+    missing = sorted(REQUIRED_FEATURES - set(features))
+    if unknown or missing:
         raise ModelArtifactError(
             f"Model artifact at {path} does not match the features this service "
             f"evaluates. Unknown: {unknown or 'none'}. Missing: "
@@ -405,6 +419,9 @@ def load_artifact(path: Path) -> ModelArtifact:
         region_risk[normalized] = _require_non_negative_finite(
             value, f"regionRisk[{region}]"
         )
+
+    season_risk = _parse_season_risk(payload, features, region_risk, path)
+    evidence_floor = _parse_evidence_floor(payload, region_risk, path)
 
     # Provenance is optional but, when present, held to the same standard as
     # the rest. A block that claims observed training must carry what makes
@@ -482,6 +499,13 @@ def load_artifact(path: Path) -> ModelArtifact:
                 text = _require_non_empty_string(
                     date_range.get(field), f"training.dateRange.{field}"
                 )
+                # The one spelling the trainer writes; `fromisoformat` alone
+                # would also accept `19950101`.
+                if len(text) != 10 or text[4] != "-" or text[7] != "-":
+                    raise ModelArtifactError(
+                        f"training.dateRange.{field} must be a YYYY-MM-DD calendar "
+                        f"date, got {text!r}"
+                    )
                 try:
                     date.fromisoformat(text)
                 except ValueError as error:
@@ -517,4 +541,124 @@ def load_artifact(path: Path) -> ModelArtifact:
         transitional=transitional,
         trained_duration_days=trained_duration_days,
         trained_threshold_mm=trained_threshold_mm,
+        season_risk=season_risk,
+        evidence_floor=evidence_floor,
     )
+
+
+def _parse_season_risk(
+    payload: dict, features: tuple[str, ...], region_risk: dict[str, float], path: Path
+) -> dict[str, tuple[float, ...]]:
+    """
+    Twelve finite offsets for every known region, or nothing at all.
+
+    Present without the feature is a mismatch, not a nicety: data the evaluator
+    would silently ignore means the file and the model disagree about what the
+    model is.
+    """
+    uses_season = "season_risk" in features
+    if "seasonRisk" not in payload:
+        if uses_season:
+            raise ModelArtifactError(
+                f"Model artifact at {path} lists the season_risk feature but "
+                f"carries no seasonRisk offsets"
+            )
+        return {}
+    if not uses_season:
+        raise ModelArtifactError(
+            f"Model artifact at {path} carries seasonRisk but does not list the "
+            f"season_risk feature; the offsets would never be applied"
+        )
+    raw = payload["seasonRisk"]
+    if not isinstance(raw, dict):
+        raise ModelArtifactError(
+            f"Model artifact at {path} has a seasonRisk that is not a mapping"
+        )
+    offsets: dict[str, tuple[float, ...]] = {}
+    for region, values in raw.items():
+        normalized = (
+            _require_non_empty_string(region, f"seasonRisk key {region!r}")
+            .strip()
+            .lower()
+        )
+        if normalized in offsets:
+            raise ModelArtifactError(
+                f"Model artifact at {path} defines seasonRisk for {normalized!r} "
+                f"more than once"
+            )
+        items = _require_list(values, f"seasonRisk[{region}]")
+        if len(items) != MONTHS_PER_YEAR:
+            raise ModelArtifactError(
+                f"Model artifact at {path}: seasonRisk[{region}] must hold "
+                f"{MONTHS_PER_YEAR} monthly offsets, got {len(items)}"
+            )
+        offsets[normalized] = tuple(
+            _require_finite(item, f"seasonRisk[{region}][{index}]")
+            for index, item in enumerate(items)
+        )
+    if set(offsets) != set(region_risk):
+        raise ModelArtifactError(
+            f"Model artifact at {path}: seasonRisk must cover exactly the regions "
+            f"in regionRisk. Missing: "
+            f"{sorted(set(region_risk) - set(offsets)) or 'none'}. "
+            f"Extra: {sorted(set(offsets) - set(region_risk)) or 'none'}."
+        )
+    return offsets
+
+
+def _parse_evidence_floor(
+    payload: dict, region_risk: dict[str, float], path: Path
+) -> dict[str, tuple[tuple[int, int, float], ...]]:
+    """Per-region (duration, threshold, bound) cells; optional, strict when present."""
+    if "evidenceFloor" not in payload:
+        return {}
+    raw = payload["evidenceFloor"]
+    if not isinstance(raw, dict):
+        raise ModelArtifactError(
+            f"Model artifact at {path} has an evidenceFloor that is not a mapping"
+        )
+    floors: dict[str, tuple[tuple[int, int, float], ...]] = {}
+    for region, cells in raw.items():
+        normalized = (
+            _require_non_empty_string(region, f"evidenceFloor key {region!r}")
+            .strip()
+            .lower()
+        )
+        if normalized not in region_risk:
+            raise ModelArtifactError(
+                f"Model artifact at {path}: evidenceFloor names region "
+                f"{normalized!r}, which regionRisk does not know"
+            )
+        if normalized in floors:
+            raise ModelArtifactError(
+                f"Model artifact at {path} defines evidenceFloor for {normalized!r} "
+                f"more than once"
+            )
+        parsed: list[tuple[int, int, float]] = []
+        seen: set[tuple[int, int]] = set()
+        for index, cell in enumerate(_require_list(cells, f"evidenceFloor[{region}]")):
+            label = f"evidenceFloor[{region}][{index}]"
+            items = _require_list(cell, label)
+            if len(items) != 3:
+                raise ModelArtifactError(
+                    f"{label} must be [durationDays, thresholdMm, bound], got {cell!r}"
+                )
+            duration, threshold, bound = items
+            for name, value in (("durationDays", duration), ("thresholdMm", threshold)):
+                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                    raise ModelArtifactError(
+                        f"{label}: {name} must be a positive integer, got {value!r}"
+                    )
+            probability = _require_finite(bound, f"{label} bound")
+            if not 0.0 <= probability <= 1.0:
+                raise ModelArtifactError(
+                    f"{label} bound must be a probability, got {probability}"
+                )
+            if (duration, threshold) in seen:
+                raise ModelArtifactError(
+                    f"{label} repeats the cell ({duration} days, {threshold} mm)"
+                )
+            seen.add((duration, threshold))
+            parsed.append((duration, threshold, probability))
+        floors[normalized] = tuple(parsed)
+    return floors

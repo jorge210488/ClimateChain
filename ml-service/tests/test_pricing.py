@@ -15,7 +15,7 @@ import pytest
 from app.core.domain import minimum_premium_wei
 from app.core.money import format_wei_to_eth, parse_eth_to_wei
 from app.models.artifact import load_artifact
-from app.models.baseline import PricingInputs, assess_risk
+from app.models.baseline import PricingInputs, assess_risk, month_weights
 from app.services.pricing import coverage_window_days, quote_premium
 from tests.conftest_helpers import ARTIFACT_PATH
 
@@ -234,9 +234,141 @@ class TestRiskAssessment:
                     region=region,
                     rainfall_threshold_mm=threshold,
                     duration_days=365,
+                    start_date=date(2026, 1, 1),
                 ),
             )
             assert 0.0 < assessment.trigger_probability < 1.0
+
+    def test_a_seasonal_model_needs_the_start_date(self, artifact) -> None:
+        # Duration alone no longer identifies the risk; refusing here is what
+        # stops a caller from silently getting the un-seasonal price.
+        with pytest.raises(ValueError, match="start date"):
+            assess_risk(
+                artifact,
+                PricingInputs(
+                    region="sevilla", rainfall_threshold_mm=20, duration_days=30
+                ),
+            )
+
+
+class TestSeasonality:
+    """
+    A product sold by dates must price the dates. Sevilla in April and Sevilla
+    in November are different risks, and a model that charged the same for
+    both would be bought only for the wet months.
+    """
+
+    def _quote(self, artifact, region: str, start: date, days: int, threshold: int):
+        return quote_premium(
+            artifact=artifact,
+            region=region,
+            coverage_eth="1.0",
+            rainfall_threshold_mm=threshold,
+            start_date=start,
+            end_date=start + timedelta(days=days - 1),
+        )
+
+    def test_month_weights_follow_the_calendar(self) -> None:
+        weights = month_weights(date(2026, 3, 20), 30)
+        assert weights[2] == pytest.approx(12 / 30)  # 20..31 March
+        assert weights[3] == pytest.approx(18 / 30)  # 1..18 April
+        assert sum(weights) == pytest.approx(1.0)
+        assert month_weights(date(2026, 1, 1), 365)[0] == pytest.approx(31 / 365)
+
+    def test_the_wet_season_is_dearer_than_the_dry_one(self, artifact) -> None:
+        # Sevilla: autumn rain, dry summers. Same product, same coverage, two
+        # start dates.
+        november = self._quote(artifact, "sevilla", date(2026, 11, 1), 30, 20)
+        july = self._quote(artifact, "sevilla", date(2026, 7, 1), 30, 20)
+        assert november.trigger_probability > july.trigger_probability
+        assert november.premium_wei > july.premium_wei
+
+    def test_a_full_year_is_nearly_season_free(self, artifact) -> None:
+        # Twelve months touch every offset about equally, and the offsets are
+        # centred, so the start date barely matters for an annual policy.
+        january = self._quote(artifact, "sevilla", date(2026, 1, 1), 365, 120)
+        july = self._quote(artifact, "sevilla", date(2026, 7, 1), 365, 120)
+        assert abs(january.trigger_probability - july.trigger_probability) < 0.01
+
+    def test_an_unknown_region_has_no_season(self, artifact) -> None:
+        # Nothing the model can vouch for, so the typical-region price does not
+        # pretend to know when it rains in Atlantis.
+        january = self._quote(artifact, "Atlantis", date(2026, 1, 1), 30, 50)
+        july = self._quote(artifact, "Atlantis", date(2026, 7, 1), 30, 50)
+        assert january.premium_wei == july.premium_wei
+
+
+class TestEvidenceFloor:
+    """
+    The record can prove more than a fitted slope can reach. A 30 mm day in
+    Valencia within any given year is close to certain; the linear model says
+    about half. The floor is the record's lower confidence bound, applied to
+    every quote that dominates the cell it came from.
+    """
+
+    def _assess(self, artifact, region: str, threshold: int, days: int):
+        return assess_risk(
+            artifact,
+            PricingInputs(
+                region=region,
+                rainfall_threshold_mm=threshold,
+                duration_days=days,
+                start_date=date(2026, 1, 1),
+            ),
+        )
+
+    def test_the_record_sets_the_price_where_the_model_falls_short(
+        self, artifact
+    ) -> None:
+        assessment = self._assess(artifact, "valencia", 30, 365)
+        bound = max(
+            p
+            for d, th, p in artifact.evidence_floor["valencia"]
+            if d <= 365 and th >= 30
+        )
+        assert assessment.priced_from_evidence is True
+        assert assessment.trigger_probability == bound > assessment.model_probability
+        # What 24 training years prove at 95%, not the holdout's six-of-six:
+        # the bound is deliberately what the record can stand behind.
+        assert bound > 0.3
+
+    def test_the_floor_only_uses_cells_the_quote_dominates(self, artifact) -> None:
+        # A shorter window at a higher threshold is a smaller risk than every
+        # cell with a longer window and a lower threshold; nothing it does not
+        # dominate may raise its price.
+        assessment = self._assess(artifact, "valencia", 300, 7)
+        dominated = [
+            p
+            for d, th, p in artifact.evidence_floor.get("valencia", ())
+            if d <= 7 and th >= 300
+        ]
+        assert assessment.evidence_floor == (max(dominated) if dominated else 0.0)
+
+    def test_the_price_stays_monotone_with_the_floor(self, artifact) -> None:
+        longer = self._assess(artifact, "valencia", 30, 365).trigger_probability
+        shorter = self._assess(artifact, "valencia", 30, 180).trigger_probability
+        lower_threshold = self._assess(
+            artifact, "valencia", 20, 365
+        ).trigger_probability
+        assert longer >= shorter
+        assert lower_threshold >= longer
+
+    def test_a_dry_quote_is_priced_by_the_model(self, artifact) -> None:
+        assessment = self._assess(artifact, "lima", 300, 7)
+        assert assessment.priced_from_evidence is False
+        assert assessment.trigger_probability == assessment.model_probability
+
+    def test_the_quote_reports_it(self, artifact) -> None:
+        quote = quote_premium(
+            artifact=artifact,
+            region="valencia",
+            coverage_eth="1.0",
+            rainfall_threshold_mm=30,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+        )
+        assert quote.priced_from_evidence is True
+        assert quote.extrapolated is False
 
 
 class TestTrainedDomain:

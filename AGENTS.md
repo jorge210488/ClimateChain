@@ -74,6 +74,9 @@ and fails in CI is usually a platform difference, and the workflows under
   in `--check` mode and fails on drift or on a missing file. To produce a new
   artifact, run `python scripts/train_rainfall_model.py` on purpose and commit
   the artifact and its metrics together; a dataset refresh is a model release.
+  The dataset is a rolling thirty-year window and the gate fails when it is
+  more than two complete years behind the latest — refresh with
+  `python scripts/fetch_rainfall_history.py`, then retrain.
 - **`.env` files are yours and stay local.** Copy from `.env.example`; never
   commit one, never read another person's. No stage so far requires secrets
   for local work.

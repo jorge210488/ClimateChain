@@ -175,7 +175,7 @@ class TestArtifactIntegrity:
     def test_loads_the_built_artifact(self) -> None:
         artifact = load_artifact(ARTIFACT_PATH)
 
-        assert artifact.model_version == "baseline-premium-v2"
+        assert artifact.model_version == "baseline-premium-v3"
         assert artifact.provider == "baseline"
         assert len(artifact.features) == len(artifact.coefficients)
         assert artifact.known_regions
@@ -312,13 +312,15 @@ class TestArtifactIntegrity:
         # cancel to NaN, which survives the logistic and the clamp and only
         # fails when the premium is rounded — as a 500, from an instance
         # readiness had called ready.
-        path = self._rewritten(tmp_path, coefficients=[1e308, -1e308, 1e308, -1e308])
+        path = self._rewritten(
+            tmp_path, coefficients=[1e308, -1e308, 1e308, -1e308, 1e308]
+        )
 
         with pytest.raises(ModelArtifactError, match="not finite"):
             ModelRegistry(path=path, expected_provider="baseline").load()
 
     def test_rejects_a_single_overflowing_coefficient(self, tmp_path) -> None:
-        path = self._rewritten(tmp_path, coefficients=[1e308, 1e308, 1e308, 1e308])
+        path = self._rewritten(tmp_path, coefficients=[1e308] * 5)
 
         with pytest.raises(ModelArtifactError, match="not finite"):
             ModelRegistry(path=path, expected_provider="baseline").load()

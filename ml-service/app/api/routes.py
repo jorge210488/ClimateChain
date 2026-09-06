@@ -139,4 +139,5 @@ def predict(payload: QuoteRequest, request: Request) -> QuoteResponse:
         region_known=quote.region_known,
         floored_to_minimum=quote.floored_to_minimum,
         extrapolated=quote.extrapolated,
+        priced_from_evidence=quote.priced_from_evidence,
     )

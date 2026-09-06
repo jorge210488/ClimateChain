@@ -20,7 +20,9 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.data.rainfall import (
+    MAX_DATASET_AGE_YEARS,
     RainfallDatasetError,
+    dataset_age_years,
     date_at,
     day_index,
     expected_day_count,
@@ -31,9 +33,9 @@ from app.main import create_app
 from app.models.artifact import ModelArtifactError, compute_checksum, load_artifact
 from tests.conftest_helpers import ARTIFACT_PATH, MODULE_ROOT
 
-DATASET_PATH = MODULE_ROOT / "data/rainfall-history-v1.json"
+DATASET_PATH = MODULE_ROOT / "data/rainfall-history.json"
 REGIONS_PATH = MODULE_ROOT / "data/regions.json"
-METRICS_PATH = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.metrics.json"
+METRICS_PATH = MODULE_ROOT / "app/models/artifacts/baseline-premium-v3.metrics.json"
 PREVIOUS_PATH = MODULE_ROOT / "app/models/artifacts/archive/baseline-premium-v1.json"
 
 
@@ -64,7 +66,20 @@ def fetcher():
 
 class TestDataset:
     def test_loads_and_verifies_the_committed_history(self, dataset) -> None:
-        assert dataset.dataset_version == "rainfall-history-v1"
+        # The dataset names its own range, and the range is the rolling
+        # thirty-year window the fetcher is defined by.
+        assert dataset.dataset_version == (
+            f"rainfall-history-{dataset.start.year}-{dataset.end.year}"
+        )
+        assert dataset.start == date(dataset.end.year - 29, 1, 1)
+        assert (dataset.end.month, dataset.end.day) == (12, 31)
+
+    def test_is_fresh_enough_to_price_from(self, dataset) -> None:
+        # The freshness policy, as a test: this fails on purpose once the
+        # dataset is more than MAX_DATASET_AGE_YEARS complete years behind the
+        # most recent one, so a refresh is a planned act rather than a slow
+        # drift nobody noticed. Refresh with scripts/fetch_rainfall_history.py.
+        assert dataset_age_years(dataset, date.today()) <= MAX_DATASET_AGE_YEARS
         assert dataset.days == expected_day_count(dataset.start, dataset.end)
         assert len(dataset.regions) == 8
         for series in dataset.regions.values():
@@ -228,6 +243,21 @@ class TestRegionRegistry:
 class TestFetchValidation:
     """The fetch script's own checks, exercised on fabricated payloads. No network."""
 
+    def test_the_window_rolls_with_the_calendar(self, fetcher) -> None:
+        # Thirty complete years ending at the last complete one, so a refresh
+        # refreshes the evidence rather than re-downloading the same decades.
+        assert fetcher.window_for(date(2026, 9, 6)) == (
+            date(1996, 1, 1),
+            date(2025, 12, 31),
+        )
+        assert fetcher.window_for(date(2027, 1, 1)) == (
+            date(1997, 1, 1),
+            date(2026, 12, 31),
+        )
+        assert (
+            f"rainfall-history-{fetcher.START.year}-{fetcher.END.year}"
+        ) == fetcher.DATASET_VERSION
+
     @staticmethod
     def _region() -> Region:
         return Region(
@@ -319,7 +349,7 @@ class TestFetchValidation:
         series = {"lima": [0.0] * expected_day_count(fetcher.START, fetcher.END)}
         payload = fetcher.build_payload(regions, series)
 
-        assert payload["datasetVersion"] == "rainfall-history-v1"
+        assert payload["datasetVersion"] == fetcher.DATASET_VERSION
         assert payload["days"] == len(series["lima"])
         assert payload["regions"]["lima"]["country"] == "PE"
         assert payload["checksum"] == compute_checksum(payload)
@@ -379,10 +409,16 @@ class TestFetchValidation:
 
 class TestTraining:
     def test_split_is_by_calendar_and_disjoint(self, trainer, dataset) -> None:
+        # The holdout is the most recent complete years, derived from the
+        # dataset, so a refreshed dataset moves the split with it.
         train, test = trainer.make_splits(dataset)
         assert train.end_index == test.start_index
-        assert date_at(dataset, train.end_index - 1) == trainer.TRAIN_END
-        assert date_at(dataset, test.start_index) == trainer.TEST_START
+        assert test.end_index == dataset.days
+        train_end = date_at(dataset, train.end_index - 1)
+        assert (train_end.month, train_end.day) == (12, 31)
+        assert date_at(dataset, test.start_index) == date(
+            dataset.end.year - trainer.HOLDOUT_YEARS + 1, 1, 1
+        )
 
     def test_windows_do_not_overlap(self, trainer, dataset) -> None:
         train, _ = trainer.make_splits(dataset)
@@ -453,20 +489,36 @@ class TestTraining:
         assert holdout["windows"] > 10_000
         assert 0 < holdout["logLoss"] < 1
         assert 0 < holdout["brier"] < 0.25
-        # Calibration in aggregate: the model predicts about as many triggers
-        # as actually happened in six years it never saw.
-        assert (
-            abs(holdout["predictedTriggerRate"] - holdout["observedTriggerRate"]) < 0.02
-        )
+        # Calibration in aggregate: never below what happened in six years the
+        # fit never saw, and not far above it. Slightly above is by design —
+        # the evidence floor only ever raises a price — and the margin is
+        # bounded so conservatism cannot quietly become over-charging.
+        gap = holdout["predictedTriggerRate"] - holdout["observedTriggerRate"]
+        assert 0 <= gap < 0.05
+
+    @staticmethod
+    def _previous(metrics: dict, kind: str) -> dict:
+        matching = [m for m in metrics["previousModels"] if m["trainingKind"] == kind]
+        assert matching, kind
+        return matching[-1]
 
     def test_beats_the_synthetic_model_on_the_same_holdout(self) -> None:
         # The falsifiable claim behind this stage: real data prices real risk
         # better than invented data did. Scored by the same evaluator, on the
         # same windows, so the comparison is between models and nothing else.
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        holdout, previous = metrics["holdout"], metrics["previousModel"]
-        assert previous is not None
-        assert previous["trainingKind"] == "synthetic"
+        holdout = metrics["holdout"]
+        synthetic = self._previous(metrics, "synthetic")
+        assert holdout["logLoss"] < synthetic["logLoss"]
+        assert holdout["brier"] < synthetic["brier"]
+
+    def test_beats_the_last_observed_release_on_the_same_holdout(self) -> None:
+        # The comparison that matters once a real model exists: a new release
+        # must improve on the one it replaces, on the same windows.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        holdout = metrics["holdout"]
+        previous = self._previous(metrics, "observed")
+        assert previous["modelVersion"] != metrics["modelVersion"]
         assert holdout["logLoss"] < previous["logLoss"]
         assert holdout["brier"] < previous["brier"]
 
@@ -474,8 +526,9 @@ class TestTraining:
         # Recorded because it is the reason Stage 08 exists, not merely a score:
         # the placeholder would have predicted far fewer payouts than occurred.
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        holdout, previous = metrics["holdout"], metrics["previousModel"]
-        assert previous["predictedTriggerRate"] < holdout["observedTriggerRate"] / 2
+        holdout = metrics["holdout"]
+        synthetic = self._previous(metrics, "synthetic")
+        assert synthetic["predictedTriggerRate"] < holdout["observedTriggerRate"] / 2
 
     def test_artifact_metrics_match_the_metrics_file(self) -> None:
         artifact = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
@@ -564,7 +617,29 @@ class TestTraining:
             sum(r["windows"] for r in by_region.values())
             == (metrics["holdout"]["windows"])
         )
-        assert set(metrics["previousModel"]["byRegion"]) == set(by_region)
+        for previous in metrics["previousModels"]:
+            assert set(previous["byRegion"]) == set(by_region)
+
+    def test_every_duration_is_solvent_including_the_long_ones(self) -> None:
+        # Long windows have few holdout windows per cell, so they are judged
+        # pooled across regions and thresholds, where the sample is real: for
+        # every duration in the grid, charged must cover paid.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        by_duration = metrics["holdout"]["byDuration"]
+        assert set(by_duration) == {"7", "14", "30", "60", "90", "180", "365"}
+        for duration, scores in by_duration.items():
+            assert scores["loadedPremiumRate"] >= scores["observedTriggerRate"], (
+                duration
+            )
+
+    def test_every_start_month_is_priced_at_or_above_what_happened(self) -> None:
+        # Seasonality, judged where it bites: windows of a month or less,
+        # grouped by the month they start in. Charged must cover paid in each.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        by_month = metrics["holdout"]["byStartMonth"]
+        assert set(by_month) == {str(m) for m in range(1, 13)}
+        for month, scores in by_month.items():
+            assert scores["loadedPremiumRate"] >= scores["observedTriggerRate"], month
 
     def test_loaded_premiums_cover_observed_payouts_in_every_region(self) -> None:
         # The risk-acceptance policy, stated where it is enforced: over the
@@ -577,29 +652,53 @@ class TestTraining:
         for key, region in metrics["holdout"]["byRegion"].items():
             assert region["loadedPremiumRate"] >= region["observedTriggerRate"], key
 
-    def test_cell_level_underpricing_is_named_and_bounded(self) -> None:
-        # A region can hide one duration or threshold priced badly behind the
-        # rest, so every grid cell is scored and the worst are listed by name.
-        # The bound below is a tripwire, not a solvency guarantee: it is the
-        # current model's worst sampled deficit (0.113, Bogotá at 30 days and
-        # 10 mm, a cell that triggers 84% of the time) rounded up, so a
-        # refresh that makes any cell materially worse fails here loudly.
+    def test_cells_are_judged_by_what_their_sample_can_prove(self) -> None:
+        # Every grid cell, including the long windows with six holdout
+        # observations: a cell is under-priced with confidence when the loaded
+        # premium is below the one-sided 95% lower bound of its observed
+        # frequency. Six of six proves 0.607, not 1.0, and the criterion says
+        # so. The acceptance policy is to stay within what chance alone would
+        # flag for a calibrated model — with 448 cells at 95%, about 22, and
+        # 30 as the upper bound — because zero is a promise no honest model can
+        # make about six years of weather.
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
         cells = metrics["holdout"]["cells"]
         assert cells["total"] == 8 * 7 * 8
-        assert cells["sampleFloor"] == 50
-        assert cells["underpricedSampled"] <= cells["underpriced"]
-        worst = cells["worstUnderpriced"]
-        assert worst == sorted(worst, key=lambda c: c["deficit"], reverse=True)
-        assert all(c["windows"] >= cells["sampleFloor"] for c in worst)
-        assert worst[0]["deficit"] < 0.15
-        # Fewer than one sampled cell in ten under-priced; the synthetic model
-        # under-priced most of them.
-        assert cells["underpricedSampled"] < cells["sampled"] / 10
+        assert cells["confidence"] == 0.95
+        assert 20 <= cells["chanceAllowance"] <= 35
+        assert cells["underpricedWithConfidence"] <= cells["chanceAllowance"]
+        assert cells["withinChanceAllowance"] is True
+        listed = cells["underpricedWithConfidenceCells"]
+        assert len(listed) == cells["underpricedWithConfidence"]
+        for cell in listed:
+            assert cell["loadedPremiumRate"] < cell["observedLowerBound"]
+            assert cell["observedLowerBound"] <= cell["observedTriggerRate"]
+        # The criterion has teeth: the synthetic model fails it by an order of
+        # magnitude, and this release flags fewer cells than the one before.
+        synthetic = self._previous(metrics, "synthetic")
         assert (
-            metrics["previousModel"]["cells"]["underpricedSampled"]
-            > (cells["underpricedSampled"])
+            synthetic["cells"]["underpricedWithConfidence"]
+            > (synthetic["cells"]["chanceAllowance"])
         )
+        previous = self._previous(metrics, "observed")
+        assert (
+            cells["underpricedWithConfidence"]
+            < (previous["cells"]["underpricedWithConfidence"])
+        )
+
+    def test_the_confidence_bound_is_exact(self, trainer) -> None:
+        # Six of six at 95%: the largest p for which six straight triggers are
+        # still a 5% event is 0.05 ** (1/6).
+        assert trainer.binomial_lower_bound(6, 6, 0.95) == pytest.approx(
+            0.05 ** (1 / 6), abs=1e-6
+        )
+        assert trainer.binomial_lower_bound(0, 10, 0.95) == 0.0
+        assert 0 < trainer.binomial_lower_bound(3, 12, 0.95) < 3 / 12
+        assert trainer.binomial_lower_bound(500, 1000, 0.95) == pytest.approx(
+            0.474, abs=0.002
+        )
+        # And the chance allowance: 448 trials at 5% has mean 22.4.
+        assert trainer.binomial_upper_quantile(448, 0.05, 0.95) == 30
 
     def test_beats_the_synthetic_model_in_every_region_with_measurable_risk(
         self,
@@ -608,14 +707,44 @@ class TestTraining:
         # better. Lima is excluded on purpose and tested next: its observed
         # rate is near zero and the model family cannot reach it.
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        holdout, previous = metrics["holdout"], metrics["previousModel"]
+        holdout = metrics["holdout"]
+        synthetic = self._previous(metrics, "synthetic")
         compared = 0
         for key, region in holdout["byRegion"].items():
             if region["observedTriggerRate"] < 0.01:
                 continue
-            assert region["logLoss"] < previous["byRegion"][key]["logLoss"], key
+            assert region["logLoss"] < synthetic["byRegion"][key]["logLoss"], key
             compared += 1
         assert compared >= 7
+
+    def test_a_failed_second_publish_restores_the_metrics(
+        self, tmp_path, trainer, monkeypatch
+    ) -> None:
+        # The pair on disk stays a pair: if the artifact cannot be moved into
+        # place after the metrics were, the metrics go back.
+        good = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        out = tmp_path / "model.json"
+        met = tmp_path / "model.metrics.json"
+        trainer.release(good, metrics, out, met)
+        before = (out.read_bytes(), met.read_bytes())
+
+        real_replace = trainer.os.replace
+        moves: list[str] = []
+
+        def flaky_replace(source, destination):
+            moves.append(str(destination))
+            if len(moves) == 2:
+                raise OSError("disk went away between the two renames")
+            return real_replace(source, destination)
+
+        monkeypatch.setattr(trainer.os, "replace", flaky_replace)
+        newer = dict(metrics, note="newer")
+        with pytest.raises(OSError):
+            trainer.release(good, newer, out, met)
+
+        assert (out.read_bytes(), met.read_bytes()) == before
+        assert not list(tmp_path.glob("*.tmp"))
 
     def test_the_driest_region_errs_on_the_safe_side(self) -> None:
         # Lima: a known limitation, recorded in the stage report. The model
@@ -646,7 +775,9 @@ class TestProvenanceInTheRuntime:
         artifact = load_artifact(ARTIFACT_PATH)
         assert artifact.training_kind == "observed"
         assert artifact.transitional is False
-        assert artifact.dataset_version == "rainfall-history-v1"
+        assert artifact.dataset_version == (
+            load_rainfall_dataset(DATASET_PATH).dataset_version
+        )
 
     def test_archived_synthetic_artifact_still_loads_and_says_so(self) -> None:
         # Kept for the comparison, and honest about what it is.
@@ -664,7 +795,10 @@ class TestProvenanceInTheRuntime:
         )
         with TestClient(create_app(settings)) as client:
             body = client.get("/health/ready").json()["model"]
-        assert body["datasetVersion"] == "rainfall-history-v1"
+        assert (
+            body["datasetVersion"]
+            == load_rainfall_dataset(DATASET_PATH).dataset_version
+        )
         assert body["trainingKind"] == "observed"
         assert body["transitional"] is False
 
@@ -745,6 +879,63 @@ class TestProvenanceInTheRuntime:
         artifact = load_artifact(ARTIFACT_PATH)
         assert artifact.trained_duration_days == (7, 365)
         assert artifact.trained_threshold_mm == (10, 300)
+
+    def test_the_archived_observed_release_still_loads_without_a_season(self) -> None:
+        # The previous observed model predates the seasonal term and the
+        # evidence floor; it loads, prices without them, and says what it is.
+        previous = load_artifact(
+            MODULE_ROOT / "app/models/artifacts/archive/baseline-premium-v2.json"
+        )
+        assert previous.training_kind == "observed"
+        assert "season_risk" not in previous.features
+        assert previous.season_risk == {}
+        assert previous.evidence_floor == {}
+
+    @pytest.mark.parametrize(
+        ("mutate", "expected"),
+        [
+            (lambda p: p.pop("seasonRisk"), "carries no seasonRisk"),
+            (
+                lambda p: (
+                    p.__setitem__("features", p["features"][:4]),
+                    p.__setitem__("coefficients", p["coefficients"][:4]),
+                ),
+                "does not list the season_risk feature",
+            ),
+            (lambda p: p["seasonRisk"]["lima"].pop(), "12 monthly offsets"),
+            (lambda p: p["seasonRisk"].pop("lima"), "cover exactly the regions"),
+            (lambda p: p["seasonRisk"]["lima"].__setitem__(0, "0.1"), "JSON number"),
+            (
+                lambda p: p["evidenceFloor"].__setitem__("atlantis", [[7, 10, 0.5]]),
+                "does not know",
+            ),
+            (
+                lambda p: p["evidenceFloor"]["valencia"].append([7, 10, 1.5]),
+                "must be a probability",
+            ),
+            (
+                lambda p: p["evidenceFloor"]["valencia"].append([0, 10, 0.5]),
+                "positive integer",
+            ),
+            (
+                lambda p: p["evidenceFloor"]["valencia"].append(
+                    list(p["evidenceFloor"]["valencia"][0])
+                ),
+                "repeats the cell",
+            ),
+        ],
+    )
+    def test_rejects_malformed_season_or_evidence(
+        self, tmp_path, mutate, expected
+    ) -> None:
+        payload = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        mutate(payload)
+        payload["checksum"] = compute_checksum(payload)
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ModelArtifactError, match=expected):
+            load_artifact(path)
 
 
 class TestDeployedProfiles:

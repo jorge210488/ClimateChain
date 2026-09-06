@@ -25,7 +25,7 @@ from pathlib import Path
 MODULE_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
 BOOT_TIMEOUT_SECONDS = 45
-ARTIFACT_PATH = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.json"
+ARTIFACT_PATH = MODULE_ROOT / "app/models/artifacts/baseline-premium-v3.json"
 
 
 def reserve_port() -> int:

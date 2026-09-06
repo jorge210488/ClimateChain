@@ -40,6 +40,10 @@ class Quote:
     # fitted on. The number is still the model's best estimate; it is just not
     # one backed by a frequency anybody counted.
     extrapolated: bool
+    # True when the training record, not the fitted model, set the
+    # probability: the model's own estimate fell below what the observed
+    # trigger frequency of a dominated grid cell proves with confidence.
+    priced_from_evidence: bool
     model_version: str
 
 
@@ -80,6 +84,7 @@ def quote_premium(
             region=region,
             rainfall_threshold_mm=rainfall_threshold_mm,
             duration_days=duration_days,
+            start_date=start_date,
         ),
     )
 
@@ -119,5 +124,6 @@ def quote_premium(
         extrapolated=not artifact.is_within_trained_domain(
             duration_days, rainfall_threshold_mm
         ),
+        priced_from_evidence=assessment.priced_from_evidence,
         model_version=artifact.model_version,
     )

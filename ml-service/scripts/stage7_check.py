@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.json"
+ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v3.json"
 
 
 def run(label: str, command: list[str]) -> None:

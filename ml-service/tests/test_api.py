@@ -99,7 +99,7 @@ class TestHealth:
         body = response.json()
         assert body["status"] == "ready"
         assert body["model"]["loaded"] is True
-        assert body["model"]["modelVersion"] == "baseline-premium-v2"
+        assert body["model"]["modelVersion"] == "baseline-premium-v3"
         # Which model, not just whether one is loaded: during an incident the
         # useful question is whether this instance is running the current one.
         assert len(body["model"]["checksum"]) == 64
@@ -145,8 +145,24 @@ class TestPredict:
             "endDate",
             "modelVersion",
             "extrapolated",
+            "pricedFromEvidence",
         ):
             assert field in body
+
+    def test_says_when_the_record_rather_than_the_model_set_the_price(
+        self, client: TestClient
+    ) -> None:
+        body = client.post(
+            "/predict",
+            json=self._request(
+                region="valencia",
+                rainfallThresholdMm=30,
+                startDate="2026-01-01",
+                endDate="2026-12-31",
+            ),
+        ).json()
+        assert body["pricedFromEvidence"] is True
+        assert body["triggerProbability"] > 0.3
 
     def test_premium_wei_is_a_string(self, client: TestClient) -> None:
         # Wei for a large coverage exceeds what a JSON number survives; the

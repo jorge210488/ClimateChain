@@ -48,15 +48,30 @@ from app.data.rainfall import (  # noqa: E402
 from app.data.regions import Region, load_region_registry  # noqa: E402
 from app.models.artifact import compute_checksum  # noqa: E402
 
-DATASET_VERSION = "rainfall-history-v1"
-DEFAULT_OUTPUT = MODULE_ROOT / "data" / f"{DATASET_VERSION}.json"
+DEFAULT_OUTPUT = MODULE_ROOT / "data" / "rainfall-history.json"
 REGIONS_PATH = MODULE_ROOT / "data" / "regions.json"
 
-# Thirty complete years. Long enough that a 300 mm day — rare almost everywhere
-# — appears often enough to estimate, and ending on a year boundary so the
-# time-based split in training falls on whole years.
-START = date(1995, 1, 1)
-END = date(2024, 12, 31)
+# Thirty complete years, ending at the most recent complete calendar year at
+# the time of the fetch. Long enough that a 300 mm day — rare almost everywhere
+# — appears often enough to estimate; whole years so the time-based split in
+# training falls on year boundaries; and rolling, so a refresh actually
+# refreshes the evidence instead of re-downloading the same decades. The
+# dataset names its own range in `datasetVersion`, and the gate fails when the
+# range is older than the freshness policy allows (see app/data/rainfall.py).
+YEARS = 30
+
+
+def last_complete_year(today: date) -> int:
+    return today.year - 1
+
+
+def window_for(today: date) -> tuple[date, date]:
+    end_year = last_complete_year(today)
+    return date(end_year - YEARS + 1, 1, 1), date(end_year, 12, 31)
+
+
+START, END = window_for(datetime.now(UTC).date())
+DATASET_VERSION = f"rainfall-history-{START.year}-{END.year}"
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 VARIABLE = "precipitation_sum"

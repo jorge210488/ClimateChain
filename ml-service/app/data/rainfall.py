@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -30,6 +31,18 @@ SUPPORTED_DATASET_SCHEMA_VERSION = 1
 # move every region's risk. Kept generous rather than tuned to any dataset so
 # the bound has a physical meaning, not a statistical one.
 MAX_PLAUSIBLE_DAILY_MM = 2000.0
+
+# The freshness policy. A dataset whose last complete year is older than this
+# many years behind the current one no longer describes the climate a deployed
+# model prices into, and the gate says so rather than letting the evidence age
+# silently. Two, not one, so the refresh is a planned act each year and not a
+# CI failure on every first of January.
+MAX_DATASET_AGE_YEARS = 2
+
+# Dates are written and read in one spelling. `date.fromisoformat` also accepts
+# `19950101` on recent Pythons; the producer never writes that, so a reader
+# that accepted it would be lying about the contract.
+CALENDAR_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 # What a dataset must say about where it came from. Provenance is part of the
 # data, and a source that cannot be named is a source that cannot be audited.
@@ -98,12 +111,24 @@ def _reject_non_standard_constant(name: str) -> object:
     raise ValueError(f"{name} is not valid JSON")
 
 
+def _calendar_date(value: object) -> date:
+    """Parses exactly the `YYYY-MM-DD` spelling the producer writes."""
+    if not isinstance(value, str) or not CALENDAR_DATE.fullmatch(value):
+        raise ValueError(f"{value!r} is not a YYYY-MM-DD calendar date")
+    return date.fromisoformat(value)
+
+
 def _coordinate(value: object, label: str, limit: float) -> float:
     # `bool` is an `int`, so `true` would otherwise read as latitude 1.0; and
     # `float("12")` would accept a string the fetcher never writes.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RainfallDatasetError(f"Rainfall dataset at {label} must be a number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise RainfallDatasetError(
+            f"Rainfall dataset at {label} is too large to represent as a number"
+        ) from error
     if not math.isfinite(number) or abs(number) > limit:
         raise RainfallDatasetError(
             f"Rainfall dataset at {label} must be finite and within ±{limit:g}"
@@ -150,12 +175,16 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
         )
 
     schema_version = payload["schemaVersion"]
-    if isinstance(schema_version, bool) or schema_version != (
-        SUPPORTED_DATASET_SCHEMA_VERSION
+    # An integer, exactly: `1.0 == 1` and `True == 1` in Python, and neither is
+    # a schema version anyone wrote.
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != SUPPORTED_DATASET_SCHEMA_VERSION
     ):
         raise RainfallDatasetError(
             f"Rainfall dataset at {path} declares schemaVersion={schema_version!r}, "
-            f"but this loader reads version {SUPPORTED_DATASET_SCHEMA_VERSION}"
+            f"but this loader reads integer version {SUPPORTED_DATASET_SCHEMA_VERSION}"
         )
 
     expected = compute_checksum(payload)
@@ -186,8 +215,8 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
             )
 
     try:
-        start = date.fromisoformat(payload["dateRange"]["start"])
-        end = date.fromisoformat(payload["dateRange"]["end"])
+        start = _calendar_date(payload["dateRange"]["start"])
+        end = _calendar_date(payload["dateRange"]["end"])
     except (KeyError, TypeError, ValueError) as error:
         raise RainfallDatasetError(
             f"Rainfall dataset at {path} has an invalid dateRange: {error}"
@@ -305,3 +334,13 @@ def day_index(dataset: RainfallDataset, when: date) -> int:
 def date_at(dataset: RainfallDataset, index: int) -> date:
     """Calendar date at a series position."""
     return dataset.start + timedelta(days=index)
+
+
+def dataset_age_years(dataset: RainfallDataset, today: date) -> int:
+    """
+    How many complete years the dataset is behind the last complete one.
+
+    Zero means it ends at the most recent complete calendar year; the gate
+    refuses anything above `MAX_DATASET_AGE_YEARS`.
+    """
+    return (today.year - 1) - dataset.end.year

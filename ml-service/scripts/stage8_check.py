@@ -32,20 +32,29 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODULE_ROOT))
 
-from app.data.rainfall import RainfallDatasetError, load_rainfall_dataset  # noqa: E402
+from app.data.rainfall import (  # noqa: E402
+    MAX_DATASET_AGE_YEARS,
+    RainfallDatasetError,
+    dataset_age_years,
+    load_rainfall_dataset,
+)
 from app.data.regions import RegionRegistryError, load_region_registry  # noqa: E402
 from app.models.artifact import ModelArtifactError, load_artifact  # noqa: E402
 
-DATASET = MODULE_ROOT / "data/rainfall-history-v1.json"
+DATASET = MODULE_ROOT / "data/rainfall-history.json"
 REGIONS = MODULE_ROOT / "data/regions.json"
-ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.json"
-METRICS = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.metrics.json"
-PREVIOUS = MODULE_ROOT / "app/models/artifacts/archive/baseline-premium-v1.json"
+ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v3.json"
+METRICS = MODULE_ROOT / "app/models/artifacts/baseline-premium-v3.metrics.json"
+ARCHIVE = MODULE_ROOT / "app/models/artifacts/archive"
+# Every superseded model, scored on the same holdout as the current one: the
+# synthetic placeholder and the last observed release.
+EXPECTED_ARCHIVE = ("baseline-premium-v1.json", "baseline-premium-v2.json")
 
 
 def run(label: str, command: list[str]) -> None:
@@ -82,10 +91,21 @@ def check_dataset() -> None:
                 f"({region.latitude}, {region.longitude}). Refetch."
             )
 
+    # Freshness is part of integrity: a dataset can be perfectly intact and
+    # describe a climate the model no longer prices into.
+    age = dataset_age_years(dataset, datetime.now(UTC).date())
+    if age > MAX_DATASET_AGE_YEARS:
+        raise SystemExit(
+            f"stage8:check FAILED: the dataset ends in {dataset.end.year}, "
+            f"{age} complete years behind the most recent one; the policy allows "
+            f"{MAX_DATASET_AGE_YEARS}. Refresh with "
+            "`python scripts/fetch_rainfall_history.py`, retrain, and commit both."
+        )
+
     print(
         f"{dataset.dataset_version}: {len(dataset.regions)} regions, "
         f"{dataset.days} days ({dataset.start}..{dataset.end}), checksum verified, "
-        f"registry consistent."
+        f"registry consistent, {age} complete year(s) behind the latest."
     )
 
 
@@ -98,9 +118,12 @@ def check_training_drift() -> None:
                 "The gate does not create artifacts; produce it deliberately with "
                 "`python scripts/train_rainfall_model.py` and commit it."
             )
-    if not PREVIOUS.is_file():
+    missing_archive = [
+        name for name in EXPECTED_ARCHIVE if not (ARCHIVE / name).is_file()
+    ]
+    if missing_archive:
         raise SystemExit(
-            "stage8:check FAILED: the archived previous artifact is missing, so "
+            f"stage8:check FAILED: archived artifacts missing: {missing_archive}; "
             "the holdout comparison cannot be reproduced."
         )
 
@@ -143,12 +166,16 @@ def check_training_drift() -> None:
 
     metrics = json.loads(METRICS.read_text(encoding="utf-8"))
     holdout = metrics["holdout"]
-    previous = metrics["previousModel"]
+    previous = ", ".join(
+        f"{model['modelVersion']} logLoss={model['logLoss']} "
+        f"underpriced={model['cells']['underpricedWithConfidence']}"
+        for model in metrics["previousModels"]
+    )
     print(
         f"Retrained {artifact.model_version} from {artifact.dataset_version}: "
         f"byte-identical. Holdout logLoss={holdout['logLoss']} "
-        f"brier={holdout['brier']} (previous {previous['modelVersion']}: "
-        f"logLoss={previous['logLoss']} brier={previous['brier']})."
+        f"brier={holdout['brier']}, cells under-priced with confidence="
+        f"{holdout['cells']['underpricedWithConfidence']} (previous: {previous})."
     )
 
 

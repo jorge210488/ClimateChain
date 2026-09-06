@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     model_provider: str = Field(default="baseline", alias="MODEL_PROVIDER")
     model_path: Path = Field(
-        default=Path("app/models/artifacts/baseline-premium-v2.json"),
+        default=Path("app/models/artifacts/baseline-premium-v3.json"),
         alias="MODEL_PATH",
     )
     # The one exception to the deployed-profile rule that observed models only
