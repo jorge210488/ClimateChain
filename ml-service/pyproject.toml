@@ -39,4 +39,9 @@ filterwarnings = [
     # a DeprecationWarning subclass, and naming the wrong one silently fails to
     # match rather than erroring.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # anyio 4.15 deprecated the `anyio.abc.BlockingPortal` alias; Starlette
+    # 1.6 still imports it at module load, so `starlette.testclient` cannot be
+    # imported without the notice. Third-party, test-only, and nothing this
+    # code calls. Drop when Starlette's floor moves past the alias.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
 ]
