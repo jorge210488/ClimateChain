@@ -51,7 +51,7 @@ backend gate whenever the contracts change.
 | `contracts/` | `npm run stage4:check` | Needs Slither (`pip install slither-analyzer`) |
 | `backend/` | `npm run stage6:check` | Needs a local node: see `docs/runbooks/local-stack.md` |
 | `backend/` (no chain) | `npm run stage5:check` | The chain-free subset |
-| `ml-service/` | `python scripts/stage7_check.py` | Rebuilds the model artifact and fails on drift |
+| `ml-service/` | `python scripts/stage8_check.py` | Verifies the dataset, retrains the model artifact and fails on drift |
 
 CI runs the same gates on every push to `main`; a change that passes locally
 and fails in CI is usually a platform difference, and the workflows under

@@ -175,7 +175,7 @@ class TestArtifactIntegrity:
     def test_loads_the_built_artifact(self) -> None:
         artifact = load_artifact(ARTIFACT_PATH)
 
-        assert artifact.model_version == "baseline-premium-v1"
+        assert artifact.model_version == "baseline-premium-v2"
         assert artifact.provider == "baseline"
         assert len(artifact.features) == len(artifact.coefficients)
         assert artifact.known_regions

@@ -27,6 +27,12 @@ class ModelStatusResponse(BaseModel):
     provider: str | None = None
     source_path: str = Field(alias="sourcePath")
     checksum: str | None = None
+    # Provenance. `transitional` is the one an operator must read: true means
+    # the loaded model is the synthetic placeholder and must not price real
+    # risk, however healthy the process looks.
+    dataset_version: str | None = Field(default=None, alias="datasetVersion")
+    training_kind: str | None = Field(default=None, alias="trainingKind")
+    transitional: bool = False
     reason: str | None = Field(
         default=None,
         description="Why the model is unavailable; absent when it is loaded.",

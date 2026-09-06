@@ -8,8 +8,9 @@ a shell or a make dependency.
 Steps, in the order a failure is cheapest to diagnose:
 
 1. Lint and format, so style failures do not hide behind test output.
-2. Rebuild the model artifact and fail on drift, proving the committed file is
-   the one the script produces — the same guarantee the contracts' ABI drift
+2. Retrain the model artifact from the committed dataset and fail on drift,
+   proving the committed file is the one the script produces — the same
+   guarantee the contracts' ABI drift
    gate provides.
 3. Tests, including the contract checks against the backend's published schema.
 4. A real startup, because a service that imports cleanly and cannot boot has
@@ -26,7 +27,7 @@ import sys
 from pathlib import Path
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v1.json"
+ARTIFACT = MODULE_ROOT / "app/models/artifacts/baseline-premium-v2.json"
 
 
 def run(label: str, command: list[str]) -> None:
@@ -41,7 +42,7 @@ def check_artifact_drift() -> None:
     before = ARTIFACT.read_bytes() if ARTIFACT.is_file() else None
 
     result = subprocess.run(
-        [sys.executable, "scripts/build_baseline_model.py"],
+        [sys.executable, "scripts/train_rainfall_model.py"],
         cwd=MODULE_ROOT,
         capture_output=True,
         text=True,
@@ -59,7 +60,7 @@ def check_artifact_drift() -> None:
     if before != after:
         raise SystemExit(
             "stage7:check FAILED: the committed model artifact does not match "
-            "what scripts/build_baseline_model.py produces. Commit the rebuilt "
+            "what scripts/train_rainfall_model.py produces. Commit the rebuilt "
             "artifact, or revert the change to the script."
         )
     print("Committed artifact matches its build script.")

@@ -68,6 +68,15 @@ class ModelArtifact:
     premium_loading: float
     source_path: Path
     checksum: str
+    # Provenance, surfaced by readiness. Optional because the artifact contract
+    # predates it; a model that omits it is still loadable, it just cannot say
+    # what it was trained on.
+    dataset_version: str | None = None
+    training_kind: str | None = None
+    # True marks a model that must not be used to price real risk — the
+    # Stage 07 synthetic fit. The runtime reports it; it does not refuse it,
+    # because a deployed profile's operator may need the placeholder to boot.
+    transitional: bool = False
 
     @property
     def known_regions(self) -> tuple[str, ...]:
@@ -212,7 +221,7 @@ def load_artifact(path: Path) -> ModelArtifact:
     if not path.is_file():
         raise ModelArtifactError(
             f"No model artifact at {path}. Build it with "
-            f"`python scripts/build_baseline_model.py`, or point MODEL_PATH at "
+            f"`python scripts/train_rainfall_model.py`, or point MODEL_PATH at "
             f"an existing artifact."
         )
 
@@ -351,6 +360,31 @@ def load_artifact(path: Path) -> ModelArtifact:
             value, f"regionRisk[{region}]"
         )
 
+    # Provenance is optional but, when present, held to the same standard as
+    # the rest: a `training` block that is not an object, or a version that is
+    # not text, is a malformed artifact rather than a missing nicety.
+    training = payload.get("training")
+    dataset_version: str | None = None
+    training_kind: str | None = None
+    transitional = False
+    if training is not None:
+        if not isinstance(training, dict):
+            raise ModelArtifactError(
+                f"Model artifact at {path} has a training block that is not an object"
+            )
+        if "datasetVersion" in training:
+            dataset_version = _require_non_empty_string(
+                training["datasetVersion"], "training.datasetVersion"
+            )
+        if "kind" in training:
+            training_kind = _require_non_empty_string(training["kind"], "training.kind")
+        if "transitional" in training:
+            if not isinstance(training["transitional"], bool):
+                raise ModelArtifactError(
+                    f"Model artifact at {path} has a non-boolean training.transitional"
+                )
+            transitional = training["transitional"]
+
     return ModelArtifact(
         model_version=_require_non_empty_string(
             payload["modelVersion"], "modelVersion"
@@ -365,4 +399,7 @@ def load_artifact(path: Path) -> ModelArtifact:
         premium_loading=premium_loading,
         source_path=path,
         checksum=_require_non_empty_string(payload["checksum"], "checksum"),
+        dataset_version=dataset_version,
+        training_kind=training_kind,
+        transitional=transitional,
     )

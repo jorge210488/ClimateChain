@@ -41,8 +41,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ml-service-stage7-gates:
-    name: ml-service-stage7-gates
+  ml-service-stage8-gates:
+    name: ml-service-stage8-gates
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -69,16 +69,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Stage 07 full gate
-        run: python scripts/stage7_check.py
+      - name: Stage 08 full gate
+        # Retrains the model from the committed dataset and fails if the
+        # artifact or its metrics differ from what is committed. Never reaches
+        # the network: the dataset fetch is a deliberate, separate act.
+        run: python scripts/stage8_check.py
 
       - name: Model artifact drift gate
-        # The gate rebuilds the artifact; anything left modified in the working
+        # The gate retrains the artifact; anything left modified in the working
         # tree means the committed file is not what the script produces. Same
         # guarantee the contracts workflow enforces for shared ABIs.
         run: |
           if [[ -n "$(git status --porcelain .)" ]]; then
-            echo "Detected drift after stage7_check. Commit the rebuilt artifact."
+            echo "Detected drift after stage8_check. Commit the retrained artifact."
             git --no-pager status --short .
             exit 1
           fi

@@ -99,7 +99,7 @@ class TestHealth:
         body = response.json()
         assert body["status"] == "ready"
         assert body["model"]["loaded"] is True
-        assert body["model"]["modelVersion"] == "baseline-premium-v1"
+        assert body["model"]["modelVersion"] == "baseline-premium-v2"
         # Which model, not just whether one is loaded: during an incident the
         # useful question is whether this instance is running the current one.
         assert len(body["model"]["checksum"]) == 64

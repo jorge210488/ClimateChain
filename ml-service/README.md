@@ -4,9 +4,11 @@ Python service that prices parametric rainfall policies. It answers one
 question — what premium should this coverage cost — and answers it from a model
 artifact, not from a formula in the request handler.
 
-Stage 07 delivers the serving stack, the model lifecycle, and the pricing
-arithmetic. Stage 08 replaces the data and the fit; Stage 09 wires the backend
-to call this service. Nothing here calls the backend or the chain.
+Stage 07 delivered the serving stack, the model lifecycle, and the pricing
+arithmetic. Stage 08 replaced the synthetic fit with one trained on thirty years
+of observed rainfall, evaluated on years it never saw. Stage 09 wires the
+backend to call this service. Nothing here calls the backend or the chain, and
+nothing on the serving path calls the network.
 
 ## Why the premium is never below 1% of coverage
 
@@ -84,7 +86,7 @@ cannot drift apart before Stage 09 connects them.
   "currency": "ETH",
   "startDate": "2026-04-01",
   "endDate": "2026-04-30",
-  "modelVersion": "baseline-premium-v1",
+  "modelVersion": "baseline-premium-v2",
   // Beyond the backend contract, so a quote can be explained rather than
   // merely trusted. Additive: a consumer that ignores them is unaffected.
   "triggerProbability": 0.0042,
@@ -101,10 +103,11 @@ policy creation unchanged.
 
 ## The model artifact
 
-`app/models/artifacts/baseline-premium-v1.json` holds fitted coefficients,
-region risk factors, and the premium loading. It is committed, and the Stage 07
-gate rebuilds it and fails if the result differs — the same drift guarantee the
-contracts module enforces for its ABIs.
+`app/models/artifacts/baseline-premium-v2.json` holds fitted coefficients,
+region risk factors, the premium loading, and a `training` block recording
+where the numbers came from. It is committed, and the stage gate retrains it
+from the committed dataset and fails if the result differs — the same drift
+guarantee the contracts module enforces for its ABIs.
 
 **It is JSON, not a pickle.** Unpickling executes whatever the file contains,
 which is not an acceptable property for something read at every boot from an
@@ -120,26 +123,68 @@ readiness reported a model that could not price.
 Rebuild it with:
 
 ```bash
-python scripts/build_baseline_model.py
+python scripts/train_rainfall_model.py
 ```
 
 ### What the model actually is
 
-`scripts/build_baseline_model.py` generates seeded, gamma-distributed daily
-rainfall per region, rolls the coverage window across that history, measures how
-often the trigger would have fired, and fits the log-odds of that frequency
-against threshold, duration, and region wetness. The premium is then expected
-loss plus a loading.
+`scripts/train_rainfall_model.py` reads `data/rainfall-history-v1.json` — daily
+precipitation for every known region from 1995 to 2024 — rolls each coverage
+window across the *training years only*, measures how often the trigger would
+have fired, and fits the log-odds of that frequency against threshold, duration,
+and the region's mean rainfall. The premium is expected loss plus a loading.
 
-**The training data is synthetic, so the model is not predictive of real
-climate.** It is transitional under the repository's runtime-data policy: it
-exists so the loading lifecycle, readiness, and pricing arithmetic run against a
-real artifact, and Stage 08 replaces the data and the fit without changing the
-artifact's shape or this service.
+The model family is the one Stage 07 served; what changed is the evidence
+behind the coefficients. The runtime did not change to load it.
 
-The fit is a genuine one — the coefficients come from measurements, and their
-signs are checked in the tests: a higher threshold is cheaper, a longer window
-and a wetter region are dearer. What it cannot do is predict Valencia's weather.
+**The data is observed, not synthetic.** It is ERA5 reanalysis served by the
+Open-Meteo Historical Weather API: assimilated observations, not a random draw
+from a distribution somebody chose. The artifact says so in its `training`
+block (`kind: "observed"`, `transitional: false`), and readiness reports the
+same three facts so an operator can tell which model an instance is running and
+what it was trained on.
+
+### How it is evaluated
+
+The split is by calendar date, not at random: fitted on 1995-2018, scored on
+2019-2024. A random split would leak the holdout's weather into training
+through overlapping windows and flatter the model.
+
+Scoring uses proper scoring rules — log-loss and Brier — computed by the
+runtime's own evaluator, so the numbers describe the code path that prices,
+not a re-implementation of it. The superseded synthetic artifact is kept in
+`app/models/artifacts/archive/` and scored on the *same* holdout, which is what
+makes the comparison a comparison:
+
+| Model | Data | Holdout log-loss | Holdout Brier | Predicted / observed trigger rate |
+| --- | --- | --- | --- | --- |
+| `baseline-premium-v2` | observed (ERA5) | **0.1823** | **0.0555** | 0.101 / 0.097 |
+| `baseline-premium-v1` | synthetic | 0.2883 | 0.0804 | 0.022 / 0.097 |
+
+The synthetic model under-priced by more than four times on the years it was
+never fitted to. That is the number this stage exists to produce, and it is
+regenerated — and checked for drift — on every gate run; the full figures are
+in `app/models/artifacts/baseline-premium-v2.metrics.json`.
+
+### The dataset
+
+`data/regions.json` is the registry: the eight regions the model knows, with the
+coordinates they were fetched at. `data/rainfall-history-v1.json` is the
+observed series for each — committed, checksummed, and validated on load
+(shape, day count, no negatives, no missing days). It is the only network
+product in the module, and it is produced deliberately rather than by any gate:
+
+```bash
+python scripts/fetch_rainfall_history.py
+```
+
+A refresh that returns the same observations leaves the file byte-identical, so
+`git status` reports a change in the source and never a mere re-run. Adding a
+region means adding it to the registry, refetching, and retraining; the gate
+fails if the registry and the dataset disagree.
+
+No key is needed: Open-Meteo's archive endpoint is open, which is why the
+`WEATHER_API_*` variables remain empty.
 
 ## Configuration
 
@@ -152,7 +197,7 @@ Copy `.env.example` to `.env`. No secrets are required for this stage.
 | `LOG_LEVEL` | `debug` … `critical`. |
 | `MODEL_PROVIDER` | Must match the artifact's own provider, or startup aborts. |
 | `MODEL_PATH` | Artifact location, absolute or relative to `ml-service/`. |
-| `WEATHER_API_*` | Unused until Stage 08. |
+| `WEATHER_API_*` | Reserved. The Stage 08 source needs no key; left for a provider that does. |
 
 Validation is fail-fast: an unknown profile, an out-of-range port, or a provider
 that does not exist is rejected at startup rather than at the first request.
@@ -163,7 +208,8 @@ that does not exist is rejected at startup rather than at the first request.
 python -m venv .venv                          # once
 pip install -r requirements.txt
 
-python scripts/build_baseline_model.py        # build the artifact
+python scripts/train_rainfall_model.py        # retrain the artifact from data/
+python scripts/fetch_rainfall_history.py      # refresh the dataset (network)
 python serve.py                               # run locally
 python -m pytest                              # tests
 python -m ruff check . && python -m ruff format --check .
@@ -173,12 +219,18 @@ python scripts/startup_check.py               # boot a real process and probe it
 ## Stage gate
 
 ```bash
-python scripts/stage7_check.py
+python scripts/stage8_check.py
 ```
 
-Runs lint, format, artifact drift, the full test suite, and a real startup that
-binds a socket and serves a quote. The test suite alone would not prove the
-packaged entrypoint boots, which is why the last step exists.
+Runs lint, format, dataset integrity (checksum, shape, and agreement with the
+region registry), a full retrain that must reproduce the committed artifact and
+metrics byte for byte, the test suite, and a real startup that binds a socket
+and serves a quote. The test suite alone would not prove the packaged entrypoint
+boots, which is why the last step exists. `scripts/stage7_check.py` is the
+Stage 07 subset and still runs, but the gate is `stage8_check.py`.
+
+Nothing in the gate reaches the network: a gate that could pass or fail on a
+remote service's mood is not a gate.
 
 CI runs the same command on Python 3.11 — the floor in `pyproject.toml` — so an
 incompatibility with the oldest supported version is caught here rather than by

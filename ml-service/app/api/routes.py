@@ -63,6 +63,9 @@ def readiness(request: Request) -> JSONResponse:
             provider=model_status.provider,
             sourcePath=model_status.source_path,
             checksum=model_status.checksum,
+            datasetVersion=model_status.dataset_version,
+            trainingKind=model_status.training_kind,
+            transitional=model_status.transitional,
             reason=model_status.reason,
         ),
     )

@@ -1,0 +1,96 @@
+{
+  "checksum": "be06eeeb4b0ce448219d74b4d30e89dbe325149ecfdfeb693552115f0e9df3c7",
+  "coefficients": [
+    3.029113179169,
+    -2.378500239676,
+    0.645264026312,
+    0.272611978983
+  ],
+  "createdAt": "2026-09-06T17:45:34Z",
+  "defaultRegionRisk": 2.699934,
+  "features": [
+    "intercept",
+    "log_threshold_mm",
+    "log_duration_days",
+    "region_risk"
+  ],
+  "modelVersion": "baseline-premium-v2",
+  "premiumLoading": 0.35,
+  "provider": "baseline",
+  "regionRisk": {
+    "bogota": 2.558681,
+    "buenos aires": 2.922987,
+    "cartagena": 4.251107,
+    "lima": 0.232409,
+    "medellin": 7.756833,
+    "santiago": 1.370876,
+    "sevilla": 1.392197,
+    "valencia": 1.114385
+  },
+  "schemaVersion": 1,
+  "training": {
+    "configHash": "cb7d992c046edaadf502ff2a2b2f6576a3788e5911643b212fbebbad1ee7f62a",
+    "datasetChecksum": "e04ea058f60108dd02bfa5d21aa7d4e9b62618d11fe7a9148c82a1f6feba21ab",
+    "datasetVersion": "rainfall-history-v1",
+    "dateRange": {
+      "end": "2024-12-31",
+      "start": "1995-01-01"
+    },
+    "durationDaysGrid": [
+      7,
+      14,
+      30,
+      60,
+      90,
+      180,
+      365
+    ],
+    "kind": "observed",
+    "metrics": {
+      "holdout": {
+        "brier": 0.055533,
+        "logLoss": 0.18227,
+        "observedTriggerRate": 0.096951,
+        "predictedTriggerRate": 0.101238,
+        "windows": 39680
+      },
+      "previousModel": {
+        "brier": 0.080362,
+        "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
+        "logLoss": 0.2883,
+        "modelVersion": "baseline-premium-v1",
+        "observedTriggerRate": 0.096951,
+        "predictedTriggerRate": 0.022092,
+        "trainingKind": "synthetic",
+        "windows": 39680
+      }
+    },
+    "note": "Fitted to ERA5 daily precipitation for the listed regions; evaluated on a held-out period the fit never saw.",
+    "source": {
+      "licence": "CC BY 4.0 (Open-Meteo); ERA5 via Copernicus C3S",
+      "product": "ERA5 reanalysis, daily precipitation sum",
+      "provider": "Open-Meteo Historical Weather API",
+      "timezone": "UTC",
+      "units": "mm",
+      "url": "https://archive-api.open-meteo.com/v1/archive",
+      "variable": "precipitation_sum"
+    },
+    "split": {
+      "testDays": 2192,
+      "testStart": "2019-01-01",
+      "trainDays": 8766,
+      "trainEnd": "2018-12-31"
+    },
+    "thresholdMmGrid": [
+      10,
+      20,
+      30,
+      50,
+      80,
+      120,
+      200,
+      300
+    ],
+    "transitional": false
+  }
+}

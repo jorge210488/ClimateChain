@@ -31,6 +31,12 @@ class ModelStatus:
     source_path: str
     checksum: str | None
     reason: str | None = None
+    # Provenance: which data the loaded model was fitted to, and whether it is
+    # the transitional synthetic fit that must not price real risk. Readiness
+    # is where an operator looks during an incident, so it is reported there.
+    dataset_version: str | None = None
+    training_kind: str | None = None
+    transitional: bool = False
 
 
 class ModelRegistry:
@@ -119,4 +125,7 @@ class ModelRegistry:
             provider=self._artifact.provider,
             source_path=str(self._artifact.source_path),
             checksum=self._artifact.checksum,
+            dataset_version=self._artifact.dataset_version,
+            training_kind=self._artifact.training_kind,
+            transitional=self._artifact.transitional,
         )

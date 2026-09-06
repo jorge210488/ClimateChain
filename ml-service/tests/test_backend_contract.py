@@ -125,7 +125,7 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v1",
+            model_version="baseline-premium-v2",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,
@@ -149,14 +149,14 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v1",
+            model_version="baseline-premium-v2",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,
             floored_to_minimum=False,
         ).model_dump(mode="json", by_alias=True)
 
-        assert payload["modelVersion"] == "baseline-premium-v1"
+        assert payload["modelVersion"] == "baseline-premium-v2"
 
     def test_currency_defaults_to_the_chain_native_asset(self) -> None:
         payload = QuoteResponse(
@@ -165,7 +165,7 @@ class TestResponseContract:
             premium_wei="80000000000000000",
             start_date=date(2026, 4, 1),
             end_date=date(2026, 4, 30),
-            model_version="baseline-premium-v1",
+            model_version="baseline-premium-v2",
             trigger_probability=0.21,
             duration_days=30,
             region_known=True,

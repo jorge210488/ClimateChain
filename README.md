@@ -38,7 +38,8 @@ Parametric climate micro-insurance platform built with smart contracts, a NestJS
 - Stage 05 (Backend Foundation) completed.
 - Stage 06 (Backend to Blockchain Integration) completed.
 - Stage 07 (ML Service Foundation) completed.
-- Stage 08 (Data Pipeline and Model Training) next.
+- Stage 08 (Data Pipeline and Model Training) completed.
+- Stage 09 (Backend to ML Integration) next.
 
 ## Quick Start (Foundation)
 
@@ -63,9 +64,9 @@ Arriving without context — as a person or as an AI assistant? Start with
 2. Install module dependencies once each module baseline is initialized:
    - `contracts/` with `npm install`
    - `backend/` with `npm install`
-   - `ml-service/` with `python -m venv .venv`, then `pip install -r requirements.txt`
-     and `python scripts/build_baseline_model.py` to produce the model artifact
-     the service refuses to start without
+   - `ml-service/` with `python -m venv .venv`, then `pip install -r requirements.txt`.
+     The model artifact is committed and loads as-is; `python scripts/train_rainfall_model.py`
+     reproduces it from the committed dataset, byte for byte
 3. Follow the execution playbook in `docs/Implementation-Step-By-Step.md`.
 
 Node is pinned by `.nvmrc` (20.10.0) and `engines` in each package, matching CI.

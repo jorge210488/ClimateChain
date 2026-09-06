@@ -1,0 +1,27 @@
+{
+  "datasetVersion": "rainfall-history-v1",
+  "holdout": {
+    "brier": 0.055533,
+    "logLoss": 0.18227,
+    "observedTriggerRate": 0.096951,
+    "predictedTriggerRate": 0.101238,
+    "windows": 39680
+  },
+  "modelVersion": "baseline-premium-v2",
+  "previousModel": {
+    "brier": 0.080362,
+    "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
+    "logLoss": 0.2883,
+    "modelVersion": "baseline-premium-v1",
+    "observedTriggerRate": 0.096951,
+    "predictedTriggerRate": 0.022092,
+    "trainingKind": "synthetic",
+    "windows": 39680
+  },
+  "split": {
+    "testDays": 2192,
+    "testStart": "2019-01-01",
+    "trainDays": 8766,
+    "trainEnd": "2018-12-31"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "description": "Regions the pricing model is trained for. Keys are the canonical lookup form the runtime derives from a request (`strip().lower()`), so a request for \"  Valencia  \" resolves here. Coordinates locate the ERA5 grid cell the rainfall history is read from; a city-scale point is adequate for a ~10 km reanalysis cell.",
+  "regions": {
+    "valencia": { "name": "Valencia", "country": "ES", "latitude": 39.4699, "longitude": -0.3763 },
+    "sevilla": { "name": "Sevilla", "country": "ES", "latitude": 37.3891, "longitude": -5.9845 },
+    "bogota": { "name": "Bogotá", "country": "CO", "latitude": 4.711, "longitude": -74.0721 },
+    "medellin": { "name": "Medellín", "country": "CO", "latitude": 6.2442, "longitude": -75.5812 },
+    "cartagena": { "name": "Cartagena", "country": "CO", "latitude": 10.391, "longitude": -75.4794 },
+    "lima": { "name": "Lima", "country": "PE", "latitude": -12.0464, "longitude": -77.0428 },
+    "santiago": { "name": "Santiago", "country": "CL", "latitude": -33.4489, "longitude": -70.6693 },
+    "buenos aires": { "name": "Buenos Aires", "country": "AR", "latitude": -34.6037, "longitude": -58.3816 }
+  }
+}

@@ -49,6 +49,11 @@ __pycache__/
 # build output and would otherwise swallow it.
 !ml-service/app/models/artifacts/
 !ml-service/app/models/artifacts/*.json
+# Superseded artifacts are kept so a new model can be scored against them on
+# the same holdout; a comparison against a number nobody can reproduce is not
+# a comparison.
+!ml-service/app/models/artifacts/archive/
+!ml-service/app/models/artifacts/archive/*.json
 *.pyd
 .python-version
 .mypy_cache/

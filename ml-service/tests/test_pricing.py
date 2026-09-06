@@ -155,22 +155,28 @@ class TestPricingBehaviour:
         # cannot distinguish a dry region from a very dry one. That is inherent
         # to having a floor, and the flag is how a caller can tell the premium
         # reflects the minimum rather than the model.
+        #
+        # 120 mm in a day over one month: rare enough on the observed record
+        # that the driest regions' expected loss sits well under 1% of cover.
+        # The synthetic model floored these same regions at 50 mm over six
+        # months; the observed one does not, because they genuinely differ
+        # there — see test_a_wetter_region_is_dearer.
         def quote(region: str):
             return quote_premium(
                 artifact=artifact,
                 region=region,
                 coverage_eth="1.0",
-                rainfall_threshold_mm=50,
+                rainfall_threshold_mm=120,
                 start_date=date(2026, 1, 1),
-                end_date=date(2026, 6, 30),
+                end_date=date(2026, 1, 31),
             )
 
-        lima, valencia = quote("lima"), quote("valencia")
+        lima, sevilla = quote("lima"), quote("sevilla")
 
-        assert lima.premium_wei == valencia.premium_wei
-        assert lima.floored_to_minimum and valencia.floored_to_minimum
+        assert lima.premium_wei == sevilla.premium_wei
+        assert lima.floored_to_minimum and sevilla.floored_to_minimum
         # The risk estimates still differ; only the price is clamped.
-        assert lima.trigger_probability < valencia.trigger_probability
+        assert lima.trigger_probability < sevilla.trigger_probability
 
     def test_region_matching_ignores_case_and_padding(self, artifact) -> None:
         # The backend passes through whatever the caller typed; a region should
