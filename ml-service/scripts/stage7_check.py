@@ -3,15 +3,17 @@ The Stage 07 gate: one command that validates everything the stage claims.
 
 Equivalent to `npm run stage4:check` and `npm run stage6:check` in the Node
 modules, written in Python so it runs identically on Windows and Linux without
-a shell or a make dependency.
+a shell or a make dependency. Since Stage 08 it is the subset of
+`stage8_check.py` that concerns the runtime; the full gate is that script.
 
 Steps, in the order a failure is cheapest to diagnose:
 
 1. Lint and format, so style failures do not hide behind test output.
-2. Retrain the model artifact from the committed dataset and fail on drift,
-   proving the committed file is the one the script produces — the same
-   guarantee the contracts' ABI drift
-   gate provides.
+2. Retrain the model artifact from the committed dataset in check mode and
+   fail on drift, proving the committed file is the one the script produces —
+   the same guarantee the contracts' ABI drift gate provides. Check mode
+   writes nothing: a command called `check` must not publish results, and a
+   missing artifact is a failure rather than something to regenerate.
 3. Tests, including the contract checks against the backend's published schema.
 4. A real startup, because a service that imports cleanly and cannot boot has
    not been verified.
@@ -39,10 +41,16 @@ def run(label: str, command: list[str]) -> None:
 
 def check_artifact_drift() -> None:
     print("\n=== artifact drift ===", flush=True)
-    before = ARTIFACT.read_bytes() if ARTIFACT.is_file() else None
+    if not ARTIFACT.is_file():
+        raise SystemExit(
+            f"stage7:check FAILED: {ARTIFACT.relative_to(MODULE_ROOT)} is missing. "
+            "The gate does not create artifacts; produce it deliberately with "
+            "`python scripts/train_rainfall_model.py` and commit it."
+        )
+    before = ARTIFACT.read_bytes()
 
     result = subprocess.run(
-        [sys.executable, "scripts/train_rainfall_model.py"],
+        [sys.executable, "scripts/train_rainfall_model.py", "--check"],
         cwd=MODULE_ROOT,
         capture_output=True,
         text=True,
@@ -50,20 +58,16 @@ def check_artifact_drift() -> None:
     if result.returncode != 0:
         print(result.stdout)
         print(result.stderr)
-        raise SystemExit("stage7:check FAILED at: rebuilding the model artifact")
-
-    after = ARTIFACT.read_bytes()
-    if before is None:
-        print(f"Artifact built at {ARTIFACT.relative_to(MODULE_ROOT)}")
-        return
-
-    if before != after:
         raise SystemExit(
             "stage7:check FAILED: the committed model artifact does not match "
-            "what scripts/train_rainfall_model.py produces. Commit the rebuilt "
-            "artifact, or revert the change to the script."
+            "what scripts/train_rainfall_model.py produces. Retrain deliberately "
+            "and commit the result, or revert the change to the script."
         )
-    print("Committed artifact matches its build script.")
+    if before != ARTIFACT.read_bytes():
+        raise SystemExit(
+            "stage7:check FAILED: check mode modified the artifact; it must not write."
+        )
+    print("Committed artifact matches its training script.")
 
 
 def main() -> None:

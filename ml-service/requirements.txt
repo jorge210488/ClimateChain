@@ -18,9 +18,11 @@ python-dotenv>=1.0,<2
 fastapi>=0.115,<1
 uvicorn>=0.34,<1
 
-# Fitting the baseline artifact (scripts/build_baseline_model.py). Not imported
-# by any runtime path: the service loads coefficients and evaluates them in
-# plain Python, so serving needs no numerical stack.
+# Fitting the artifact (scripts/train_rainfall_model.py). Not imported by any
+# runtime path: the service loads coefficients and evaluates them in plain
+# Python, so serving needs no numerical stack. The fit rounds its outputs to
+# twelve decimals, which is what keeps the artifact byte-identical across the
+# NumPy versions this range admits; the gate proves it on every run.
 numpy>=2.1,<3
 
 # Test tooling, so `tests/` is runnable from Stage 01 onward.

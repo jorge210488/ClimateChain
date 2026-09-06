@@ -4,9 +4,17 @@ artifact the Stage 07 runtime loads.
 
 This replaces the Stage 07 build script, which fitted the same model family to
 synthetic rainfall so that the loading lifecycle could be exercised before real
-data existed. The model family and the artifact contract are unchanged — the
-runtime reads this artifact without modification — and what changes is the
-evidence behind the coefficients.
+data existed. The artifact contract is unchanged — the runtime reads this
+artifact without modification — and what changes is the evidence behind the
+coefficients.
+
+The model is a linear fit of trigger log-odds on log threshold and log window
+length, with one fitted effect per region. The region effect is what the
+artifact carries as `regionRisk`: it is expressed in log-odds, the driest
+region sits at zero, and the `region_risk` coefficient is exactly one. A
+single "wetness" feature was tried first and could not hold both a desert and
+a tropical city on one line; the per-region effect is what the data needs and
+still what the artifact can express.
 
 Reproducible by construction: the dataset is committed and checksummed, the
 split is by calendar date, the fit is a deterministic least-squares solve, and
@@ -17,9 +25,12 @@ Evaluation is time-based. The model is fitted on 1995-2018 and scored on
 2019-2024 it never saw, using the runtime's own evaluator so the metrics
 describe the deployed code path rather than a re-implementation of it. The
 previous artifact is scored on the same holdout, which is what makes the
-numbers comparable rather than merely reported.
+numbers comparable rather than merely reported. Scores are given in aggregate,
+per region, and per grid cell, because each level hides what the one above it
+cannot see.
 
-Two modes. Without flags it *releases*: writes the artifact and its metrics.
+Two modes. Without flags it *releases*: stages the artifact and its metrics,
+validates the staged artifact as the runtime would, and moves both into place.
 With `--check` it writes nothing and fails if what it would produce differs
 from the committed files — which is what the gate runs, so the gate can never
 create or replace an artifact as a side effect of verifying one.
@@ -35,6 +46,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import sys
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -60,6 +72,7 @@ from app.models.artifact import (  # noqa: E402
 from app.models.baseline import PricingInputs, assess_risk  # noqa: E402
 
 MODEL_VERSION = "baseline-premium-v2"
+MODEL_FORM = "log-odds linear in log(threshold), log(duration); one effect per region"
 ARTIFACTS_DIR = MODULE_ROOT / "app/models/artifacts"
 DEFAULT_DATASET = MODULE_ROOT / "data/rainfall-history-v1.json"
 DEFAULT_OUTPUT = ARTIFACTS_DIR / f"{MODEL_VERSION}.json"
@@ -68,6 +81,8 @@ PREVIOUS_ARTIFACT = ARTIFACTS_DIR / "archive/baseline-premium-v1.json"
 
 # The grid trigger frequency is measured over. Identical to Stage 07's so the
 # two artifacts are estimated on the same design and the comparison is fair.
+# Widening it towards 1-day windows and 1 mm thresholds was measured and
+# rejected: it degraded calibration on the range most policies are written in.
 DURATION_DAYS_GRID = (7, 14, 30, 60, 90, 180, 365)
 THRESHOLD_MM_GRID = (10, 20, 30, 50, 80, 120, 200, 300)
 
@@ -83,6 +98,10 @@ PREMIUM_LOADING = 0.35
 # Log-odds are undefined at exactly 0 or 1; frequencies are clamped inside.
 FREQUENCY_FLOOR = 0.002
 FREQUENCY_CEILING = 0.98
+
+# Holdout windows a grid cell needs before its observed frequency is judged
+# against the price. Below this a cell's frequency is mostly sampling noise.
+CELL_SAMPLE_FLOOR = 50
 
 FEATURES = ("intercept", "log_threshold_mm", "log_duration_days", "region_risk")
 
@@ -124,13 +143,13 @@ def window_outcomes(
     return maxima >= threshold
 
 
-def region_risks(dataset: RainfallDataset, split: Split) -> dict[str, float]:
+def region_means(dataset: RainfallDataset, split: Split) -> dict[str, float]:
     """
-    Mean daily rainfall per region, on the training period only.
+    Mean daily rainfall per region on the training period.
 
-    The same quantity Stage 07 assigned by hand from a table; here it is
-    measured. Computed on the training split so the holdout evaluation does
-    not see its own summary statistics.
+    Recorded in the artifact for the auditor, not used by the fit: it is the
+    plain-language description of each region's climate that the fitted
+    effect is standing in for.
     """
     return {
         key: round(
@@ -140,12 +159,25 @@ def region_risks(dataset: RainfallDataset, split: Split) -> dict[str, float]:
     }
 
 
-def fit(dataset: RainfallDataset, train: Split, risks: dict[str, float]) -> np.ndarray:
-    """Least-squares fit of trigger log-odds on the training grid."""
+def fit(dataset: RainfallDataset, train: Split) -> tuple[np.ndarray, dict[str, float]]:
+    """
+    Least-squares fit of trigger log-odds on the training grid.
+
+    Returns the coefficients for `FEATURES` and the per-region effects the
+    artifact carries as `regionRisk`. The effects are shifted so the smallest
+    is zero — the loader requires them non-negative — and the shift moves into
+    the intercept, so the fitted surface is unchanged.
+
+    Fitted on the training split only: the holdout must not shape the
+    quantities it is then scored on.
+    """
+    keys = list(dataset.regions)
     rows: list[list[float]] = []
     log_odds: list[float] = []
 
-    for key, series in dataset.regions.items():
+    for position, key in enumerate(keys):
+        series = dataset.regions[key]
+        indicator = [1.0 if index == position else 0.0 for index in range(len(keys))]
         for duration in DURATION_DAYS_GRID:
             for threshold in THRESHOLD_MM_GRID:
                 outcomes = window_outcomes(
@@ -155,13 +187,21 @@ def fit(dataset: RainfallDataset, train: Split, risks: dict[str, float]) -> np.n
                     continue
                 frequency = float(outcomes.mean())
                 frequency = min(max(frequency, FREQUENCY_FLOOR), FREQUENCY_CEILING)
-                rows.append([1.0, math.log(threshold), math.log(duration), risks[key]])
+                rows.append([math.log(threshold), math.log(duration), *indicator])
                 log_odds.append(math.log(frequency / (1.0 - frequency)))
 
     design = np.asarray(rows, dtype=float)
     target = np.asarray(log_odds, dtype=float)
-    coefficients, *_ = np.linalg.lstsq(design, target, rcond=None)
-    return coefficients
+    beta, *_ = np.linalg.lstsq(design, target, rcond=None)
+
+    effects = beta[2:]
+    shift = float(effects.min())
+    risks = {
+        key: round(float(effect - shift), 6)
+        for key, effect in zip(keys, effects, strict=True)
+    }
+    coefficients = np.asarray([shift, beta[0], beta[1], 1.0], dtype=float)
+    return coefficients, risks
 
 
 def in_memory_artifact(
@@ -188,7 +228,7 @@ def in_memory_artifact(
 
 
 def _score(predicted: list[float], observed: list[float]) -> dict:
-    """Proper scores plus the two rates that make calibration visible."""
+    """Proper scores plus the rates that make calibration and solvency visible."""
     p = np.asarray(predicted, dtype=float)
     y = np.asarray(observed, dtype=float)
     losses = -(y * np.log(p) + (1 - y) * np.log(1 - p))
@@ -198,6 +238,9 @@ def _score(predicted: list[float], observed: list[float]) -> dict:
         "brier": round(float(np.mean((p - y) ** 2)), 6),
         "observedTriggerRate": round(float(np.mean(y)), 6),
         "predictedTriggerRate": round(float(np.mean(p)), 6),
+        # What the pool would have charged, as a rate of coverage, against
+        # what it would have paid. Above observed means the book was solvent.
+        "loadedPremiumRate": round(float(np.mean(p)) * (1.0 + PREMIUM_LOADING), 6),
     }
 
 
@@ -208,13 +251,15 @@ def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> 
     Log-loss and Brier score over every holdout window in the grid; both are
     proper scoring rules, so a model cannot improve them by hedging. The
     observed and predicted trigger rates are reported alongside so a
-    miscalibrated model is visible even when its ranking is fine — and they
-    are reported per region as well as in aggregate, because an aggregate can
-    hide one region priced badly behind seven priced well.
+    miscalibrated model is visible even when its ranking is fine — per region
+    as well as in aggregate, because an aggregate can hide one region priced
+    badly behind seven priced well, and per grid cell, because a region can
+    hide one duration or threshold priced badly behind the rest.
     """
     all_predicted: list[float] = []
     all_observed: list[float] = []
     by_region: dict[str, dict] = {}
+    cells: list[dict] = []
 
     for key, series in dataset.regions.items():
         predicted: list[float] = []
@@ -232,6 +277,20 @@ def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> 
                         duration_days=duration,
                     ),
                 ).trigger_probability
+                frequency = float(outcomes.mean())
+                loaded = probability * (1.0 + PREMIUM_LOADING)
+                cells.append(
+                    {
+                        "region": key,
+                        "durationDays": duration,
+                        "thresholdMm": threshold,
+                        "windows": len(outcomes),
+                        "observedTriggerRate": round(frequency, 6),
+                        "predictedTriggerRate": round(probability, 6),
+                        "loadedPremiumRate": round(loaded, 6),
+                        "deficit": round(max(frequency - loaded, 0.0), 6),
+                    }
+                )
                 predicted.extend([probability] * len(outcomes))
                 observed.extend(1.0 if outcome else 0.0 for outcome in outcomes)
         if predicted:
@@ -239,7 +298,30 @@ def evaluate(artifact: ModelArtifact, dataset: RainfallDataset, test: Split) -> 
             all_predicted.extend(predicted)
             all_observed.extend(observed)
 
-    return {**_score(all_predicted, all_observed), "byRegion": by_region}
+    # Cells where the loaded premium would not have covered observed payouts.
+    # Reported with the sample behind each, and the worst listed by name: a
+    # count without names is a number nobody acts on.
+    underpriced = [cell for cell in cells if cell["deficit"] > 0]
+    sampled = [cell for cell in cells if cell["windows"] >= CELL_SAMPLE_FLOOR]
+    underpriced_sampled = sorted(
+        (cell for cell in underpriced if cell["windows"] >= CELL_SAMPLE_FLOOR),
+        key=lambda cell: cell["deficit"],
+        reverse=True,
+    )
+    cell_summary = {
+        "total": len(cells),
+        "sampleFloor": CELL_SAMPLE_FLOOR,
+        "sampled": len(sampled),
+        "underpriced": len(underpriced),
+        "underpricedSampled": len(underpriced_sampled),
+        "worstUnderpriced": underpriced_sampled[:5],
+    }
+
+    return {
+        **_score(all_predicted, all_observed),
+        "byRegion": by_region,
+        "cells": cell_summary,
+    }
 
 
 def previous_model_metrics(dataset: RainfallDataset, test: Split) -> dict | None:
@@ -282,6 +364,7 @@ def config_hash(dataset: RainfallDataset) -> str:
     does — which is when the artifact genuinely needs rebuilding.
     """
     config = {
+        "modelForm": MODEL_FORM,
         "datasetVersion": dataset.dataset_version,
         "datasetChecksum": dataset.checksum,
         "trainEnd": TRAIN_END.isoformat(),
@@ -291,6 +374,7 @@ def config_hash(dataset: RainfallDataset) -> str:
         "premiumLoading": PREMIUM_LOADING,
         "frequencyFloor": FREQUENCY_FLOOR,
         "frequencyCeiling": FREQUENCY_CEILING,
+        "cellSampleFloor": CELL_SAMPLE_FLOOR,
         "features": list(FEATURES),
         "trainerSha256": source_fingerprint(Path(__file__).read_bytes()),
     }
@@ -302,6 +386,7 @@ def build_payload(
     dataset: RainfallDataset,
     coefficients: np.ndarray,
     risks: dict[str, float],
+    means: dict[str, float],
     train: Split,
     test: Split,
     holdout: dict,
@@ -323,8 +408,12 @@ def build_payload(
             "transitional": False,
             "note": (
                 "Fitted to ERA5 daily precipitation for the listed regions; "
-                "evaluated on a held-out period the fit never saw."
+                "evaluated on a held-out period the fit never saw. regionRisk is "
+                "the fitted per-region effect in log-odds with the driest region "
+                "at zero; regionMeanMmPerDay describes the same regions in plain "
+                "units."
             ),
+            "modelForm": MODEL_FORM,
             "datasetVersion": dataset.dataset_version,
             "datasetChecksum": dataset.checksum,
             "source": dataset.source,
@@ -340,6 +429,7 @@ def build_payload(
             },
             "durationDaysGrid": list(DURATION_DAYS_GRID),
             "thresholdMmGrid": list(THRESHOLD_MM_GRID),
+            "regionMeanMmPerDay": dict(sorted(means.items())),
             "configHash": config_hash(dataset),
             "metrics": {"holdout": holdout, "previousModel": previous},
         },
@@ -372,9 +462,44 @@ def render_json(payload: dict) -> bytes:
     return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(render_json(payload))
+def release(
+    artifact_payload: dict, metrics_payload: dict, output: Path, metrics: Path
+) -> None:
+    """
+    Publishes the artifact and its metrics as one unit, or neither.
+
+    Both files are staged beside their destinations and flushed to disk; the
+    staged artifact is then loaded exactly as the runtime would load it. Only
+    after that do the staged files replace the committed ones, so an
+    interrupted or invalid release cannot leave a truncated artifact the
+    service would refuse, nor a new artifact beside stale metrics.
+    """
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for path, rendered in (
+            (output, render_json(artifact_payload)),
+            (metrics, render_json(metrics_payload)),
+        ):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            with temporary.open("wb") as handle:
+                handle.write(rendered)
+                handle.flush()
+                os.fsync(handle.fileno())
+            staged.append((temporary, path))
+
+        # Validate the bytes on disk, not the dict: the file is what ships.
+        load_artifact(staged[0][0])
+        json.loads(staged[1][0].read_text(encoding="utf-8"))
+
+        # Metrics first, then the artifact: if the second move never happens,
+        # the artifact the runtime loads is still the old, valid one.
+        for temporary, path in reversed(staged):
+            os.replace(temporary, path)
+    finally:
+        for temporary, _ in staged:
+            if temporary.exists():
+                temporary.unlink()
 
 
 def check_against_committed(
@@ -420,8 +545,8 @@ def main() -> None:
 
     dataset = load_rainfall_dataset(args.dataset)
     train, test = make_splits(dataset)
-    risks = region_risks(dataset, train)
-    coefficients = fit(dataset, train, risks)
+    means = region_means(dataset, train)
+    coefficients, risks = fit(dataset, train)
 
     candidate = in_memory_artifact(
         tuple(round(float(v), 12) for v in coefficients),
@@ -433,7 +558,9 @@ def main() -> None:
     previous = previous_model_metrics(dataset, test)
 
     payload = _preserve_created_at(
-        build_payload(dataset, coefficients, risks, train, test, holdout, previous),
+        build_payload(
+            dataset, coefficients, risks, means, train, test, holdout, previous
+        ),
         args.output,
     )
     metrics_payload = {
@@ -452,11 +579,7 @@ def main() -> None:
         )
         return
 
-    write_json(args.output, payload)
-    write_json(args.metrics, metrics_payload)
-
-    # Prove the file on disk is what the runtime will accept, not just the dict.
-    load_artifact(args.output)
+    release(payload, metrics_payload, args.output, args.metrics)
 
     print(f"Model:        {MODEL_VERSION}")
     print(f"Dataset:      {dataset.dataset_version} ({dataset.checksum[:12]}...)")
@@ -464,14 +587,19 @@ def main() -> None:
     print("Coefficients:")
     for name, value in zip(FEATURES, payload["coefficients"], strict=True):
         print(f"  {name:<20} {value: .6f}")
-    print("Region risk (mean mm/day, train period):")
+    print("Region effect (log-odds, driest at 0) and mean mm/day, train period:")
     for key, value in payload["regionRisk"].items():
-        print(f"  {key:<14} {value:.3f}")
+        print(f"  {key:<14} {value:.3f}   {means[key]:.2f} mm/day")
     print(
         f"Holdout:      logLoss={holdout['logLoss']:.4f} brier={holdout['brier']:.4f} "
         f"observed={holdout['observedTriggerRate']:.4f} "
         f"predicted={holdout['predictedTriggerRate']:.4f} "
         f"windows={holdout['windows']}"
+    )
+    cells = holdout["cells"]
+    print(
+        f"Cells:        {cells['underpricedSampled']} of {cells['sampled']} cells "
+        f"with >= {cells['sampleFloor']} windows under-priced"
     )
     if previous:
         print(

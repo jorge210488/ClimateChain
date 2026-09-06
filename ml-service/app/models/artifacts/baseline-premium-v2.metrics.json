@@ -1,68 +1,136 @@
 {
   "datasetVersion": "rainfall-history-v1",
   "holdout": {
-    "brier": 0.055533,
+    "brier": 0.05382,
     "byRegion": {
       "bogota": {
-        "brier": 0.041284,
-        "logLoss": 0.137273,
+        "brier": 0.042567,
+        "loadedPremiumRate": 0.105932,
+        "logLoss": 0.137179,
         "observedTriggerRate": 0.08629,
-        "predictedTriggerRate": 0.095078,
+        "predictedTriggerRate": 0.078468,
         "windows": 4960
       },
       "buenos aires": {
-        "brier": 0.093668,
-        "logLoss": 0.28747,
+        "brier": 0.085795,
+        "loadedPremiumRate": 0.253478,
+        "logLoss": 0.25979,
         "observedTriggerRate": 0.165121,
-        "predictedTriggerRate": 0.100955,
+        "predictedTriggerRate": 0.187762,
         "windows": 4960
       },
       "cartagena": {
-        "brier": 0.064364,
-        "logLoss": 0.200829,
+        "brier": 0.064695,
+        "loadedPremiumRate": 0.17568,
+        "logLoss": 0.201991,
         "observedTriggerRate": 0.11371,
-        "predictedTriggerRate": 0.124177,
+        "predictedTriggerRate": 0.130134,
         "windows": 4960
       },
       "lima": {
-        "brier": 0.018737,
-        "logLoss": 0.076635,
+        "brier": 0.002412,
+        "loadedPremiumRate": 0.019954,
+        "logLoss": 0.017975,
         "observedTriggerRate": 0.001411,
-        "predictedTriggerRate": 0.062738,
+        "predictedTriggerRate": 0.01478,
         "windows": 4960
       },
       "medellin": {
-        "brier": 0.054412,
-        "logLoss": 0.186764,
+        "brier": 0.053512,
+        "loadedPremiumRate": 0.203838,
+        "logLoss": 0.177893,
         "observedTriggerRate": 0.158669,
-        "predictedTriggerRate": 0.197848,
+        "predictedTriggerRate": 0.150991,
         "windows": 4960
       },
       "santiago": {
-        "brier": 0.049009,
-        "logLoss": 0.162571,
+        "brier": 0.058503,
+        "loadedPremiumRate": 0.161109,
+        "logLoss": 0.18506,
         "observedTriggerRate": 0.065927,
-        "predictedTriggerRate": 0.077438,
+        "predictedTriggerRate": 0.11934,
         "windows": 4960
       },
       "sevilla": {
-        "brier": 0.057749,
-        "logLoss": 0.188381,
+        "brier": 0.057948,
+        "loadedPremiumRate": 0.131134,
+        "logLoss": 0.187279,
         "observedTriggerRate": 0.090323,
-        "predictedTriggerRate": 0.077734,
+        "predictedTriggerRate": 0.097136,
         "windows": 4960
       },
       "valencia": {
-        "brier": 0.065045,
-        "logLoss": 0.218237,
+        "brier": 0.065132,
+        "loadedPremiumRate": 0.123179,
+        "logLoss": 0.214392,
         "observedTriggerRate": 0.094153,
-        "predictedTriggerRate": 0.073937,
+        "predictedTriggerRate": 0.091243,
         "windows": 4960
       }
     },
-    "logLoss": 0.18227,
+    "cells": {
+      "sampleFloor": 50,
+      "sampled": 192,
+      "total": 448,
+      "underpriced": 66,
+      "underpricedSampled": 11,
+      "worstUnderpriced": [
+        {
+          "deficit": 0.113116,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.722501,
+          "observedTriggerRate": 0.835616,
+          "predictedTriggerRate": 0.535186,
+          "region": "bogota",
+          "thresholdMm": 10,
+          "windows": 73
+        },
+        {
+          "deficit": 0.061338,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.130442,
+          "observedTriggerRate": 0.191781,
+          "predictedTriggerRate": 0.096624,
+          "region": "valencia",
+          "thresholdMm": 30,
+          "windows": 73
+        },
+        {
+          "deficit": 0.040666,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.041525,
+          "observedTriggerRate": 0.082192,
+          "predictedTriggerRate": 0.03076,
+          "region": "valencia",
+          "thresholdMm": 50,
+          "windows": 73
+        },
+        {
+          "deficit": 0.039931,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.398426,
+          "observedTriggerRate": 0.438356,
+          "predictedTriggerRate": 0.29513,
+          "region": "buenos aires",
+          "thresholdMm": 30,
+          "windows": 73
+        },
+        {
+          "deficit": 0.035107,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.142975,
+          "observedTriggerRate": 0.178082,
+          "predictedTriggerRate": 0.105908,
+          "region": "sevilla",
+          "thresholdMm": 30,
+          "windows": 73
+        }
+      ]
+    },
+    "loadedPremiumRate": 0.146788,
+    "logLoss": 0.172695,
     "observedTriggerRate": 0.096951,
-    "predictedTriggerRate": 0.101238,
+    "predictedTriggerRate": 0.108732,
     "windows": 39680
   },
   "modelVersion": "baseline-premium-v2",
@@ -71,6 +139,7 @@
     "byRegion": {
       "bogota": {
         "brier": 0.062632,
+        "loadedPremiumRate": 0.053508,
         "logLoss": 0.18902,
         "observedTriggerRate": 0.08629,
         "predictedTriggerRate": 0.039635,
@@ -78,6 +147,7 @@
       },
       "buenos aires": {
         "brier": 0.140378,
+        "loadedPremiumRate": 0.037621,
         "logLoss": 0.466207,
         "observedTriggerRate": 0.165121,
         "predictedTriggerRate": 0.027868,
@@ -85,6 +155,7 @@
       },
       "cartagena": {
         "brier": 0.097865,
+        "loadedPremiumRate": 0.030284,
         "logLoss": 0.326449,
         "observedTriggerRate": 0.11371,
         "predictedTriggerRate": 0.022432,
@@ -92,6 +163,7 @@
       },
       "lima": {
         "brier": 0.001386,
+        "loadedPremiumRate": 0.004906,
         "logLoss": 0.008926,
         "observedTriggerRate": 0.001411,
         "predictedTriggerRate": 0.003634,
@@ -99,6 +171,7 @@
       },
       "medellin": {
         "brier": 0.10137,
+        "loadedPremiumRate": 0.08545,
         "logLoss": 0.288467,
         "observedTriggerRate": 0.158669,
         "predictedTriggerRate": 0.063296,
@@ -106,6 +179,7 @@
       },
       "santiago": {
         "brier": 0.063284,
+        "loadedPremiumRate": 0.0078,
         "logLoss": 0.276034,
         "observedTriggerRate": 0.065927,
         "predictedTriggerRate": 0.005778,
@@ -113,6 +187,7 @@
       },
       "sevilla": {
         "brier": 0.086428,
+        "loadedPremiumRate": 0.008424,
         "logLoss": 0.370409,
         "observedTriggerRate": 0.090323,
         "predictedTriggerRate": 0.00624,
@@ -120,13 +195,74 @@
       },
       "valencia": {
         "brier": 0.089555,
+        "loadedPremiumRate": 0.010603,
         "logLoss": 0.38089,
         "observedTriggerRate": 0.094153,
         "predictedTriggerRate": 0.007854,
         "windows": 4960
       }
     },
+    "cells": {
+      "sampleFloor": 50,
+      "sampled": 192,
+      "total": 448,
+      "underpriced": 189,
+      "underpricedSampled": 76,
+      "worstUnderpriced": [
+        {
+          "deficit": 0.680801,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.195912,
+          "observedTriggerRate": 0.876712,
+          "predictedTriggerRate": 0.14512,
+          "region": "buenos aires",
+          "thresholdMm": 10,
+          "windows": 73
+        },
+        {
+          "deficit": 0.576705,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.409596,
+          "observedTriggerRate": 0.986301,
+          "predictedTriggerRate": 0.303404,
+          "region": "medellin",
+          "thresholdMm": 10,
+          "windows": 73
+        },
+        {
+          "deficit": 0.564426,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.27119,
+          "observedTriggerRate": 0.835616,
+          "predictedTriggerRate": 0.200882,
+          "region": "bogota",
+          "thresholdMm": 10,
+          "windows": 73
+        },
+        {
+          "deficit": 0.54301,
+          "durationDays": 30,
+          "loadedPremiumRate": 0.046032,
+          "observedTriggerRate": 0.589041,
+          "predictedTriggerRate": 0.034097,
+          "region": "sevilla",
+          "thresholdMm": 10,
+          "windows": 73
+        },
+        {
+          "deficit": 0.509562,
+          "durationDays": 14,
+          "loadedPremiumRate": 0.349413,
+          "observedTriggerRate": 0.858974,
+          "predictedTriggerRate": 0.258824,
+          "region": "medellin",
+          "thresholdMm": 10,
+          "windows": 156
+        }
+      ]
+    },
     "checksum": "d1fc99b3db0ad97fce238a92980e1b8884334143e6ed4612d3c0b34826af625e",
+    "loadedPremiumRate": 0.029824,
     "logLoss": 0.2883,
     "modelVersion": "baseline-premium-v1",
     "observedTriggerRate": 0.096951,

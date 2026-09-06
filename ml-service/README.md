@@ -147,11 +147,18 @@ python scripts/train_rainfall_model.py
 `scripts/train_rainfall_model.py` reads `data/rainfall-history-v1.json` — daily
 precipitation for every known region from 1995 to 2024 — rolls each coverage
 window across the *training years only*, measures how often the trigger would
-have fired, and fits the log-odds of that frequency against threshold, duration,
-and the region's mean rainfall. The premium is expected loss plus a loading.
+have fired, and fits the log-odds of that frequency against log threshold, log
+duration, and one fitted effect per region. The premium is expected loss plus a
+loading.
 
-The model family is the one Stage 07 served; what changed is the evidence
-behind the coefficients. The runtime did not change to load it.
+The region effect is what the artifact carries as `regionRisk`: log-odds, with
+the driest region at zero and a `region_risk` coefficient of exactly one. A
+single "mean rainfall" feature was tried first and could not hold a desert and
+a tropical city on one line — it under-priced Buenos Aires by 40% and
+over-priced Lima forty-fold; the per-region effect is what the data needs and
+still what the artifact can express. The region means are kept in the
+artifact's `training.regionMeanMmPerDay` as the plain-units description of the
+same climates. The runtime did not change to load any of this.
 
 **The data is observed, not synthetic.** It is ERA5 reanalysis served by the
 Open-Meteo Historical Weather API: assimilated observations, not a random draw
@@ -174,7 +181,7 @@ makes the comparison a comparison:
 
 | Model | Data | Holdout log-loss | Holdout Brier | Predicted / observed trigger rate |
 | --- | --- | --- | --- | --- |
-| `baseline-premium-v2` | observed (ERA5) | **0.1823** | **0.0555** | 0.101 / 0.097 |
+| `baseline-premium-v2` | observed (ERA5) | **0.1727** | **0.0538** | 0.109 / 0.097 |
 | `baseline-premium-v1` | synthetic | 0.2883 | 0.0804 | 0.022 / 0.097 |
 
 The synthetic model under-priced by more than four times on the years it was
@@ -182,18 +189,26 @@ never fitted to. That is the number this stage exists to produce, and it is
 regenerated — and checked for drift — on every gate run; the full figures are
 in `app/models/artifacts/baseline-premium-v2.metrics.json`.
 
-The same scores are reported **per region**, because an aggregate can hide one
-region priced badly behind seven priced well. The tests hold every region to a
-solvency-side bound — predicted trigger rate at least half the observed one —
-and require the observed model to beat the synthetic one in every region where
-triggers actually occur on the grid. Two limitations are visible there and
-recorded rather than hidden: Buenos Aires is under-predicted (0.10 against
-0.17 observed) and Lima, where a 10 mm day essentially never happens, is
-over-predicted (0.06 against 0.001). The first costs the pool margin, the
-second costs the buyer margin; neither is silent. Both are the shape of a
-model with one wetness feature, and a richer one belongs to a stage with a
-reason to need it — widening the training grid was measured and rejected,
-because it degraded calibration on the domain most policies live in.
+The same scores are reported **per region** and **per grid cell**, because an
+aggregate can hide one region priced badly behind seven priced well, and a
+region can hide one duration or threshold priced badly behind the rest.
+
+The risk-acceptance policy is stated where it is enforced, in the tests: over
+the six held-out years, in every region, what the pool would have charged
+(`loadedPremiumRate`, the predicted rate times 1.35) must be at least what it
+would have paid (`observedTriggerRate`). Every region passes; the synthetic
+model failed it in every wet region. Per cell, the metrics file names the
+worst under-priced cells with at least fifty holdout windows behind them, and
+a tripwire test fails if the count rises above one in ten or any deficit
+exceeds 0.15 — the current worst is 0.11, Bogotá at 30 days and 10 mm, a cell
+that triggers 84% of the time and sits at the ceiling of what a linear log-odds
+model can say.
+
+Two things are visible there and recorded rather than hidden. Lima is still
+over-predicted (0.015 against 0.001 observed) — the buyer pays for risk that is
+not there, though far less than before. And extrapolation was not fixed by
+widening the training grid: that was measured, and it degraded calibration on
+the domain most policies live in, so the response flags it instead.
 
 ### Which models a deployment may serve
 

@@ -121,6 +121,23 @@ class TestDataset:
             (lambda p: p.__setitem__("days", 5), "spans"),
             (lambda p: p.__setitem__("schemaVersion", 2), "schemaVersion"),
             (lambda p: p.__setitem__("regions", {}), "at least one region"),
+            # A finite number can still be impossible: above the WMO record.
+            (
+                lambda p: p["regions"]["lima"]["mmPerDay"].__setitem__(0, 1_000_000.0),
+                "physically plausible",
+            ),
+            # Valid JSON, no float to become. Used to escape as OverflowError.
+            (
+                lambda p: p["regions"]["lima"]["mmPerDay"].__setitem__(0, 10**400),
+                "too large",
+            ),
+            # Provenance is part of the data; `[]` used to read as `{}`.
+            (lambda p: p.__setitem__("source", []), "source"),
+            (lambda p: p["source"].pop("url"), "source.url"),
+            (lambda p: p["source"].__setitem__("licence", ""), "source.licence"),
+            (lambda p: p["regions"]["lima"].__setitem__("latitude", True), "latitude"),
+            (lambda p: p["regions"]["lima"].__setitem__("longitude", 200), "longitude"),
+            (lambda p: p.__setitem__("datasetVersion", 7), "datasetVersion"),
         ],
     )
     def test_rejects_a_corrupted_dataset(self, tmp_path, mutate, expected: str) -> None:
@@ -278,7 +295,14 @@ class TestFetchValidation:
                 lambda b: b["daily_units"].__setitem__("precipitation_sum", "inch"),
                 "millimetres",
             ),
+            # Used to raise AttributeError instead of the contract's FetchError.
+            (lambda b: b.__setitem__("daily_units", []), "millimetres"),
             (lambda b: b.pop("daily"), "no daily block"),
+            # Finite, correctly united, and impossible.
+            (
+                lambda b: b["daily"]["precipitation_sum"].__setitem__(0, 1_000_000.0),
+                "physically plausible",
+            ),
         ],
     )
     def test_refuses_a_response_it_cannot_trust(
@@ -367,25 +391,54 @@ class TestTraining:
         days_in_split = train.end_index - train.start_index
         assert len(outcomes) == days_in_split // 30
 
-    def test_region_risk_is_measured_on_the_training_period_only(
+    def test_region_means_are_measured_on_the_training_period_only(
         self, trainer, dataset
     ) -> None:
-        # No leakage: the holdout must not shape the features it is scored on.
+        # No leakage: nothing recorded about a region may see the holdout.
         train, _ = trainer.make_splits(dataset)
-        risks = trainer.region_risks(dataset, train)
+        means = trainer.region_means(dataset, train)
         series = dataset.regions["lima"].mm_per_day[train.start_index : train.end_index]
-        assert risks["lima"] == pytest.approx(sum(series) / len(series), abs=1e-6)
+        assert means["lima"] == pytest.approx(sum(series) / len(series), abs=1e-6)
+
+    def test_region_effects_are_fitted_and_anchored_at_the_driest(
+        self, trainer, dataset
+    ) -> None:
+        # One effect per region, in log-odds, shifted so the loader's
+        # non-negativity holds with the driest region at exactly zero. The
+        # ordering must agree with the climate the means describe.
+        train, _ = trainer.make_splits(dataset)
+        coefficients, risks = trainer.fit(dataset, train)
+        assert min(risks.values()) == 0.0
+        assert risks["lima"] == 0.0
+        assert risks["lima"] < risks["valencia"] < risks["medellin"]
+        # The effect is carried verbatim: its coefficient is one.
+        assert coefficients[3] == 1.0
+
+    def test_the_fit_does_not_see_the_holdout(self, trainer, dataset) -> None:
+        # Fitting on everything gives different effects than fitting on the
+        # training years, which is the only way to know the split is real.
+        train, test = trainer.make_splits(dataset)
+        everything = trainer.Split("all", 0, test.end_index)
+        _, on_train = trainer.fit(dataset, train)
+        _, on_all = trainer.fit(dataset, everything)
+        assert on_train != on_all
 
     def test_retraining_reproduces_the_committed_artifact(
         self, trainer, dataset
     ) -> None:
         # The reproducibility criterion, as a unit test rather than only a gate.
         train, _ = trainer.make_splits(dataset)
-        risks = trainer.region_risks(dataset, train)
-        coefficients = [round(float(v), 12) for v in trainer.fit(dataset, train, risks)]
+        coefficients, risks = trainer.fit(dataset, train)
         committed = load_artifact(ARTIFACT_PATH)
-        assert list(committed.coefficients) == coefficients
+        assert list(committed.coefficients) == [
+            round(float(v), 12) for v in coefficients
+        ]
         assert committed.region_risk == risks
+        # And the plain-units description travels with it.
+        artifact = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        assert artifact["training"]["regionMeanMmPerDay"] == trainer.region_means(
+            dataset, train
+        )
 
     def test_coefficient_signs_are_physical(self) -> None:
         artifact = load_artifact(ARTIFACT_PATH)
@@ -483,6 +536,26 @@ class TestTraining:
         assert "does not exist" in result.stdout + result.stderr
         assert not absent.exists()
 
+    def test_release_publishes_both_files_or_neither(self, tmp_path, trainer) -> None:
+        # A release whose artifact the runtime would refuse must leave the
+        # committed pair untouched, with no staging files behind.
+        good = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        out = tmp_path / "model.json"
+        met = tmp_path / "model.metrics.json"
+        trainer.release(good, metrics, out, met)
+        assert load_artifact(out).checksum == good["checksum"]
+        before = (out.read_bytes(), met.read_bytes())
+
+        bad = dict(good)
+        bad["coefficients"] = "not-a-list"
+        bad["checksum"] = compute_checksum(bad)
+        with pytest.raises(ModelArtifactError):
+            trainer.release(bad, {"stale": False}, out, met)
+
+        assert (out.read_bytes(), met.read_bytes()) == before
+        assert not list(tmp_path.glob("*.tmp"))
+
     def test_metrics_are_reported_per_region(self) -> None:
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
         by_region = metrics["holdout"]["byRegion"]
@@ -493,15 +566,40 @@ class TestTraining:
         )
         assert set(metrics["previousModel"]["byRegion"]) == set(by_region)
 
-    def test_no_region_is_underpriced_by_more_than_half(self) -> None:
-        # The solvency-side bound, per region rather than in aggregate: an
-        # aggregate can hide one region priced badly behind seven priced well.
-        # The synthetic model failed this in every wet region.
+    def test_loaded_premiums_cover_observed_payouts_in_every_region(self) -> None:
+        # The risk-acceptance policy, stated where it is enforced: over the
+        # six held-out years, in every region, what the pool would have
+        # charged must be at least what it would have paid. Per region rather
+        # than in aggregate, because an aggregate can hide one region priced
+        # badly behind seven priced well. The synthetic model failed this in
+        # every wet region.
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
         for key, region in metrics["holdout"]["byRegion"].items():
-            assert (
-                region["predictedTriggerRate"] >= 0.5 * region["observedTriggerRate"]
-            ), key
+            assert region["loadedPremiumRate"] >= region["observedTriggerRate"], key
+
+    def test_cell_level_underpricing_is_named_and_bounded(self) -> None:
+        # A region can hide one duration or threshold priced badly behind the
+        # rest, so every grid cell is scored and the worst are listed by name.
+        # The bound below is a tripwire, not a solvency guarantee: it is the
+        # current model's worst sampled deficit (0.113, Bogotá at 30 days and
+        # 10 mm, a cell that triggers 84% of the time) rounded up, so a
+        # refresh that makes any cell materially worse fails here loudly.
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        cells = metrics["holdout"]["cells"]
+        assert cells["total"] == 8 * 7 * 8
+        assert cells["sampleFloor"] == 50
+        assert cells["underpricedSampled"] <= cells["underpriced"]
+        worst = cells["worstUnderpriced"]
+        assert worst == sorted(worst, key=lambda c: c["deficit"], reverse=True)
+        assert all(c["windows"] >= cells["sampleFloor"] for c in worst)
+        assert worst[0]["deficit"] < 0.15
+        # Fewer than one sampled cell in ten under-priced; the synthetic model
+        # under-priced most of them.
+        assert cells["underpricedSampled"] < cells["sampled"] / 10
+        assert (
+            metrics["previousModel"]["cells"]["underpricedSampled"]
+            > (cells["underpricedSampled"])
+        )
 
     def test_beats_the_synthetic_model_in_every_region_with_measurable_risk(
         self,
@@ -528,6 +626,19 @@ class TestTraining:
         lima = metrics["holdout"]["byRegion"]["lima"]
         assert lima["observedTriggerRate"] < 0.01
         assert lima["predictedTriggerRate"] > lima["observedTriggerRate"]
+
+
+# The smallest provenance block an observed artifact may carry; the malformed
+# cases below each break exactly one thing in it.
+OBSERVED_PROVENANCE = {
+    "kind": "observed",
+    "transitional": False,
+    "datasetVersion": "d",
+    "datasetChecksum": "a" * 64,
+    "configHash": "b" * 64,
+    "source": {"provider": "x", "url": "https://example"},
+    "dateRange": {"start": "1995-01-01", "end": "2024-12-31"},
+}
 
 
 class TestProvenanceInTheRuntime:
@@ -579,37 +690,26 @@ class TestProvenanceInTheRuntime:
                 {"kind": "observed", "transitional": False, "datasetVersion": 3},
                 "non-empty string",
             ),
+            ({**OBSERVED_PROVENANCE, "datasetChecksum": "abc"}, "64 hexadecimal"),
+            ({**OBSERVED_PROVENANCE, "durationDaysGrid": [0]}, "positive integers"),
+            ({**OBSERVED_PROVENANCE, "thresholdMmGrid": []}, "must not be empty"),
+            # An observed model must name where its data came from; an empty
+            # container is not a name.
             (
-                {
-                    "kind": "observed",
-                    "transitional": False,
-                    "datasetVersion": "d",
-                    "datasetChecksum": "abc",
-                    "configHash": "f" * 64,
-                },
-                "64 hexadecimal",
+                {k: v for k, v in OBSERVED_PROVENANCE.items() if k != "source"},
+                "no training.source",
+            ),
+            ({**OBSERVED_PROVENANCE, "source": []}, "not an object"),
+            (
+                {**OBSERVED_PROVENANCE, "source": {"provider": "x"}},
+                "training.source.url",
             ),
             (
                 {
-                    "kind": "observed",
-                    "transitional": False,
-                    "datasetVersion": "d",
-                    "datasetChecksum": "a" * 64,
-                    "configHash": "b" * 64,
-                    "durationDaysGrid": [0],
+                    **OBSERVED_PROVENANCE,
+                    "dateRange": {"start": "1995-01-01", "end": "yesterday"},
                 },
-                "positive integers",
-            ),
-            (
-                {
-                    "kind": "observed",
-                    "transitional": False,
-                    "datasetVersion": "d",
-                    "datasetChecksum": "a" * 64,
-                    "configHash": "b" * 64,
-                    "thresholdMmGrid": [],
-                },
-                "must not be empty",
+                "calendar date",
             ),
         ],
     )

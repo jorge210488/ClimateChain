@@ -39,6 +39,7 @@ MODULE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODULE_ROOT))
 
 from app.data.rainfall import (  # noqa: E402
+    MAX_PLAUSIBLE_DAILY_MM,
     SUPPORTED_DATASET_SCHEMA_VERSION,
     RainfallDatasetError,
     expected_day_count,
@@ -117,7 +118,8 @@ def parse_series(
     if not isinstance(body, dict):
         raise FetchError(f"{key}: response is not a JSON object")
 
-    units = body.get("daily_units", {}).get(VARIABLE)
+    units_block = body.get("daily_units")
+    units = units_block.get(VARIABLE) if isinstance(units_block, dict) else None
     if units != "mm":
         raise FetchError(f"{key}: expected millimetres, source reports {units!r}")
 
@@ -158,11 +160,23 @@ def parse_series(
             raise FetchError(
                 f"{key}: value for {dates[index]} is not a number: {value!r}"
             )
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError as error:
+            raise FetchError(
+                f"{key}: value for {dates[index]} is too large to represent"
+            ) from error
         if not math.isfinite(number) or number < 0:
             raise FetchError(
                 f"{key}: value for {dates[index]} is not a valid precipitation "
                 f"amount: {number}"
+            )
+        if number > MAX_PLAUSIBLE_DAILY_MM:
+            # A finite number can still be impossible. The bound is the WMO
+            # 24-hour world record with headroom; see app/data/rainfall.py.
+            raise FetchError(
+                f"{key}: value for {dates[index]} is {number} mm, above the "
+                f"physically plausible daily maximum of {MAX_PLAUSIBLE_DAILY_MM:g} mm"
             )
         series.append(round(number, DECIMALS))
     return series
@@ -246,7 +260,9 @@ def write_dataset(payload: dict, output: Path) -> None:
     something unloadable cannot destroy the dataset the gate depends on.
     """
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name(output.name + ".tmp")
+    # Named per process so two refreshes started together cannot write into,
+    # verify, and move the same staging file out from under each other.
+    temporary = output.with_name(f"{output.name}.{os.getpid()}.tmp")
     try:
         with temporary.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(

@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -443,15 +444,51 @@ def load_artifact(path: Path) -> ModelArtifact:
                 training["datasetVersion"], "training.datasetVersion"
             )
         if training_kind == "observed":
-            for field in ("datasetVersion", "datasetChecksum", "configHash"):
+            for field in (
+                "datasetVersion",
+                "datasetChecksum",
+                "configHash",
+                "source",
+                "dateRange",
+            ):
                 if field not in training:
                     raise ModelArtifactError(
                         f"Model artifact at {path} claims observed training but "
                         f"has no training.{field}; an observed model must name "
-                        f"the data and configuration it was fitted to"
+                        f"the data, its source, and the configuration it was "
+                        f"fitted to"
                     )
             _require_sha256_hex(training["datasetChecksum"], "training.datasetChecksum")
             _require_sha256_hex(training["configHash"], "training.configHash")
+            # The source must be a named thing, not an empty container that
+            # happens to pass. Provider and URL are the minimum an auditor can
+            # follow; the dataset loader requires more and the trainer copies
+            # it whole.
+            source = training["source"]
+            if not isinstance(source, dict):
+                raise ModelArtifactError(
+                    f"Model artifact at {path} has a training.source that is not "
+                    f"an object"
+                )
+            for field in ("provider", "url"):
+                _require_non_empty_string(source.get(field), f"training.source.{field}")
+            date_range = training["dateRange"]
+            if not isinstance(date_range, dict):
+                raise ModelArtifactError(
+                    f"Model artifact at {path} has a training.dateRange that is "
+                    f"not an object"
+                )
+            for field in ("start", "end"):
+                text = _require_non_empty_string(
+                    date_range.get(field), f"training.dateRange.{field}"
+                )
+                try:
+                    date.fromisoformat(text)
+                except ValueError as error:
+                    raise ModelArtifactError(
+                        f"training.dateRange.{field} must be a calendar date, "
+                        f"got {text!r}"
+                    ) from error
         if "durationDaysGrid" in training:
             trained_duration_days = _grid_range(
                 training["durationDaysGrid"], "training.durationDaysGrid"

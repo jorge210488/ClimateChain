@@ -24,6 +24,25 @@ from app.models.artifact import compute_checksum
 
 SUPPORTED_DATASET_SCHEMA_VERSION = 1
 
+# The most rain ever recorded in 24 hours is 1,825 mm (Foc-Foc, La Réunion,
+# 7-8 January 1966, the WMO world record). A daily sum above this bound is not
+# an extreme event, it is a sentinel or a unit error, and training on it would
+# move every region's risk. Kept generous rather than tuned to any dataset so
+# the bound has a physical meaning, not a statistical one.
+MAX_PLAUSIBLE_DAILY_MM = 2000.0
+
+# What a dataset must say about where it came from. Provenance is part of the
+# data, and a source that cannot be named is a source that cannot be audited.
+REQUIRED_SOURCE_FIELDS = (
+    "provider",
+    "product",
+    "url",
+    "variable",
+    "units",
+    "timezone",
+    "licence",
+)
+
 REQUIRED_DATASET_FIELDS = (
     "schemaVersion",
     "datasetVersion",
@@ -79,6 +98,19 @@ def _reject_non_standard_constant(name: str) -> object:
     raise ValueError(f"{name} is not valid JSON")
 
 
+def _coordinate(value: object, label: str, limit: float) -> float:
+    # `bool` is an `int`, so `true` would otherwise read as latitude 1.0; and
+    # `float("12")` would accept a string the fetcher never writes.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RainfallDatasetError(f"Rainfall dataset at {label} must be a number")
+    number = float(value)
+    if not math.isfinite(number) or abs(number) > limit:
+        raise RainfallDatasetError(
+            f"Rainfall dataset at {label} must be finite and within ±{limit:g}"
+        )
+    return number
+
+
 def expected_day_count(start: date, end: date) -> int:
     """Inclusive number of calendar days between two dates."""
     return (end - start).days + 1
@@ -132,6 +164,26 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
             f"Rainfall dataset at {path} failed its integrity check: the file "
             f"records {payload['checksum']} but its contents hash to {expected}."
         )
+
+    for field in ("datasetVersion", "checksum"):
+        if not isinstance(payload[field], str) or not payload[field].strip():
+            raise RainfallDatasetError(
+                f"Rainfall dataset at {path} has a {field} that is not a non-empty "
+                f"string"
+            )
+
+    source = payload["source"]
+    if not isinstance(source, dict):
+        raise RainfallDatasetError(
+            f"Rainfall dataset at {path} has a source that is not an object"
+        )
+    for field in REQUIRED_SOURCE_FIELDS:
+        value = source.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise RainfallDatasetError(
+                f"Rainfall dataset at {path} has no source.{field}; provenance "
+                f"must name the provider, product, variable, units, and licence"
+            )
 
     try:
         start = date.fromisoformat(payload["dateRange"]["start"])
@@ -193,7 +245,15 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
                     f"Rainfall dataset at {path}: region {key!r} day {index} is not "
                     f"a number: {value!r}"
                 )
-            number = float(value)
+            try:
+                number = float(value)
+            except OverflowError as error:
+                # A JSON integer with hundreds of digits is valid JSON and has
+                # no float to become.
+                raise RainfallDatasetError(
+                    f"Rainfall dataset at {path}: region {key!r} day {index} is "
+                    f"too large to represent as a number"
+                ) from error
             if not math.isfinite(number) or number < 0:
                 # Rainfall cannot be negative or unbounded; either means the
                 # source returned a sentinel that must not be trained on.
@@ -201,15 +261,20 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
                     f"Rainfall dataset at {path}: region {key!r} day {index} is "
                     f"not a valid precipitation value: {number}"
                 )
+            if number > MAX_PLAUSIBLE_DAILY_MM:
+                raise RainfallDatasetError(
+                    f"Rainfall dataset at {path}: region {key!r} day {index} reports "
+                    f"{number} mm, above the physically plausible daily maximum of "
+                    f"{MAX_PLAUSIBLE_DAILY_MM:g} mm"
+                )
             series.append(number)
 
-        try:
-            latitude = float(entry["latitude"])
-            longitude = float(entry["longitude"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise RainfallDatasetError(
-                f"Rainfall dataset at {path}: region {key!r} lacks coordinates"
-            ) from error
+        latitude = _coordinate(
+            entry.get("latitude"), f"{path}: region {key!r} latitude", 90
+        )
+        longitude = _coordinate(
+            entry.get("longitude"), f"{path}: region {key!r} longitude", 180
+        )
 
         regions[normalized] = RegionSeries(
             key=normalized,
@@ -219,13 +284,13 @@ def load_rainfall_dataset(path: Path) -> RainfallDataset:
         )
 
     return RainfallDataset(
-        dataset_version=str(payload["datasetVersion"]),
-        source=dict(payload["source"]),
+        dataset_version=payload["datasetVersion"],
+        source=dict(source),
         start=start,
         end=end,
         days=days,
         regions=regions,
-        checksum=str(payload["checksum"]),
+        checksum=payload["checksum"],
         source_path=path,
     )
 

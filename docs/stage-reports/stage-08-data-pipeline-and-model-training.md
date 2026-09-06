@@ -48,10 +48,11 @@
   Test-only — nothing; the tests exercise the committed dataset and the
   committed artifact. No runtime path reaches the network: the fetch is a
   deliberate, separately-run script.
-- Retained from Stage 07 by design: the model family (log-odds of trigger
-  frequency against log threshold, log duration, and region wetness), the
-  artifact schema version, the 0.35 premium loading, the eight regions, and the
-  premium floor. What changed is the data and the evaluation.
+- Retained from Stage 07 by design: the artifact schema version and feature
+  names, the 0.35 premium loading, the eight regions, and the premium floor.
+  What changed is the data, the evaluation, and — after the second review
+  round — the meaning of `regionRisk`: a fitted per-region effect in log-odds
+  rather than mean rainfall. The runtime evaluates it identically.
 
 ## Files changed
 
@@ -185,10 +186,10 @@ Modified:
 - `cd ml-service && python scripts/fetch_rainfall_history.py` — once, on
   2026-09-06, to produce the committed dataset (checksum
   `e04ea058f60108dd02bfa5d21aa7d4e9b62618d11fe7a9148c82a1f6feba21ab`).
-- `cd ml-service && python scripts/train_rainfall_model.py` — produces the
-  committed artifact (checksum
-  `be06eeeb4b0ce448219d74b4d30e89dbe325149ecfdfeb693552115f0e9df3c7`) and
-  metrics.
+- `cd ml-service && python scripts/train_rainfall_model.py` — the release:
+  produces the committed artifact (checksum
+  `6a083c8e91c85e3a6e078f0b856d3a6cd1571e81f4e9efb2f21bcfd628e11a36` at the
+  close of the second review round) and its metrics as one unit.
 - `cd ml-service && python scripts/train_rainfall_model.py --check` — what
   the gate runs: verifies without writing.
 - `cd ml-service && python scripts/stage8_check.py` — the gate.
@@ -205,9 +206,10 @@ Modified:
   - lint: all checks passed; format: 35 files already formatted.
   - dataset integrity: `rainfall-history-v1`, 8 regions, 10,958 days,
     checksum verified, registry consistent.
-  - training drift: retrained `baseline-premium-v2` from
-    `rainfall-history-v1`, artifact and metrics byte-identical.
-  - tests: **284 passed** after the review round (226 before it).
+  - training drift: `--check` mode reproduced `baseline-premium-v2` from
+    `rainfall-history-v1`, artifact and metrics byte-identical, nothing
+    written.
+  - tests: **302 passed** after two review rounds (226 before them).
   - runtime startup: `/health` 200, `/health/ready` 200 with the v2 checksum
     verified, `/predict` 200 pricing from `baseline-premium-v2`.
 - Holdout metrics (2019-2024, 39,680 windows, from
@@ -215,13 +217,21 @@ Modified:
 
   | Model | Data | Log-loss | Brier | Predicted trigger rate | Observed |
   | --- | --- | --- | --- | --- | --- |
-  | `baseline-premium-v2` | observed | 0.18227 | 0.055533 | 0.101238 | 0.096951 |
+  | `baseline-premium-v2` | observed | 0.172695 | 0.053820 | 0.108732 | 0.096951 |
   | `baseline-premium-v1` | synthetic | 0.28830 | 0.080362 | 0.022092 | 0.096951 |
 
-  The new model is better on both proper scores and is calibrated to within
-  half a percentage point. The synthetic model predicted a trigger rate of
-  2.2% against 9.7% observed: it would have collected roughly a quarter of the
-  premium the risk warranted.
+  The new model is better on both proper scores and slightly conservative in
+  aggregate. The synthetic model predicted a trigger rate of 2.2% against
+  9.7% observed: it would have collected roughly a quarter of the premium the
+  risk warranted. Per region (log-loss v2 / v1; loaded premium rate against
+  observed): Bogotá 0.137 / 0.189, 0.106 vs 0.086; Buenos Aires 0.260 / 0.466,
+  0.253 vs 0.165; Cartagena 0.202 / 0.326, 0.176 vs 0.114; Lima 0.018 / 0.009,
+  0.020 vs 0.001; Medellín 0.178 / 0.289, 0.204 vs 0.159; Santiago
+  0.185 / 0.276, 0.161 vs 0.066; Sevilla 0.187 / 0.370, 0.131 vs 0.090;
+  Valencia 0.214 / 0.381, 0.123 vs 0.094. Every region's loaded premium covers
+  its observed payouts. Per cell: 11 of the 192 cells with at least fifty
+  holdout windows are under-priced (the synthetic model: most of them), the
+  worst by 0.11.
 - New tests in `tests/test_training_pipeline.py`:
   - Dataset: loads and verifies the committed history; covers exactly the
     registered regions; records where the data came from; looks like real
@@ -322,6 +332,53 @@ reason recorded here.
   bytes did not change across it. Producing an artifact is now only ever the
   deliberate, flagless invocation.
 
+### Second review round
+
+A second review of the hardened stage produced eight findings.
+
+- **P1 — grid cells under-priced even with the loading.** Confirmed: 96 of
+  448 holdout cells, 29 with a real sample; Buenos Aires at 14 days and 30 mm
+  observed 23.7% against a 9.7% loaded premium. The cause was the model, not
+  the gate: one mean-rainfall feature cannot place a desert and a pampa on
+  the same line. Fixed by fitting one effect per region — expressible in the
+  unchanged artifact contract as `regionRisk` with a unit coefficient — which
+  cuts the under-priced sampled cells from 29 to 11, brings that Buenos Aires
+  cell to 20.4% predicted, and improves the aggregate log-loss from 0.1823 to
+  0.1727 while every region's loaded premium now covers its observed payouts.
+  Per-cell metrics are reported with the worst named, and the acceptance
+  policy is stated in the tests: region-level solvency as a requirement, a
+  cell-level tripwire as a regression guard. Interactions (a threshold slope
+  per region) are not expressible in the artifact and were not attempted.
+- **P1 — settlement semantics not yet fixed by Stage 10.** Declined again
+  for the same reason as the first round; the reviewer agrees it is a
+  legitimate deferral. The one-day consistency between provider and quote
+  was independently confirmed.
+- **P2 — the release was not atomic across artifact and metrics.** Fixed.
+  `release()` stages both files beside their destinations, fsyncs, loads the
+  staged artifact exactly as the runtime would, and only then moves them into
+  place — metrics first, then the artifact, so an interrupted release leaves
+  the old, valid artifact loadable. A failing release leaves no staging file.
+- **P2 — `stage7_check.py` still ran a destructive release.** Fixed: it runs
+  `--check`, fails on a missing artifact, and asserts the bytes did not move.
+- **P2 — an observed artifact could carry an empty source and be admitted.**
+  Fixed at both ends. The dataset loader requires `source` to be an object
+  with provider, product, URL, variable, units, timezone, and licence as
+  non-empty strings — `[]` no longer reads as `{}` — and requires coordinates
+  to be finite numbers in range. The artifact loader requires an observed
+  block to carry `source` (with provider and URL) and a `dateRange` of
+  calendar dates.
+- **P2 — physically impossible values were accepted.** Fixed with a bound
+  that has a physical meaning rather than a statistical one: 2,000 mm in a
+  day, above the WMO 24-hour world record of 1,825 mm (Foc-Foc, La Réunion,
+  1966), applied by the fetcher and the loader with the citation in the code.
+- **P3 — parser edges and a fixed staging name.** Fixed: a huge JSON integer
+  is a `RainfallDatasetError`/`FetchError` rather than an `OverflowError`, a
+  non-object `daily_units` is a `FetchError`, and staging files are named per
+  process so two refreshes cannot clobber each other.
+- **P3 — documentation drift.** Fixed: the checksum recorded here is the one
+  at the close of this round, and `requirements.txt` no longer names the
+  removed synthetic build script.
+
 ### Declined, with reasons
 
 - **P1 — metrics are calibrated against a settlement semantics Stage 10 has
@@ -344,15 +401,16 @@ reason recorded here.
 
 ## Risks or pending items
 
-- **Two regions are priced imperfectly, and the metrics say so.** Buenos
-  Aires is under-predicted on the holdout (0.10 against 0.17 observed) and
-  Lima over-predicted (0.06 against 0.001). The first costs the pool margin
-  on one region; the second charges Lima buyers for risk that is not there
-  above the floor. Both are the shape of a model with a single wetness
-  feature: transforms of that feature (log, square root) were measured and
-  move Lima only marginally. A per-region term is the next modelling step,
-  and it should wait for a reason — more regions, or Stage 10's settlement
-  data — rather than be fitted now to make a table look better.
+- **Lima is still over-predicted, and eleven cells are under-priced.** With
+  per-region effects the Lima holdout rate is 0.015 predicted against 0.001
+  observed — a fortieth of the earlier gap, but still a buyer paying for
+  risk that is not there once above the floor. Eleven of 192 well-sampled
+  cells remain under-priced, the worst (Bogotá, 30 days, 10 mm, triggering
+  84% of the time) by 0.11. Both are the ceiling of a model that is linear in
+  log threshold with a single slope for every region; a per-region threshold
+  slope is the next step and is not expressible in the current artifact
+  contract. It should wait for Stage 10's settlement data, which decides what
+  "trigger" means before it is worth fitting more closely.
 
 - **Reanalysis is not a rain gauge.** ERA5 is a model constrained by
   observations at ~10 km; local convective extremes can be smoothed relative
